@@ -69,6 +69,7 @@ func main() {
 	}
 
 	fmt.Printf("Local server listening on %s\n", addr)
+	fmt.Printf("API key: %s\n", apiKey)
 
 	// Start ngrok tunnel
 	ctx, cancel := context.WithCancel(context.Background())
