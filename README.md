@@ -108,10 +108,61 @@ All endpoints require `Authorization: Bearer <api-key>`.
 
 ## iOS App
 
-Open `ios/ClaudeController/` in Xcode (iOS 17.0+ deployment target). The app has no external dependencies.
+### Setting up the Xcode project (first time only)
 
-**Screens:**
-- **Pairing** — QR code scanner + manual entry
+The Swift source files are in `ios/ClaudeController/` but you need to create an Xcode project to build them:
+
+1. Open Xcode (install from the Mac App Store if you don't have it)
+2. **File → New → Project**
+3. Select **App** under the iOS tab, click Next
+4. Fill in:
+   - Product Name: `ClaudeController`
+   - Team: select your Apple ID (see "Add your Apple ID" below if not listed)
+   - Organization Identifier: `com.yourname` (e.g. `com.jchinthrajah`)
+   - Interface: **SwiftUI**
+   - Language: **Swift**
+5. Click Next, save to the `ios/` directory of this repo
+6. **Delete the auto-generated files** — Xcode creates `ContentView.swift` and a default `ClaudeControllerApp.swift`. Right-click each in the project navigator → Delete → Move to Trash
+7. **Add the existing source files** — Right-click the `ClaudeController` folder in the project navigator → Add Files to "ClaudeController" → select the `Models/`, `Services/`, `Views/` folders and `ClaudeControllerApp.swift`. Make sure "Copy items if needed" is **unchecked** and "Create groups" is selected
+8. In the project navigator, click the top-level **ClaudeController** project → General tab:
+   - Set **Minimum Deployments** to **iOS 17.0**
+9. Under **Signing & Capabilities**:
+   - Check "Automatically manage signing"
+   - Team: select your personal team (see below)
+   - Bundle Identifier: `com.yourname.ClaudeController`
+10. Add camera permission — click the **Info** tab, add a row: key = `Privacy - Camera Usage Description`, value = `Scan QR code to pair with server`
+
+After this, `make xcode` will open the project directly.
+
+### Add your Apple ID to Xcode (if not already done)
+
+1. Xcode → **Settings** (⌘,) → **Accounts** tab
+2. Click **+** in the bottom left → **Apple ID**
+3. Sign in with your Apple ID (any free Apple ID works)
+4. Your "Personal Team" will appear in the Team dropdown
+
+### Install the app on your iPhone
+
+1. Connect your iPhone to your Mac with a USB cable
+2. On your iPhone, tap **Trust** when prompted to trust this computer
+3. Run `make xcode` to open the project
+4. In the top toolbar, click the device dropdown (next to the play/stop buttons) and select your iPhone
+5. Click the **Run** button (▶) or press **⌘R**
+6. First build will take a minute. If you see a signing error, double-check your Team is set in Signing & Capabilities
+7. On your iPhone: go to **Settings → General → VPN & Device Management** → tap your developer email → **Trust**
+8. Go back to Xcode and hit Run again — the app will install and launch on your phone
+
+**Troubleshooting:**
+- "Untrusted Developer" → do step 7 above
+- "No provisioning profile" → make sure you selected a Team in Signing & Capabilities
+- "Device is busy" → wait a moment, unlock your phone, try again
+- Build errors about missing types → make sure all folders (Models, Services, Views) are added to the project with "Create groups" selected
+
+**Note:** With a free Apple ID, the app expires after 7 days. Just hit Run from Xcode again to refresh it. This is an Apple limitation for free developer accounts.
+
+### Screens
+
+- **Pairing** — QR code scanner + manual entry fallback
 - **Main** — Session selector dropdown, pending prompt queue with response input, prompt history
 - **Instruction** — Queue freeform instructions for Claude's next turn
 - **Settings** — Manage paired servers, view archived sessions
