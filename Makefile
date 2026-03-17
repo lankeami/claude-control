@@ -3,7 +3,7 @@
 PORT ?= 8080
 SERVER_BIN := server/claude-controller
 
-.PHONY: help build test run run-docker stop-docker logs hooks xcode clean all
+.PHONY: help build test run run-docker stop-docker logs ngrok hooks xcode clean all
 
 .DEFAULT_GOAL := help
 
@@ -42,6 +42,11 @@ stop-docker: ## Stop Docker containers
 
 logs: ## Tail Docker container logs
 	docker compose logs -f
+
+##@ Tunnel
+
+ngrok: ## Start an ngrok tunnel to localhost:PORT
+	ngrok http $(PORT)
 
 ##@ iOS
 
