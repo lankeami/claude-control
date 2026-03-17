@@ -26,7 +26,9 @@ func NewRouter(store *db.Store, apiKey string) http.Handler {
 	mux.HandleFunc("POST /api/prompts/{id}/respond", s.handleRespondToPrompt)
 	mux.HandleFunc("GET /api/prompts", s.handleListPrompts)
 
-	// Instruction endpoints (added in Task 8)
+	// Instruction endpoints
+	mux.HandleFunc("POST /api/sessions/{id}/instruct", s.handleInstruct)
+	mux.HandleFunc("GET /api/sessions/{id}/instructions", s.handleFetchInstructions)
 
 	// Pairing/status endpoints
 	mux.HandleFunc("GET /api/pairing", s.handlePairing)
