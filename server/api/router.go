@@ -20,7 +20,11 @@ func NewRouter(store *db.Store, apiKey string) http.Handler {
 	mux.HandleFunc("GET /api/sessions", s.handleListSessions)
 	mux.HandleFunc("PUT /api/sessions/{id}/archive", s.handleSetArchived)
 
-	// Prompt endpoints (added in Task 7)
+	// Prompt endpoints
+	mux.HandleFunc("POST /api/prompts", s.handleCreatePrompt)
+	mux.HandleFunc("GET /api/prompts/{id}/response", s.handleGetPromptResponse)
+	mux.HandleFunc("POST /api/prompts/{id}/respond", s.handleRespondToPrompt)
+	mux.HandleFunc("GET /api/prompts", s.handleListPrompts)
 
 	// Instruction endpoints (added in Task 8)
 
