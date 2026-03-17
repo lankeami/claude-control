@@ -9,7 +9,8 @@ INPUT=$(cat)
 MESSAGE=$(echo "$INPUT" | jq -r '.message // ""')
 CWD=$(echo "$INPUT" | jq -r '.cwd // ""')
 
-CONFIG_FILE="$HOME/.claude-controller.json"
+# Load config (override with CLAUDE_CONTROLLER_CONFIG env var)
+CONFIG_FILE="${CLAUDE_CONTROLLER_CONFIG:-$HOME/.claude-controller.json}"
 if [[ ! -f "$CONFIG_FILE" ]]; then
     exit 0
 fi

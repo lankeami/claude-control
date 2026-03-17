@@ -5,11 +5,19 @@ set -euo pipefail
 # Sets up the hooks in Claude Code settings and creates the config file.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONFIG_FILE="$HOME/.claude-controller.json"
-SETTINGS_FILE="$HOME/.claude/settings.json"
 
 echo "=== Claude Controller Hook Installer ==="
 echo ""
+
+# Get Claude settings location
+DEFAULT_SETTINGS="$HOME/.claude/settings.json"
+read -p "Claude settings file [$DEFAULT_SETTINGS]: " input_settings
+SETTINGS_FILE="${input_settings:-$DEFAULT_SETTINGS}"
+
+# Get config file location (hooks read this at runtime)
+DEFAULT_CONFIG="$HOME/.claude-controller.json"
+read -p "Controller config file [$DEFAULT_CONFIG]: " input_config
+CONFIG_FILE="${input_config:-$DEFAULT_CONFIG}"
 
 # Get computer name
 COMPUTER_NAME=$(hostname -s 2>/dev/null || hostname)
@@ -41,11 +49,20 @@ if [[ ! -f "$SETTINGS_FILE" ]]; then
     echo '{}' > "$SETTINGS_FILE"
 fi
 
-# Add hooks to Claude Code settings using jq
+# Build hook commands — embed config path if non-default
 STOP_HOOK="$SCRIPT_DIR/stop.sh"
 NOTIFY_HOOK="$SCRIPT_DIR/notify.sh"
 
-jq --arg stop "$STOP_HOOK" --arg notify "$NOTIFY_HOOK" '
+if [[ "$CONFIG_FILE" == "$DEFAULT_CONFIG" ]]; then
+    STOP_CMD="$STOP_HOOK"
+    NOTIFY_CMD="$NOTIFY_HOOK"
+else
+    STOP_CMD="CLAUDE_CONTROLLER_CONFIG=$CONFIG_FILE $STOP_HOOK"
+    NOTIFY_CMD="CLAUDE_CONTROLLER_CONFIG=$CONFIG_FILE $NOTIFY_HOOK"
+fi
+
+# Add hooks to Claude Code settings using jq
+jq --arg stop "$STOP_CMD" --arg notify "$NOTIFY_CMD" '
   .hooks.Stop = [{"hooks": [{"type": "command", "command": $stop}]}] |
   .hooks.Notification = [{"hooks": [{"type": "command", "command": $notify}]}]
 ' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" && mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"

@@ -14,8 +14,8 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // ""')
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""')
 
-# Load config
-CONFIG_FILE="$HOME/.claude-controller.json"
+# Load config (override with CLAUDE_CONTROLLER_CONFIG env var)
+CONFIG_FILE="${CLAUDE_CONTROLLER_CONFIG:-$HOME/.claude-controller.json}"
 if [[ ! -f "$CONFIG_FILE" ]]; then
     exit 0  # No config, exit silently
 fi
