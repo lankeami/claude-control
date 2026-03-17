@@ -41,16 +41,18 @@ When Claude Code finishes a turn, hook scripts POST the output to a local Go ser
 
 ```bash
 cd server
-go run .
+go run .                    # default port 8080
+go run . --port 9999        # custom port
 ```
 
 **Docker:**
 
 ```bash
-NGROK_AUTHTOKEN=your-token docker compose up --build
+NGROK_AUTHTOKEN=your-token docker compose up --build             # default port 8080
+PORT=9999 NGROK_AUTHTOKEN=your-token docker compose up --build   # custom port
 ```
 
-The server starts on port 8080, creates an ngrok tunnel, and displays a QR code in the terminal.
+The server starts on the configured port, creates an ngrok tunnel, and displays a QR code in the terminal.
 
 ### 2. Install the hooks
 
@@ -116,13 +118,24 @@ Open `ios/ClaudeController/` in Xcode (iOS 17.0+ deployment target). The app has
 
 The app polls the server every 3 seconds when sessions are active, slowing to 15 seconds when idle.
 
+## Port Configuration
+
+The default port is 8080. To use a custom port, set it in each component:
+
+| Component | How to set port |
+|-----------|----------------|
+| Server (native) | `go run . --port 9999` or `PORT=9999 go run .` |
+| Server (Docker) | `PORT=9999 docker compose up --build` |
+| Hooks | Set `server_url` in `~/.claude-controller.json` (the install script prompts for this) |
+| iOS app | Port is embedded in the ngrok URL from QR code — no separate config needed |
+
 ## Configuration
 
 The hooks read from `~/.claude-controller.json`:
 
 ```json
 {
-  "server_url": "http://localhost:8080",
+  "server_url": "http://localhost:9999",
   "computer_name": "Jays-MacBook-Pro",
   "api_key": "sk-..."
 }

@@ -21,6 +21,6 @@ RUN mkdir -p /data
 ENV BIND_HOST=0.0.0.0
 ENV PORT=8080
 
-EXPOSE 8080
+EXPOSE ${PORT}
 
 ENTRYPOINT ["./claude-controller", "--db", "/data/data.db"]

@@ -16,9 +16,11 @@ COMPUTER_NAME=$(hostname -s 2>/dev/null || hostname)
 read -p "Computer name [$COMPUTER_NAME]: " input_name
 COMPUTER_NAME="${input_name:-$COMPUTER_NAME}"
 
-# Get server URL
-read -p "Server URL [http://localhost:8080]: " input_url
-SERVER_URL="${input_url:-http://localhost:8080}"
+# Get server port and URL
+read -p "Server port [8080]: " input_port
+PORT="${input_port:-8080}"
+read -p "Server URL [http://localhost:$PORT]: " input_url
+SERVER_URL="${input_url:-http://localhost:$PORT}"
 
 # Get API key
 read -p "API key (from QR code or server output): " API_KEY

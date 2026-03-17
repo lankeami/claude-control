@@ -2,11 +2,12 @@ services:
   server:
     build: ./server
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     volumes:
       - claude-controller-data:/data
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+      - PORT=${PORT:-8080}
     restart: unless-stopped
 
 volumes:
