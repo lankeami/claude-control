@@ -45,13 +45,15 @@ A system for remotely controlling multiple Claude Code sessions from an iPhone. 
 
 ### Startup Flow
 
-1. Start HTTP server on `localhost:8080`
-2. Initialize SQLite database (auto-create tables if missing)
+1. Start HTTP server on a configurable port (default `localhost:8080`, configurable via `--port` flag or `PORT` env var; auto-detects next available port if occupied)
+2. Initialize SQLite database with WAL mode enabled (auto-create tables if missing)
 3. Start ngrok tunnel
 4. Generate API key (first run only, stored in SQLite)
-5. Display QR code in terminal containing `{"url": "https://abc123.ngrok.io", "key": "sk-xxx"}`
+5. Display QR code in terminal containing `{"url": "https://abc123.ngrok.io", "key": "sk-xxx", "version": 1}`
 
 ### Data Model (SQLite)
+
+SQLite is opened with WAL mode (`PRAGMA journal_mode=WAL`) and a busy timeout (`PRAGMA busy_timeout=5000`) to handle concurrent writes from multiple hook scripts.
 
 **sessions**
 
@@ -64,6 +66,8 @@ A system for remotely controlling multiple Claude Code sessions from an iPhone. 
 | created_at | DATETIME | When the session was first registered |
 | last_seen_at | DATETIME | Last heartbeat timestamp |
 | archived | BOOLEAN | Whether the user has archived this session |
+
+`UNIQUE(computer_name, project_path)` constraint — used for upsert via `INSERT ... ON CONFLICT DO UPDATE`.
 
 **prompts**
 
@@ -78,21 +82,33 @@ A system for remotely controlling multiple Claude Code sessions from an iPhone. 
 | created_at | DATETIME | When the prompt was received |
 | answered_at | DATETIME | When the user responded |
 
+**instructions**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT (UUID) | Primary key |
+| session_id | TEXT | Foreign key to sessions |
+| message | TEXT | Freeform instruction from the user |
+| status | TEXT | `queued` or `delivered` |
+| created_at | DATETIME | When the instruction was queued |
+| delivered_at | DATETIME | When it was delivered to Claude |
+
 ### API Endpoints
 
-All endpoints require `Authorization: Bearer <api-key>` header.
+All endpoints require `Authorization: Bearer <api-key>` header. Rate limited to 60 requests/minute per IP. Lockout after 10 failed auth attempts per IP (resets after 15 minutes).
 
 | Method | Path | Caller | Purpose |
 |--------|------|--------|---------|
 | POST | `/api/sessions/register` | Hook | Register/upsert a Claude session with computer name + project |
 | POST | `/api/sessions/:id/heartbeat` | Hook | Keep session marked active |
 | POST | `/api/prompts` | Hook | Submit a prompt Claude is waiting on |
-| GET | `/api/prompts/:id/response` | Hook | Block-poll until user responds (long-poll, 2s intervals) |
+| GET | `/api/prompts/:id/response` | Hook | Long-poll for user's response (server holds connection up to 30s, returns immediately when response arrives; hook retries on timeout) |
+| GET | `/api/sessions/:id/instructions` | Hook | Check for queued instructions (called by Stop hook) |
 | GET | `/api/sessions` | iOS | List all active sessions |
 | GET | `/api/prompts?status=pending` | iOS | Get pending prompt queue |
 | GET | `/api/prompts?session_id=:id` | iOS | Get prompt history for a session |
 | POST | `/api/prompts/:id/respond` | iOS | Submit a response to a pending prompt |
-| POST | `/api/sessions/:id/instruct` | iOS | Send a new freeform instruction to Claude |
+| POST | `/api/sessions/:id/instruct` | iOS | Queue a freeform instruction for the next time Claude stops |
 | GET | `/api/pairing` | iOS | Validate API key and confirm pairing |
 | GET | `/api/status` | iOS | Health check / connectivity test |
 
@@ -113,22 +129,69 @@ Two hook scripts per platform: bash (macOS) and PowerShell (Windows). Located in
 
 ### Hook Events
 
-**Stop hook** — fires when Claude finishes a turn and waits for input:
+#### Claude Code Hooks Contract
 
-1. Capture Claude's last message from hook stdin
-2. Read computer name from config (falls back to `hostname`)
-3. Read project path from working directory
-4. `POST /api/sessions/register` (idempotent upsert by computer + project)
-5. `POST /api/prompts` with `{ session_id, claude_message, type: "prompt" }`
-6. Poll `GET /api/prompts/:id/response` every 2 seconds
-7. When response arrives, echo it to stdout — Claude receives it as user input
-8. No timeout — polls indefinitely until a response is received
+Hooks receive JSON on stdin and return output via stdout/stderr. The key mechanism for the Stop hook:
+- Returning `{"decision": "block", "reason": "..."}` on stdout prevents Claude from stopping and feeds the `reason` text to Claude as context, causing it to continue processing.
+- The input includes `stop_hook_active: true` when Claude is already continuing from a previous Stop hook — **the hook must check this to prevent infinite loops**.
 
-**Notification hook** — fires when Claude sends a notification:
+#### Stop hook — fires when Claude finishes a turn
 
-1. `POST /api/sessions/register` (upsert)
-2. `POST /api/prompts` with `{ session_id, claude_message, type: "notification" }`
-3. Exit immediately (fire-and-forget, no polling)
+**Input received on stdin:**
+```json
+{
+  "session_id": "abc123",
+  "transcript_path": "~/.claude/projects/.../session.jsonl",
+  "cwd": "/Users/.../project",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false
+}
+```
+
+**Flow:**
+
+1. Parse JSON from stdin
+2. **If `stop_hook_active` is true**: check for queued instructions only (see step 6b), do NOT post the current message as a prompt — this prevents infinite loops
+3. Read computer name from config (falls back to `hostname`)
+4. Read project path from `cwd` field in stdin JSON
+5. `POST /api/sessions/register` (idempotent upsert by computer + project)
+6. **If `stop_hook_active` is false** (normal stop):
+   - a. Read the transcript file to extract Claude's last message
+   - b. `POST /api/prompts` with `{ session_id, claude_message, type: "prompt" }`
+   - c. Long-poll `GET /api/prompts/:id/response` (server holds up to 30s per request, hook retries indefinitely)
+   - d. When response arrives, output JSON to stdout:
+     ```json
+     {"decision": "block", "reason": "User responded: <their response>"}
+     ```
+   - e. Claude receives the reason and continues
+7. **If `stop_hook_active` is true** (Claude continued from a previous hook):
+   - a. Check `GET /api/sessions/:id/instructions` for queued instructions
+   - b. If instruction found, output: `{"decision": "block", "reason": "User instruction: <message>"}`
+   - c. If no instruction, exit with code 0 (Claude stops normally)
+
+#### Notification hook — fires when Claude sends a notification
+
+**Input received on stdin:**
+```json
+{
+  "session_id": "abc123",
+  "transcript_path": "~/.claude/projects/.../session.jsonl",
+  "cwd": "/Users/.../project",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input"
+}
+```
+
+**Flow:**
+
+1. Parse JSON from stdin
+2. `POST /api/sessions/register` (upsert)
+3. `POST /api/prompts` with `{ session_id, claude_message: message, type: "notification" }`
+4. Exit immediately (fire-and-forget, no polling)
+
+#### Instruction Delivery
+
+The "New Instruction" feature in the iOS app works by queuing instructions that get delivered on Claude's next Stop event. This means instructions can only be delivered when Claude finishes a turn — they cannot interrupt Claude mid-work. The iOS app should make this clear (e.g., "Instruction queued — will be delivered when Claude finishes its current turn").
 
 ### Graceful Degradation
 
@@ -194,8 +257,9 @@ Two hook scripts per platform: bash (macOS) and PowerShell (Windows). Located in
 - Session dropdown shows `computer_name / project` with status dot:
   - Green = waiting for input
   - Gray = idle (no heartbeat for 5+ minutes)
-- "New Instruction" button sends freeform message via `POST /api/sessions/:id/instruct`
+- "New Instruction" button sends freeform message via `POST /api/sessions/:id/instruct` — displays "Instruction queued — will be delivered when Claude finishes its current turn"
 - App icon badge shows count of pending prompts (updated via local polling)
+- Adaptive polling: polls every 3 seconds when sessions are active/waiting, slows to every 15 seconds when all sessions are idle (preserves battery)
 
 ### Stale Session Handling
 
