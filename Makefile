@@ -43,7 +43,11 @@ stop-docker: ## Stop Docker containers
 ##@ iOS
 
 xcode: ## Open the iOS app in Xcode
-	open ios/ClaudeController.xcodeproj 2>/dev/null || open ios/ 2>/dev/null || echo "No Xcode project found. Create one: Xcode → File → New → Project → App (SwiftUI), save to ios/"
+	@if [ -d ios/ClaudeController.xcodeproj ]; then \
+		open ios/ClaudeController.xcodeproj; \
+	else \
+		open -a Xcode ios/ClaudeController/; \
+	fi
 
 ##@ Hooks
 
