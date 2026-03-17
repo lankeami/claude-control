@@ -3,7 +3,7 @@
 PORT ?= 8080
 SERVER_BIN := server/claude-controller
 
-.PHONY: help build test run run-docker stop-docker hooks xcode clean all
+.PHONY: help build test run run-docker stop-docker logs hooks xcode clean all
 
 .DEFAULT_GOAL := help
 
@@ -39,6 +39,9 @@ run-docker-bg: ## Build and run in Docker (background)
 
 stop-docker: ## Stop Docker containers
 	docker compose down
+
+logs: ## Tail Docker container logs
+	docker compose logs -f
 
 ##@ iOS
 
