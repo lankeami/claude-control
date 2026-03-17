@@ -58,7 +58,11 @@ func main() {
 	router := api.NewRouter(store, apiKey)
 
 	// Start local server
-	addr := fmt.Sprintf("localhost:%d", *port)
+	bindHost := "localhost"
+	if h := os.Getenv("BIND_HOST"); h != "" {
+		bindHost = h
+	}
+	addr := fmt.Sprintf("%s:%d", bindHost, *port)
 	localListener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("Failed to listen on %s: %v", addr, err)

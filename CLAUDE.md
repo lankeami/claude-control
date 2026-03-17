@@ -22,6 +22,13 @@ cd server && go run . --port 9090              # Custom port
 ### iOS App
 Open `ios/ClaudeController/` in Xcode. Build target: iOS 17.0+.
 
+### Docker
+```bash
+docker compose up --build                       # Build and run in container
+NGROK_AUTHTOKEN=xxx docker compose up --build   # With ngrok tunnel
+docker compose down                             # Stop
+```
+
 ### Hooks
 ```bash
 ./hooks/install.sh                             # Install hooks into Claude Code settings
