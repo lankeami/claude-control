@@ -3,7 +3,7 @@
 PORT ?= 8080
 SERVER_BIN := server/claude-controller
 
-.PHONY: help build test run run-docker stop-docker hooks clean all
+.PHONY: help build test run run-docker stop-docker hooks xcode clean all
 
 .DEFAULT_GOAL := help
 
@@ -39,6 +39,11 @@ run-docker-bg: ## Build and run in Docker (background)
 
 stop-docker: ## Stop Docker containers
 	docker compose down
+
+##@ iOS
+
+xcode: ## Open the iOS app in Xcode
+	open ios/ClaudeController.xcodeproj 2>/dev/null || open ios/ 2>/dev/null || echo "No Xcode project found. Create one: Xcode → File → New → Project → App (SwiftUI), save to ios/"
 
 ##@ Hooks
 
