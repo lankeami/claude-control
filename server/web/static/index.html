@@ -1,4 +1,169 @@
 <!DOCTYPE html>
-<html><head><title>Claude Controller</title></head>
-<body><h1>Claude Controller</h1><p>Loading...</p></body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Controller</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/alpine.min.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body x-data="app">
+
+  <!-- Connection banner -->
+  <div class="connection-banner" x-show="authenticated && !connected" x-cloak>
+    Reconnecting...
+  </div>
+
+  <!-- Login screen -->
+  <template x-if="!authenticated">
+    <div class="login-container">
+      <div class="login-card">
+        <h1>Claude Controller</h1>
+        <p class="subtitle" x-text="`Connect to ${window.location.origin}`"></p>
+
+        <form @submit.prevent="login">
+          <div class="form-group">
+            <label for="apiKey">API Key</label>
+            <div class="input-wrapper">
+              <input id="apiKey" type="password" x-model="loginKey"
+                     placeholder="sk-..." autocomplete="off">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" :disabled="loginLoading || !loginKey">
+            <span x-show="!loginLoading">Connect</span>
+            <span x-show="loginLoading">Connecting...</span>
+          </button>
+          <p class="error-msg" x-show="loginError" x-text="loginError"></p>
+        </form>
+      </div>
+    </div>
+  </template>
+
+  <!-- Dashboard -->
+  <template x-if="authenticated">
+    <div class="dashboard">
+      <!-- Sidebar (desktop) -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <h2>Sessions</h2>
+          <button class="btn btn-sm" @click="disconnect" style="background:transparent;color:var(--text-muted)">
+            Disconnect
+          </button>
+        </div>
+        <div class="session-list">
+          <div class="session-item" :class="{ active: !selectedSessionId }"
+               @click="selectedSessionId = null">
+            <span>All Sessions</span>
+            <span class="badge" x-show="totalPendingCount > 0" x-text="totalPendingCount"></span>
+          </div>
+          <template x-for="session in sessions" :key="session.id">
+            <div class="session-item" :class="{ active: selectedSessionId === session.id }"
+                 @click="selectSession(session.id)">
+              <span class="status-dot" :class="sessionStatus(session)"></span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                    x-text="sessionName(session)"></span>
+              <span class="badge" x-show="pendingCountFor(session.id) > 0"
+                    x-text="pendingCountFor(session.id)"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Main area -->
+      <div class="main">
+        <div class="main-header">
+          <h2 x-text="selectedSessionId
+            ? sessionName(sessions.find(s => s.id === selectedSessionId) || {computer_name:'',project_path:''})
+            : 'All Sessions'"></h2>
+        </div>
+
+        <!-- Mobile session selector -->
+        <div class="mobile-session-select">
+          <select x-model="selectedSessionId"
+                  @change="selectedSessionId = $event.target.value || null">
+            <option value="">All Sessions</option>
+            <template x-for="session in sessions" :key="session.id">
+              <option :value="session.id" x-text="sessionName(session)"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Prompt list -->
+        <div class="prompt-list">
+          <template x-if="filteredPrompts.length === 0">
+            <div style="text-align:center;color:var(--text-muted);padding:3rem 1rem">
+              <p style="font-size:1.125rem">No prompts yet</p>
+              <p style="font-size:0.875rem;margin-top:0.5rem">Prompts from Claude will appear here</p>
+            </div>
+          </template>
+          <template x-for="prompt in filteredPrompts" :key="prompt.id">
+            <div class="prompt-card" :class="{ pending: prompt.status === 'pending' && prompt.type === 'prompt' }">
+              <div class="prompt-header">
+                <span class="status-dot" :class="prompt.status === 'pending' ? 'waiting' : 'idle'"></span>
+                <span x-text="prompt.status === 'pending' && prompt.type === 'prompt'
+                  ? 'Claude is waiting...'
+                  : timeAgo(prompt.answered_at || prompt.created_at)"></span>
+                <span x-show="prompt.type === 'notification'"
+                      style="background:var(--border);padding:0.125rem 0.5rem;border-radius:4px;font-size:0.6875rem">
+                  notification
+                </span>
+              </div>
+              <div class="prompt-message" x-text="prompt.claude_message"></div>
+
+              <!-- Response input for pending prompts -->
+              <template x-if="prompt.status === 'pending' && prompt.type === 'prompt'">
+                <div class="prompt-response">
+                  <input type="text" :id="'resp-' + prompt.id" placeholder="Type your response..."
+                         @keydown.enter="
+                           const inp = $el;
+                           if(inp.value.trim()){
+                             inp.disabled=true;
+                             respondToPrompt(prompt.id, inp.value).then(ok => {
+                               if(ok) inp.value='';
+                               inp.disabled=false;
+                             });
+                           }">
+                  <button class="btn btn-primary btn-sm"
+                          @click="
+                            const inp = document.getElementById('resp-' + prompt.id);
+                            if(inp.value.trim()){
+                              inp.disabled=true;
+                              respondToPrompt(prompt.id, inp.value).then(ok => {
+                                if(ok) inp.value='';
+                                inp.disabled=false;
+                              });
+                            }">
+                    Send
+                  </button>
+                </div>
+              </template>
+
+              <!-- Replied text -->
+              <template x-if="prompt.response">
+                <div class="prompt-replied" x-text="'Replied: ' + prompt.response"></div>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- Instruction bar -->
+        <div class="instruction-bar" x-show="selectedSessionId">
+          <input type="text" x-model="instructionText"
+                 placeholder="Send an instruction..."
+                 @keydown.enter="sendInstruction()"
+                 :disabled="instructionSending">
+          <button class="btn btn-primary btn-sm" :disabled="!instructionText.trim() || instructionSending"
+                  @click="sendInstruction()">
+            <span x-show="!instructionSuccess">Send</span>
+            <span x-show="instructionSuccess" style="color:#16a34a">Sent!</span>
+          </button>
+          <span class="helper">Delivered when Claude finishes its current turn</span>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <style>[x-cloak] { display: none !important; }</style>
+</body>
 </html>
