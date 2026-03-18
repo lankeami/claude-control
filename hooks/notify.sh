@@ -8,6 +8,7 @@ INPUT=$(cat)
 
 MESSAGE=$(echo "$INPUT" | jq -r '.message // ""')
 CWD=$(echo "$INPUT" | jq -r '.cwd // ""')
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""')
 
 # Load config (override with CLAUDE_CONTROLLER_CONFIG env var)
 CONFIG_FILE="${CLAUDE_CONTROLLER_CONFIG:-$HOME/.claude-controller.json}"
@@ -35,7 +36,7 @@ REGISTER_RESP=$(curl -sf --max-time 5 \
     -X POST "$SERVER_URL/api/sessions/register" \
     -H "$AUTH_HEADER" \
     -H "Content-Type: application/json" \
-    -d "{\"computer_name\": \"$COMPUTER_NAME\", \"project_path\": \"$CWD\"}" 2>/dev/null) || exit 0
+    -d "{\"computer_name\": \"$COMPUTER_NAME\", \"project_path\": \"$CWD\", \"transcript_path\": \"$TRANSCRIPT_PATH\"}" 2>/dev/null) || exit 0
 
 SERVER_SESSION_ID=$(echo "$REGISTER_RESP" | jq -r '.id')
 MESSAGE_ESCAPED=$(echo "$MESSAGE" | jq -Rs '.')

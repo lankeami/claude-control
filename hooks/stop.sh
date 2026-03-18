@@ -39,7 +39,7 @@ REGISTER_RESP=$(curl -sf --max-time 5 \
     -X POST "$SERVER_URL/api/sessions/register" \
     -H "$AUTH_HEADER" \
     -H "Content-Type: application/json" \
-    -d "{\"computer_name\": \"$COMPUTER_NAME\", \"project_path\": \"$CWD\"}" 2>/dev/null) || exit 0
+    -d "{\"computer_name\": \"$COMPUTER_NAME\", \"project_path\": \"$CWD\", \"transcript_path\": \"$TRANSCRIPT_PATH\"}" 2>/dev/null) || exit 0
 
 SERVER_SESSION_ID=$(echo "$REGISTER_RESP" | jq -r '.id')
 
@@ -61,16 +61,18 @@ if [[ "$STOP_HOOK_ACTIVE" == "true" ]]; then
     exit 0
 fi
 
-# Normal stop: extract Claude's last message from transcript
+# Normal stop: extract Claude's last text message from transcript
 CLAUDE_MSG=""
 if [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" ]]; then
-    # Get last assistant message from JSONL transcript
-    CLAUDE_MSG=$(tail -20 "$TRANSCRIPT_PATH" | jq -rs '
-        [.[] | select(.type == "assistant")] | last | .message.content |
-        if type == "array" then [.[] | select(.type == "text") | .text] | join("\n")
-        elif type == "string" then .
-        else ""
-        end
+    CLAUDE_MSG=$(tail -100 "$TRANSCRIPT_PATH" | jq -rs '
+        [.[] | select(.type == "assistant") |
+         .message.content |
+         if type == "array" then [.[] | select(.type == "text") | .text] | join("\n")
+         elif type == "string" then .
+         else ""
+         end |
+         select(. != "")
+        ] | last // ""
     ' 2>/dev/null || echo "")
 fi
 
