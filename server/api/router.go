@@ -33,6 +33,9 @@ func NewRouter(store *db.Store, apiKey string) http.Handler {
 	apiMux.HandleFunc("POST /api/sessions/{id}/instruct", s.handleInstruct)
 	apiMux.HandleFunc("GET /api/sessions/{id}/instructions", s.handleFetchInstructions)
 
+	// Transcript endpoint
+	apiMux.HandleFunc("GET /api/sessions/{id}/transcript", s.handleGetTranscript)
+
 	// Pairing/status endpoints
 	apiMux.HandleFunc("GET /api/pairing", s.handlePairing)
 	apiMux.HandleFunc("GET /api/status", s.handleStatus)
