@@ -64,6 +64,7 @@ Requires auth (Bearer token). Reads the JSONL file at the stored `transcript_pat
 - Entries with `.type == "tool_result"` or other non-message types: skip entirely.
 - Return in chronological order (file order, oldest first).
 - If transcript_path is empty or file doesn't exist: return empty array `[]`.
+- Safety cap: return at most the last 500 messages to prevent pathological cases with very long sessions.
 
 **File:** `server/api/transcript.go`
 
@@ -79,6 +80,8 @@ TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""')
 ```
 
 **`hooks/notify.sh`:** Same change — pass `transcript_path` when registering.
+
+**PowerShell hooks (`stop.ps1`, `notify.ps1`):** Out of scope for this change. Windows support can be updated in a follow-up.
 
 **`hooks/stop.sh` transcript parsing fix:** The current `tail -20 | jq` approach fails when the last assistant message is all tool_use blocks. Fix: search backward through more lines and filter for entries that actually contain text content.
 
