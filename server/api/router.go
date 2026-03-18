@@ -22,6 +22,7 @@ func NewRouter(store *db.Store, apiKey string) http.Handler {
 	apiMux.HandleFunc("POST /api/sessions/{id}/heartbeat", s.handleHeartbeat)
 	apiMux.HandleFunc("GET /api/sessions", s.handleListSessions)
 	apiMux.HandleFunc("PUT /api/sessions/{id}/archive", s.handleSetArchived)
+	apiMux.HandleFunc("DELETE /api/sessions/{id}", s.handleDeleteSession)
 
 	// Prompt endpoints
 	apiMux.HandleFunc("POST /api/prompts", s.handleCreatePrompt)

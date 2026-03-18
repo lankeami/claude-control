@@ -11,6 +11,13 @@ INPUT=$(cat)
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // ""')
 STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false')
 CWD=$(echo "$INPUT" | jq -r '.cwd // ""')
+# Normalize to git repo root so subdirectory commands don't create duplicate sessions
+if [[ -n "$CWD" ]] && command -v git &>/dev/null; then
+    GIT_ROOT=$(cd "$CWD" && git rev-parse --show-toplevel 2>/dev/null) || true
+    if [[ -n "$GIT_ROOT" ]]; then
+        CWD="$GIT_ROOT"
+    fi
+fi
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""')
 
@@ -45,7 +52,7 @@ SERVER_SESSION_ID=$(echo "$REGISTER_RESP" | jq -r '.id')
 
 if [[ "$STOP_HOOK_ACTIVE" == "true" ]]; then
     # Claude is already continuing from a previous stop hook.
-    # Check for queued instructions only.
+    # Check for queued instructions first.
     INSTR_RESP=$(curl -sf --max-time 5 \
         -X GET "$SERVER_URL/api/sessions/$SERVER_SESSION_ID/instructions" \
         -H "$AUTH_HEADER" 2>/dev/null)
@@ -57,6 +64,7 @@ if [[ "$STOP_HOOK_ACTIVE" == "true" ]]; then
             exit 0
         fi
     fi
+
     # No instruction queued, let Claude stop normally
     exit 0
 fi

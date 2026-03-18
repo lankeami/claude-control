@@ -27,6 +27,11 @@ document.addEventListener('alpine:init', () => {
     instructionSending: false,
     instructionSuccess: false,
 
+    // Toast
+    showToast: false,
+    toastMessage: '',
+    toastTimer: null,
+
     async init() {
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
@@ -80,10 +85,14 @@ document.addEventListener('alpine:init', () => {
       this.eventSource.addEventListener('update', (e) => {
         try {
           const data = JSON.parse(e.data);
+          const hadPending = this.currentPendingPrompt;
           this.sessions = data.sessions || [];
           this.prompts = data.prompts || [];
           this.connected = true;
           this.sseFailCount = 0;
+          if (!hadPending && this.currentPendingPrompt) {
+            this.toast('Respond here or in the CLI \u2014 one per turn, not both.');
+          }
           if (this.selectedSessionId) {
             this.fetchTranscript(this.selectedSessionId);
           }
@@ -141,7 +150,7 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    async fetchTranscript(sessionId) {
+    async fetchTranscript(sessionId, forceScroll = false) {
       if (!sessionId) {
         this.chatMessages = [];
         return;
@@ -154,15 +163,27 @@ document.addEventListener('alpine:init', () => {
         if (resp.status === 401) { this.disconnect(); return; }
         if (resp.ok) {
           this.chatMessages = await resp.json();
-          this.$nextTick(() => this.scrollToBottom());
+          this.$nextTick(() => this.scrollToBottom(forceScroll));
         }
       } catch (e) {}
       this.chatLoading = false;
     },
 
-    scrollToBottom() {
+    scrollToBottom(force = false) {
       const el = document.getElementById('chat-area');
-      if (el) el.scrollTop = el.scrollHeight;
+      if (!el) return;
+      // Only auto-scroll if user is already near the bottom (within 150px)
+      const isNearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150;
+      if (force || isNearBottom) {
+        el.scrollTop = el.scrollHeight;
+      }
+    },
+
+    toast(msg, duration = 4000) {
+      this.toastMessage = msg;
+      this.showToast = true;
+      if (this.toastTimer) clearTimeout(this.toastTimer);
+      this.toastTimer = setTimeout(() => { this.showToast = false; }, duration);
     },
 
     // Computed
@@ -199,6 +220,14 @@ document.addEventListener('alpine:init', () => {
       ) || null;
     },
 
+    // Check if the pending prompt's hook has likely timed out (>2min old)
+    get isPromptStale() {
+      const p = this.currentPendingPrompt;
+      if (!p) return false;
+      const age = Date.now() - new Date(p.created_at).getTime();
+      return age > 2 * 60 * 1000;
+    },
+
     sessionName(session) {
       const parts = session.project_path.split('/');
       const proj = parts[parts.length - 1] || parts[parts.length - 2] || session.project_path;
@@ -214,11 +243,50 @@ document.addEventListener('alpine:init', () => {
 
     selectSession(id) {
       this.selectedSessionId = this.selectedSessionId === id ? null : id;
-      this.fetchTranscript(this.selectedSessionId);
+      this.fetchTranscript(this.selectedSessionId, true);
+    },
+
+    async deleteSession(id) {
+      try {
+        const resp = await fetch(`/api/sessions/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        if (resp.status === 401) { this.disconnect(); return; }
+        if (resp.ok) {
+          if (this.selectedSessionId === id) {
+            this.selectedSessionId = null;
+            this.chatMessages = [];
+          }
+        }
+      } catch (e) {}
     },
 
     // Actions
     async respondToPrompt(promptId, response) {
+      // Use the prompt's own session_id, not selectedSessionId, to avoid mismatches
+      const prompt = this.prompts.find(p => p.id === promptId);
+      const sessionId = prompt ? prompt.session_id : this.selectedSessionId;
+
+      // If the hook has likely timed out (>2min), queue as instruction instead
+      if (this.isPromptStale && sessionId) {
+        try {
+          const resp = await fetch(`/api/sessions/${sessionId}/instruct`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ message: response })
+          });
+          if (resp.status === 401) { this.disconnect(); return false; }
+          if (resp.ok) {
+            this.responseText = '';
+          }
+          return resp.ok;
+        } catch (e) { return false; }
+      }
+
       try {
         const resp = await fetch(`/api/prompts/${promptId}/respond`, {
           method: 'POST',
@@ -259,6 +327,43 @@ document.addEventListener('alpine:init', () => {
         }
       } catch (e) {}
       this.instructionSending = false;
+    },
+
+    // Bubble rendering
+    bubbleClass(msg, idx) {
+      const classes = [];
+      if (msg.msg_type === 'text') {
+        classes.push(msg.role);
+        if (idx === this.chatMessages.length - 1 && msg.role === 'assistant' && this.currentPendingPrompt) {
+          classes.push('waiting');
+        }
+      } else {
+        classes.push('tool');
+      }
+      return classes.join(' ');
+    },
+
+    bubbleHTML(msg) {
+      const esc = (s) => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+      const time = `<span class="bubble-time">${esc(this.timeAgo(msg.timestamp))}</span>`;
+
+      if (msg.msg_type === 'text') {
+        return `${esc(msg.content)}${time}`;
+      }
+      if (msg.msg_type === 'edit') {
+        let diff = '';
+        if (msg.old_string) diff += `<div class="diff-old">${esc(msg.old_string)}</div>`;
+        if (msg.new_string) diff += `<div class="diff-new">${esc(msg.new_string)}</div>`;
+        return `<div class="tool-label">Edit</div><div class="tool-filepath">${esc(msg.file_path)}</div><div class="diff-block">${diff}</div>${time}`;
+      }
+      if (msg.msg_type === 'write') {
+        return `<div class="tool-label">Write</div><div class="tool-filepath">${esc(msg.file_path)}</div>${time}`;
+      }
+      if (msg.msg_type === 'bash') {
+        let cmd = msg.command ? `<div class="bash-cmd">${esc(msg.command)}</div>` : '';
+        return `<div class="tool-label">Bash</div><div>${esc(msg.content)}</div>${cmd}${time}`;
+      }
+      return `${esc(msg.content)}${time}`;
     },
 
     // Time formatting

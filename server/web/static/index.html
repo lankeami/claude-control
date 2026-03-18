@@ -65,6 +65,8 @@
                     x-text="sessionName(session)"></span>
               <span class="badge" x-show="pendingCountFor(session.id) > 0"
                     x-text="pendingCountFor(session.id)"></span>
+              <button class="session-delete" @click.stop="deleteSession(session.id)"
+                      title="Remove session">&times;</button>
             </div>
           </template>
         </div>
@@ -108,16 +110,16 @@
             </div>
           </template>
           <template x-for="(msg, idx) in chatMessages" :key="idx">
-            <div class="chat-bubble" :class="[msg.role, idx === chatMessages.length - 1 && currentPendingPrompt ? 'waiting' : '']">
-              <span x-text="msg.content"></span>
-              <span class="bubble-time" x-text="timeAgo(msg.timestamp)"></span>
+            <div class="chat-bubble"
+                 :class="bubbleClass(msg, idx)"
+                 x-html="bubbleHTML(msg)">
             </div>
           </template>
         </div>
 
         <!-- Response textarea (only when pending prompt) -->
         <div class="response-area" x-show="currentPendingPrompt">
-          <textarea x-model="responseText" placeholder="Type your response..."
+          <textarea x-model="responseText" :placeholder="isPromptStale ? 'Hook timed out — will queue as instruction...' : 'Type your response...'"
                     @keydown.enter.prevent="if(!$event.shiftKey && responseText.trim()){
                       responseSending=true;
                       respondToPrompt(currentPendingPrompt.id, responseText).then(() => responseSending=false);
@@ -129,8 +131,8 @@
           </button>
         </div>
 
-        <!-- Instruction bar -->
-        <div class="instruction-bar" x-show="selectedSessionId">
+        <!-- Instruction bar (only when no pending prompt) -->
+        <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt">
           <input type="text" x-model="instructionText"
                  placeholder="Send instruction (delivered on next stop)..."
                  @keydown.enter="sendInstruction()"
@@ -144,6 +146,9 @@
       </div>
     </div>
   </template>
+
+  <!-- Toast -->
+  <div class="toast" :class="{ visible: showToast }" x-text="toastMessage"></div>
 
   <style>[x-cloak] { display: none !important; }</style>
 </body>

@@ -124,3 +124,11 @@ func (s *Store) SetSessionStatus(id, status string) error {
 	_, err := s.db.Exec("UPDATE sessions SET status = ? WHERE id = ?", status, id)
 	return err
 }
+
+func (s *Store) DeleteSession(id string) error {
+	// Delete related data first
+	s.db.Exec("DELETE FROM prompts WHERE session_id = ?", id)
+	s.db.Exec("DELETE FROM instructions WHERE session_id = ?", id)
+	_, err := s.db.Exec("DELETE FROM sessions WHERE id = ?", id)
+	return err
+}

@@ -8,6 +8,13 @@ INPUT=$(cat)
 
 MESSAGE=$(echo "$INPUT" | jq -r '.message // ""')
 CWD=$(echo "$INPUT" | jq -r '.cwd // ""')
+# Normalize to git repo root so subdirectory commands don't create duplicate sessions
+if [[ -n "$CWD" ]] && command -v git &>/dev/null; then
+    GIT_ROOT=$(cd "$CWD" && git rev-parse --show-toplevel 2>/dev/null) || true
+    if [[ -n "$GIT_ROOT" ]]; then
+        CWD="$GIT_ROOT"
+    fi
+fi
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""')
 
 # Load config (override with CLAUDE_CONTROLLER_CONFIG env var)

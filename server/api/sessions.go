@@ -58,6 +58,16 @@ type archiveRequest struct {
 	Archived bool `json:"archived"`
 }
 
+func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.store.DeleteSession(id); err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"ok":true}`))
+}
+
 func (s *Server) handleSetArchived(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req archiveRequest
