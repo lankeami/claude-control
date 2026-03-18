@@ -21,7 +21,7 @@ The iOS app adds build complexity (Xcode, signing, App Store) and limits access 
 - Session archiving UI
 - QR code scanning
 - Service worker / offline support
-- Any frontend framework or build step
+- Any frontend build step (bundler, transpiler)
 
 ## Architecture
 
@@ -30,7 +30,8 @@ The iOS app adds build complexity (Xcode, signing, App Store) and limits access 
 - `server/web/` — Go package that embeds and serves static files
 - `server/web/static/index.html` — single HTML file with login and dashboard views
 - `server/web/static/style.css` — responsive styles
-- `server/web/static/app.js` — vanilla JS application logic + SSE client
+- `server/web/static/app.js` — Alpine.js application logic + SSE client
+- `server/web/static/alpine.min.js` — vendored Alpine.js (~17kb)
 - `GET /api/events` — new SSE endpoint streaming session/prompt state
 
 ### Existing Code Changes
@@ -40,8 +41,8 @@ The iOS app adds build complexity (Xcode, signing, App Store) and limits access 
 
 ### Technology Choices
 
-- **No frontend framework** — vanilla HTML/CSS/JS. The UI is simple enough that a framework adds complexity without benefit.
-- **Embedded files** — Go's `embed` package bundles static files into the binary. No separate file serving or build step.
+- **Alpine.js** (~17kb) — lightweight reactive framework loaded via vendored script. Adds reactivity through HTML attributes (`x-data`, `x-for`, `x-show`, `x-on`). No build step required. Handles DOM updates, conditional rendering, and list rendering declaratively instead of manual DOM manipulation.
+- **Embedded files** — Go's `embed` package bundles static files (including vendored Alpine.js) into the binary. No separate file serving or build step.
 - **SSE over WebSockets** — the browser mostly receives updates; SSE is simpler, built into Go stdlib and all browsers, and auto-reconnects.
 
 ## Auth Flow
@@ -221,9 +222,10 @@ server/
   web/
     web.go          # Go handler: embed + serve static files
     static/
-      index.html    # Single HTML file
-      style.css     # Responsive styles
-      app.js        # Application logic + SSE
+      index.html      # Single HTML file
+      style.css       # Responsive styles
+      app.js          # Alpine.js application logic + SSE
+      alpine.min.js   # Vendored Alpine.js (~17kb)
   api/
     router.go       # Modified: restructure routing for split middleware
     events.go       # New: SSE endpoint handler
