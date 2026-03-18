@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
+	"github.com/jaychinthrajah/claude-controller/server/web"
 )
 
 type Server struct {
@@ -12,36 +13,46 @@ type Server struct {
 
 func NewRouter(store *db.Store, apiKey string) http.Handler {
 	s := &Server{store: store}
-	mux := http.NewServeMux()
+
+	// API mux — all existing endpoints, behind auth middleware
+	apiMux := http.NewServeMux()
 
 	// Session endpoints
-	mux.HandleFunc("POST /api/sessions/register", s.handleRegisterSession)
-	mux.HandleFunc("POST /api/sessions/{id}/heartbeat", s.handleHeartbeat)
-	mux.HandleFunc("GET /api/sessions", s.handleListSessions)
-	mux.HandleFunc("PUT /api/sessions/{id}/archive", s.handleSetArchived)
+	apiMux.HandleFunc("POST /api/sessions/register", s.handleRegisterSession)
+	apiMux.HandleFunc("POST /api/sessions/{id}/heartbeat", s.handleHeartbeat)
+	apiMux.HandleFunc("GET /api/sessions", s.handleListSessions)
+	apiMux.HandleFunc("PUT /api/sessions/{id}/archive", s.handleSetArchived)
 
 	// Prompt endpoints
-	mux.HandleFunc("POST /api/prompts", s.handleCreatePrompt)
-	mux.HandleFunc("GET /api/prompts/{id}/response", s.handleGetPromptResponse)
-	mux.HandleFunc("POST /api/prompts/{id}/respond", s.handleRespondToPrompt)
-	mux.HandleFunc("GET /api/prompts", s.handleListPrompts)
+	apiMux.HandleFunc("POST /api/prompts", s.handleCreatePrompt)
+	apiMux.HandleFunc("GET /api/prompts/{id}/response", s.handleGetPromptResponse)
+	apiMux.HandleFunc("POST /api/prompts/{id}/respond", s.handleRespondToPrompt)
+	apiMux.HandleFunc("GET /api/prompts", s.handleListPrompts)
 
 	// Instruction endpoints
-	mux.HandleFunc("POST /api/sessions/{id}/instruct", s.handleInstruct)
-	mux.HandleFunc("GET /api/sessions/{id}/instructions", s.handleFetchInstructions)
+	apiMux.HandleFunc("POST /api/sessions/{id}/instruct", s.handleInstruct)
+	apiMux.HandleFunc("GET /api/sessions/{id}/instructions", s.handleFetchInstructions)
 
 	// Pairing/status endpoints
-	mux.HandleFunc("GET /api/pairing", s.handlePairing)
-	mux.HandleFunc("GET /api/status", s.handleStatus)
+	apiMux.HandleFunc("GET /api/pairing", s.handlePairing)
+	apiMux.HandleFunc("GET /api/status", s.handleStatus)
 
 	rl := NewRateLimiter(60, 10)
-	authed := rl.Middleware(AuthMiddleware(apiKey, rl, mux))
+	authedAPI := rl.Middleware(AuthMiddleware(apiKey, rl, apiMux))
 
-	// Top-level mux: SSE route authenticates via query param (EventSource can't send headers)
-	top := http.NewServeMux()
-	top.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
+	// Root mux — routes to appropriate handler
+	root := http.NewServeMux()
+
+	// SSE endpoint — handles its own auth via query param
+	root.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
 		s.handleSSEEvents(w, r, apiKey)
 	})
-	top.Handle("/", authed)
-	return top
+
+	// All other /api/ routes — through auth middleware
+	root.Handle("/api/", authedAPI)
+
+	// Static files — no auth required
+	root.Handle("/", web.Handler())
+
+	return root
 }

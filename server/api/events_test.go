@@ -9,6 +9,34 @@ import (
 	"time"
 )
 
+func TestStaticFilesNoAuth(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	// Static files should be accessible without auth
+	resp, err := http.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestAPIStillRequiresAuth(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	// API endpoints should still require auth
+	resp, err := http.Get(ts.URL + "/api/sessions")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
 func TestSSEEvents_RequiresAuth(t *testing.T) {
 	ts, _ := newTestServer(t)
 
