@@ -9,8 +9,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "=== Claude Controller Hook Installer ==="
 echo ""
 
-# Get Claude settings location
-DEFAULT_SETTINGS="$HOME/.claude/settings.json"
+# Get Claude settings location (CLAUDE_DIR env var or default)
+CLAUDE_DIR_RESOLVED="${CLAUDE_DIR:-$HOME/.claude}"
+# Expand tilde
+CLAUDE_DIR_RESOLVED="${CLAUDE_DIR_RESOLVED/#\~/$HOME}"
+DEFAULT_SETTINGS="$CLAUDE_DIR_RESOLVED/settings.json"
 read -p "Claude settings file [$DEFAULT_SETTINGS]: " input_settings
 SETTINGS_FILE="${input_settings:-$DEFAULT_SETTINGS}"
 

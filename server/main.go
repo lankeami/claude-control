@@ -71,7 +71,10 @@ func main() {
 	fmt.Printf("Local server listening on %s\n", addr)
 	fmt.Printf("API key: %s\n", apiKey)
 
-	// Start ngrok tunnel
+	// Start serving HTTP immediately
+	go http.Serve(localListener, router)
+
+	// Start ngrok tunnel (may block if no auth token)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -97,14 +100,10 @@ func main() {
 	// Handle shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
-	go func() {
-		<-sigCh
-		fmt.Println("\nShutting down...")
-		cancel()
-		localListener.Close()
-	}()
-
-	http.Serve(localListener, router)
+	<-sigCh
+	fmt.Println("\nShutting down...")
+	cancel()
+	localListener.Close()
 }
 
 func findAvailablePort(preferred int) int {

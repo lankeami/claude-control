@@ -1,9 +1,12 @@
 # Claude Controller Makefile
 
-PORT ?= 8080
+-include .env
+
+PORT ?= 9999
+CLAUDE_DIR ?= ~/.claude
 SERVER_BIN := server/claude-controller
 
-.PHONY: help build test run run-docker stop-docker logs ngrok hooks xcode clean all
+.PHONY: help build test run open local run-docker run-docker-bg stop-docker logs ngrok hooks clean all
 
 .DEFAULT_GOAL := help
 
@@ -26,16 +29,26 @@ test-db: ## Run database layer tests only
 test-api: ## Run API handler tests only
 	cd server && go test ./api/ -v
 
-run: build ## Build and run the server locally
+run: build ## Build and run the server locally (web UI at http://localhost:PORT)
 	./$(SERVER_BIN) --port $(PORT)
+
+local: ## Stop everything, rebuild, and start fresh
+	-@pkill -f './server/claude-controller' 2>/dev/null || true
+	-@docker compose down 2>/dev/null || true
+	rm -f $(SERVER_BIN)
+	cd server && go build -o claude-controller .
+	./$(SERVER_BIN) --port $(PORT)
+
+open: ## Open the web UI in default browser
+	open http://localhost:$(PORT)
 
 ##@ Docker
 
 run-docker: ## Build and run in Docker (set NGROK_AUTHTOKEN for tunnel)
-	PORT=$(PORT) docker compose up --build
+	PORT=$(PORT) NGROK_AUTHTOKEN=$(NGROK_AUTHTOKEN) docker compose up --build
 
 run-docker-bg: ## Build and run in Docker (background)
-	PORT=$(PORT) docker compose up --build -d
+	PORT=$(PORT) NGROK_AUTHTOKEN=$(NGROK_AUTHTOKEN) docker compose up --build -d
 
 stop-docker: ## Stop Docker containers
 	docker compose down
@@ -48,19 +61,10 @@ logs: ## Tail Docker container logs
 ngrok: ## Start an ngrok tunnel to localhost:PORT
 	ngrok http $(PORT)
 
-##@ iOS
-
-xcode: ## Open the iOS app in Xcode
-	@if [ -d ios/ClaudeController.xcodeproj ]; then \
-		open ios/ClaudeController.xcodeproj; \
-	else \
-		open -a Xcode ios/ClaudeController/; \
-	fi
-
 ##@ Hooks
 
-hooks: ## Install hooks into Claude Code settings
-	./hooks/install.sh
+hooks: ## Install hooks into Claude Code settings (uses CLAUDE_DIR from .env)
+	CLAUDE_DIR=$(CLAUDE_DIR) ./hooks/install.sh
 
 ##@ Cleanup
 
