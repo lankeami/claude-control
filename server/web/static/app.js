@@ -11,6 +11,10 @@ document.addEventListener('alpine:init', () => {
     sessions: [],
     prompts: [],
     selectedSessionId: null,
+    chatMessages: [],
+    chatLoading: false,
+    responseText: '',
+    responseSending: false,
     connected: true,
 
     // SSE
@@ -80,6 +84,9 @@ document.addEventListener('alpine:init', () => {
           this.prompts = data.prompts || [];
           this.connected = true;
           this.sseFailCount = 0;
+          if (this.selectedSessionId) {
+            this.fetchTranscript(this.selectedSessionId);
+          }
         } catch (err) {}
       });
 
@@ -134,6 +141,30 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    async fetchTranscript(sessionId) {
+      if (!sessionId) {
+        this.chatMessages = [];
+        return;
+      }
+      this.chatLoading = true;
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/transcript`, {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        if (resp.status === 401) { this.disconnect(); return; }
+        if (resp.ok) {
+          this.chatMessages = await resp.json();
+          this.$nextTick(() => this.scrollToBottom());
+        }
+      } catch (e) {}
+      this.chatLoading = false;
+    },
+
+    scrollToBottom() {
+      const el = document.getElementById('chat-area');
+      if (el) el.scrollTop = el.scrollHeight;
+    },
+
     // Computed
     get filteredPrompts() {
       let p = this.prompts;
@@ -159,6 +190,15 @@ document.addEventListener('alpine:init', () => {
       return this.pendingCountFor(null);
     },
 
+    get currentPendingPrompt() {
+      if (!this.selectedSessionId) return null;
+      return this.prompts.find(p =>
+        p.session_id === this.selectedSessionId &&
+        p.status === 'pending' &&
+        p.type === 'prompt'
+      ) || null;
+    },
+
     sessionName(session) {
       const parts = session.project_path.split('/');
       const proj = parts[parts.length - 1] || parts[parts.length - 2] || session.project_path;
@@ -174,6 +214,7 @@ document.addEventListener('alpine:init', () => {
 
     selectSession(id) {
       this.selectedSessionId = this.selectedSessionId === id ? null : id;
+      this.fetchTranscript(this.selectedSessionId);
     },
 
     // Actions
@@ -188,6 +229,12 @@ document.addEventListener('alpine:init', () => {
           body: JSON.stringify({ response })
         });
         if (resp.status === 401) { this.disconnect(); return; }
+        if (resp.ok) {
+          this.responseText = '';
+          if (this.selectedSessionId) {
+            this.fetchTranscript(this.selectedSessionId);
+          }
+        }
         return resp.ok;
       } catch (e) { return false; }
     },

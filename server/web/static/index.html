@@ -89,76 +89,57 @@
           </select>
         </div>
 
-        <!-- Prompt list -->
-        <div class="prompt-list">
-          <template x-if="filteredPrompts.length === 0">
-            <div style="text-align:center;color:var(--text-muted);padding:3rem 1rem">
-              <p style="font-size:1.125rem">No prompts yet</p>
-              <p style="font-size:0.875rem;margin-top:0.5rem">Prompts from Claude will appear here</p>
-            </div>
-          </template>
-          <template x-for="prompt in filteredPrompts" :key="prompt.id">
-            <div class="prompt-card" :class="{ pending: prompt.status === 'pending' && prompt.type === 'prompt' }">
-              <div class="prompt-header">
-                <span class="status-dot" :class="prompt.status === 'pending' ? 'waiting' : 'idle'"></span>
-                <span x-text="prompt.status === 'pending' && prompt.type === 'prompt'
-                  ? 'Claude is waiting...'
-                  : timeAgo(prompt.answered_at || prompt.created_at)"></span>
-                <span x-show="prompt.type === 'notification'"
-                      style="background:var(--border);padding:0.125rem 0.5rem;border-radius:4px;font-size:0.6875rem">
-                  notification
-                </span>
+        <!-- Chat area -->
+        <div class="chat-area" id="chat-area">
+          <template x-if="!selectedSessionId">
+            <div class="chat-empty">
+              <div>
+                <p style="font-size:1.125rem">Select a session</p>
+                <p style="font-size:0.875rem;margin-top:0.5rem">Choose a session from the sidebar to view the conversation</p>
               </div>
-              <div class="prompt-message" x-text="prompt.claude_message"></div>
-
-              <!-- Response input for pending prompts -->
-              <template x-if="prompt.status === 'pending' && prompt.type === 'prompt'">
-                <div class="prompt-response">
-                  <input type="text" :id="'resp-' + prompt.id" placeholder="Type your response..."
-                         @keydown.enter="
-                           const inp = $el;
-                           if(inp.value.trim()){
-                             inp.disabled=true;
-                             respondToPrompt(prompt.id, inp.value).then(ok => {
-                               if(ok) inp.value='';
-                               inp.disabled=false;
-                             });
-                           }">
-                  <button class="btn btn-primary btn-sm"
-                          @click="
-                            const inp = document.getElementById('resp-' + prompt.id);
-                            if(inp.value.trim()){
-                              inp.disabled=true;
-                              respondToPrompt(prompt.id, inp.value).then(ok => {
-                                if(ok) inp.value='';
-                                inp.disabled=false;
-                              });
-                            }">
-                    Send
-                  </button>
-                </div>
-              </template>
-
-              <!-- Replied text -->
-              <template x-if="prompt.response">
-                <div class="prompt-replied" x-text="'Replied: ' + prompt.response"></div>
-              </template>
             </div>
           </template>
+          <template x-if="selectedSessionId && chatMessages.length === 0 && !chatLoading">
+            <div class="chat-empty">
+              <div>
+                <p style="font-size:1.125rem">No messages yet</p>
+                <p style="font-size:0.875rem;margin-top:0.5rem">Conversation will appear here</p>
+              </div>
+            </div>
+          </template>
+          <template x-for="(msg, idx) in chatMessages" :key="idx">
+            <div class="chat-bubble" :class="[msg.role, idx === chatMessages.length - 1 && currentPendingPrompt ? 'waiting' : '']">
+              <span x-text="msg.content"></span>
+              <span class="bubble-time" x-text="timeAgo(msg.timestamp)"></span>
+            </div>
+          </template>
+        </div>
+
+        <!-- Response textarea (only when pending prompt) -->
+        <div class="response-area" x-show="currentPendingPrompt">
+          <textarea x-model="responseText" placeholder="Type your response..."
+                    @keydown.enter.prevent="if(!$event.shiftKey && responseText.trim()){
+                      responseSending=true;
+                      respondToPrompt(currentPendingPrompt.id, responseText).then(() => responseSending=false);
+                    }"
+                    :disabled="responseSending"></textarea>
+          <button class="send-btn" :disabled="!responseText.trim() || responseSending"
+                  @click="responseSending=true;respondToPrompt(currentPendingPrompt.id, responseText).then(() => responseSending=false)">
+            &#9654;
+          </button>
         </div>
 
         <!-- Instruction bar -->
         <div class="instruction-bar" x-show="selectedSessionId">
           <input type="text" x-model="instructionText"
-                 placeholder="Send an instruction..."
+                 placeholder="Send instruction (delivered on next stop)..."
                  @keydown.enter="sendInstruction()"
                  :disabled="instructionSending">
           <button class="btn btn-primary btn-sm" :disabled="!instructionText.trim() || instructionSending"
-                  @click="sendInstruction()">
+                  @click="sendInstruction()" style="width:auto">
             <span x-show="!instructionSuccess">Send</span>
             <span x-show="instructionSuccess" style="color:#16a34a">Sent!</span>
           </button>
-          <span class="helper">Delivered when Claude finishes its current turn</span>
         </div>
       </div>
     </div>
