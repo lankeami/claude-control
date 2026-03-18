@@ -35,7 +35,7 @@ The iOS app adds build complexity (Xcode, signing, App Store) and limits access 
 
 ### Existing Code Changes
 
-- `server/api/router.go` — add SSE endpoint route, mount web handler at `/`
+- `server/api/router.go` — restructure routing: static files and SSE endpoint mount outside auth middleware, API endpoints stay behind auth middleware
 - No changes to hooks, DB schema, tunnel, or existing API endpoints
 
 ### Technology Choices
@@ -80,7 +80,9 @@ data: {"sessions": [...], "prompts": [...]}
 
 **Why full state, not diffs:** The state is small (handful of sessions, dozens of prompts). Sending full state on each tick keeps the client simple — no diff reconciliation, no out-of-order issues. If state grows, we can optimize later.
 
-**Auth for EventSource:** The browser's `EventSource` API doesn't support custom headers. The SSE endpoint will accept the API key as a query parameter: `GET /api/events?token=<key>`. This is acceptable because the connection is localhost or ngrok (HTTPS). The query param auth is SSE-only; all other endpoints continue using the `Authorization` header.
+**Auth for EventSource:** The browser's `EventSource` API doesn't support custom headers. The SSE endpoint will accept the API key as a query parameter: `GET /api/events?token=<key>`. This is acceptable because the connection is localhost or ngrok (HTTPS). The query param auth is SSE-only; all other endpoints continue using the `Authorization` header. The SSE handler validates the token internally (not through AuthMiddleware) since it's mounted outside the auth middleware chain.
+
+**Cleanup:** The SSE handler must respect `r.Context().Done()` to detect client disconnects and avoid leaking goroutines. When the client disconnects, stop the ticker and return.
 
 ## UI Layout
 
@@ -193,6 +195,25 @@ data: {"sessions": [...], "prompts": [...]}
 - **Rate limit (429):** Show "Too many requests, slow down" message
 - **Send failures:** Show error inline on the prompt card or instruction input that failed
 
+## Routing & Middleware Structure
+
+The current router wraps all routes in `RateLimiter → AuthMiddleware → mux`. The web UI requires a split:
+
+```
+root mux
+├── /api/events     → SSE handler (validates token from query param internally)
+├── /api/*          → RateLimiter → AuthMiddleware → API mux (existing endpoints)
+└── /*              → static file server (no auth, serves index.html + assets)
+```
+
+Static files must be served without auth so the browser can load `index.html` before the user has authenticated. The SSE endpoint handles its own auth via query parameter. All other `/api/*` routes go through the existing middleware chain.
+
+`NewRouter` returns this root mux. The caller (`main.go`) doesn't change.
+
+## Default View
+
+On first load after login, the dashboard shows "All Sessions" with all prompts. The most natural starting point — the user sees everything and can drill into a specific session.
+
 ## File Structure
 
 ```
@@ -204,6 +225,6 @@ server/
       style.css     # Responsive styles
       app.js        # Application logic + SSE
   api/
-    router.go       # Modified: add SSE route, mount web handler
+    router.go       # Modified: restructure routing for split middleware
     events.go       # New: SSE endpoint handler
 ```
