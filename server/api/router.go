@@ -35,5 +35,13 @@ func NewRouter(store *db.Store, apiKey string) http.Handler {
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 
 	rl := NewRateLimiter(60, 10)
-	return rl.Middleware(AuthMiddleware(apiKey, rl, mux))
+	authed := rl.Middleware(AuthMiddleware(apiKey, rl, mux))
+
+	// Top-level mux: SSE route authenticates via query param (EventSource can't send headers)
+	top := http.NewServeMux()
+	top.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
+		s.handleSSEEvents(w, r, apiKey)
+	})
+	top.Handle("/", authed)
+	return top
 }
