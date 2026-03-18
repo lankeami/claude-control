@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -8,24 +9,26 @@ import (
 )
 
 type Session struct {
-	ID           string    `json:"id"`
-	ComputerName string    `json:"computer_name"`
-	ProjectPath  string    `json:"project_path"`
-	Status       string    `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
-	LastSeenAt   time.Time `json:"last_seen_at"`
-	Archived     bool      `json:"archived"`
+	ID             string    `json:"id"`
+	ComputerName   string    `json:"computer_name"`
+	ProjectPath    string    `json:"project_path"`
+	TranscriptPath string    `json:"transcript_path,omitempty"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+	LastSeenAt     time.Time `json:"last_seen_at"`
+	Archived       bool      `json:"archived"`
 }
 
-func (s *Store) UpsertSession(computerName, projectPath string) (*Session, error) {
+func (s *Store) UpsertSession(computerName, projectPath, transcriptPath string) (*Session, error) {
 	id := uuid.New().String()
 	_, err := s.db.Exec(`
-		INSERT INTO sessions (id, computer_name, project_path, status, created_at, last_seen_at, archived)
-		VALUES (?, ?, ?, 'active', datetime('now'), datetime('now'), 0)
+		INSERT INTO sessions (id, computer_name, project_path, transcript_path, status, created_at, last_seen_at, archived)
+		VALUES (?, ?, ?, ?, 'active', datetime('now'), datetime('now'), 0)
 		ON CONFLICT(computer_name, project_path) DO UPDATE SET
 			last_seen_at = datetime('now'),
-			status = 'active'
-	`, id, computerName, projectPath)
+			status = 'active',
+			transcript_path = ?
+	`, id, computerName, projectPath, transcriptPath, transcriptPath)
 	if err != nil {
 		return nil, fmt.Errorf("upsert session: %w", err)
 	}
@@ -36,22 +39,26 @@ func (s *Store) UpsertSession(computerName, projectPath string) (*Session, error
 func (s *Store) getSessionByKey(computerName, projectPath string) (*Session, error) {
 	var sess Session
 	var archived int
+	var transcriptPath sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, computer_name, project_path, status, created_at, last_seen_at, archived
+		SELECT id, computer_name, project_path, transcript_path, status, created_at, last_seen_at, archived
 		FROM sessions WHERE computer_name = ? AND project_path = ?
 	`, computerName, projectPath).Scan(
-		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &sess.Status,
+		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &transcriptPath, &sess.Status,
 		&sess.CreatedAt, &sess.LastSeenAt, &archived,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get session: %w", err)
 	}
 	sess.Archived = archived != 0
+	if transcriptPath.Valid {
+		sess.TranscriptPath = transcriptPath.String
+	}
 	return &sess, nil
 }
 
 func (s *Store) ListSessions(includeArchived bool) ([]Session, error) {
-	query := "SELECT id, computer_name, project_path, status, created_at, last_seen_at, archived FROM sessions"
+	query := "SELECT id, computer_name, project_path, transcript_path, status, created_at, last_seen_at, archived FROM sessions"
 	if !includeArchived {
 		query += " WHERE archived = 0"
 	}
@@ -67,13 +74,29 @@ func (s *Store) ListSessions(includeArchived bool) ([]Session, error) {
 	for rows.Next() {
 		var sess Session
 		var archived int
-		if err := rows.Scan(&sess.ID, &sess.ComputerName, &sess.ProjectPath, &sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived); err != nil {
+		var transcriptPath sql.NullString
+		if err := rows.Scan(&sess.ID, &sess.ComputerName, &sess.ProjectPath, &transcriptPath, &sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived); err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
 		sess.Archived = archived != 0
+		if transcriptPath.Valid {
+			sess.TranscriptPath = transcriptPath.String
+		}
 		sessions = append(sessions, sess)
 	}
 	return sessions, rows.Err()
+}
+
+func (s *Store) GetTranscriptPath(sessionID string) (string, error) {
+	var path sql.NullString
+	err := s.db.QueryRow("SELECT transcript_path FROM sessions WHERE id = ?", sessionID).Scan(&path)
+	if err != nil {
+		return "", fmt.Errorf("get transcript path: %w", err)
+	}
+	if path.Valid {
+		return path.String, nil
+	}
+	return "", nil
 }
 
 func (s *Store) Heartbeat(id string) error {

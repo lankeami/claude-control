@@ -55,7 +55,7 @@ func TestSSEEvents_StreamsState(t *testing.T) {
 	ts, store := newTestServer(t)
 
 	// Seed data
-	session, _ := store.UpsertSession("mac1", "/proj/a")
+	session, _ := store.UpsertSession("mac1", "/proj/a", "")
 	store.CreatePrompt(session.ID, "Which DB?", "prompt")
 
 	// Connect to SSE with token

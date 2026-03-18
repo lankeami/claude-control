@@ -8,7 +8,7 @@ import (
 
 func TestQueueAndFetchInstructionAPI(t *testing.T) {
 	ts, store := newTestServer(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 
 	// Queue instruction from iOS
 	body := map[string]string{"message": "Run tests"}
@@ -33,7 +33,7 @@ func TestQueueAndFetchInstructionAPI(t *testing.T) {
 
 func TestFetchInstructionEmpty(t *testing.T) {
 	ts, store := newTestServer(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 
 	req := authReq("GET", ts.URL+"/api/sessions/"+sess.ID+"/instructions", nil)
 	resp, _ := http.DefaultClient.Do(req)

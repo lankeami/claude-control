@@ -9,7 +9,7 @@ import (
 
 func TestCreatePrompt(t *testing.T) {
 	ts, store := newTestServer(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 
 	body := map[string]string{"session_id": sess.ID, "claude_message": "Which DB?", "type": "prompt"}
 	req := authReq("POST", ts.URL+"/api/prompts", body)
@@ -29,7 +29,7 @@ func TestCreatePrompt(t *testing.T) {
 
 func TestRespondAndGetResponse(t *testing.T) {
 	ts, store := newTestServer(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 	prompt, _ := store.CreatePrompt(sess.ID, "Which DB?", "prompt")
 
 	// Respond
@@ -58,7 +58,7 @@ func TestRespondAndGetResponse(t *testing.T) {
 
 func TestLongPollTimeout(t *testing.T) {
 	ts, store := newTestServer(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 	prompt, _ := store.CreatePrompt(sess.ID, "Which DB?", "prompt")
 
 	// Long-poll with short timeout should return pending
@@ -84,7 +84,7 @@ func TestLongPollTimeout(t *testing.T) {
 
 func TestListPendingPrompts(t *testing.T) {
 	ts, store := newTestServer(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 	store.CreatePrompt(sess.ID, "Q1", "prompt")
 	store.CreatePrompt(sess.ID, "Q2", "prompt")
 

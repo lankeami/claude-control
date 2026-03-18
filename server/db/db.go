@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -64,11 +65,15 @@ func migrate(db *sql.DB) error {
 			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 			delivered_at DATETIME
 		)`,
+		`ALTER TABLE sessions ADD COLUMN transcript_path TEXT`,
 	}
 
 	for _, m := range migrations {
-		if _, err := db.Exec(m); err != nil {
-			return fmt.Errorf("migration failed: %w", err)
+		_, err := db.Exec(m)
+		if err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("migration failed: %w", err)
+			}
 		}
 	}
 	return nil

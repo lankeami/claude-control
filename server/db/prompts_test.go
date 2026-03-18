@@ -6,7 +6,7 @@ import (
 
 func TestCreateAndGetPrompt(t *testing.T) {
 	store := newTestStore(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 
 	p, err := store.CreatePrompt(sess.ID, "Which DB?", "prompt")
 	if err != nil {
@@ -19,7 +19,7 @@ func TestCreateAndGetPrompt(t *testing.T) {
 
 func TestRespondToPrompt(t *testing.T) {
 	store := newTestStore(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 	p, _ := store.CreatePrompt(sess.ID, "Which DB?", "prompt")
 
 	err := store.RespondToPrompt(p.ID, "SQLite")
@@ -38,7 +38,7 @@ func TestRespondToPrompt(t *testing.T) {
 
 func TestGetPromptResponsePending(t *testing.T) {
 	store := newTestStore(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 	p, _ := store.CreatePrompt(sess.ID, "Which DB?", "prompt")
 
 	response, err := store.GetPromptResponse(p.ID)
@@ -52,7 +52,7 @@ func TestGetPromptResponsePending(t *testing.T) {
 
 func TestListPrompts(t *testing.T) {
 	store := newTestStore(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 
 	store.CreatePrompt(sess.ID, "Q1", "prompt")
 	store.CreatePrompt(sess.ID, "Q2", "prompt")

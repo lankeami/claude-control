@@ -19,7 +19,7 @@ func TestUpsertSession(t *testing.T) {
 	store := newTestStore(t)
 
 	// First upsert creates
-	s1, err := store.UpsertSession("mac1", "/project/a")
+	s1, err := store.UpsertSession("mac1", "/project/a", "")
 	if err != nil {
 		t.Fatalf("first upsert: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestUpsertSession(t *testing.T) {
 	}
 
 	// Second upsert returns same ID, updates last_seen_at
-	s2, err := store.UpsertSession("mac1", "/project/a")
+	s2, err := store.UpsertSession("mac1", "/project/a", "")
 	if err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestUpsertSession(t *testing.T) {
 	}
 
 	// Different project creates new session
-	s3, err := store.UpsertSession("mac1", "/project/b")
+	s3, err := store.UpsertSession("mac1", "/project/b", "")
 	if err != nil {
 		t.Fatalf("third upsert: %v", err)
 	}
@@ -49,8 +49,8 @@ func TestUpsertSession(t *testing.T) {
 func TestListSessions(t *testing.T) {
 	store := newTestStore(t)
 
-	store.UpsertSession("mac1", "/project/a")
-	store.UpsertSession("mac1", "/project/b")
+	store.UpsertSession("mac1", "/project/a", "")
+	store.UpsertSession("mac1", "/project/b", "")
 
 	sessions, err := store.ListSessions(false)
 	if err != nil {
@@ -64,7 +64,7 @@ func TestListSessions(t *testing.T) {
 func TestArchiveSession(t *testing.T) {
 	store := newTestStore(t)
 
-	s, _ := store.UpsertSession("mac1", "/project/a")
+	s, _ := store.UpsertSession("mac1", "/project/a", "")
 	err := store.SetArchived(s.ID, true)
 	if err != nil {
 		t.Fatalf("SetArchived: %v", err)
@@ -86,7 +86,7 @@ func TestArchiveSession(t *testing.T) {
 func TestHeartbeat(t *testing.T) {
 	store := newTestStore(t)
 
-	s, _ := store.UpsertSession("mac1", "/project/a")
+	s, _ := store.UpsertSession("mac1", "/project/a", "")
 	err := store.Heartbeat(s.ID)
 	if err != nil {
 		t.Fatalf("Heartbeat: %v", err)

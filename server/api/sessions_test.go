@@ -61,8 +61,8 @@ func TestRegisterSession(t *testing.T) {
 
 func TestListSessions(t *testing.T) {
 	ts, store := newTestServer(t)
-	store.UpsertSession("mac1", "/proj/a")
-	store.UpsertSession("mac1", "/proj/b")
+	store.UpsertSession("mac1", "/proj/a", "")
+	store.UpsertSession("mac1", "/proj/b", "")
 
 	req := authReq("GET", ts.URL+"/api/sessions", nil)
 	resp, err := http.DefaultClient.Do(req)

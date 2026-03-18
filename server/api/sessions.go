@@ -8,8 +8,9 @@ import (
 )
 
 type registerRequest struct {
-	ComputerName string `json:"computer_name"`
-	ProjectPath  string `json:"project_path"`
+	ComputerName   string `json:"computer_name"`
+	ProjectPath    string `json:"project_path"`
+	TranscriptPath string `json:"transcript_path"`
 }
 
 func (s *Server) handleRegisterSession(w http.ResponseWriter, r *http.Request) {
@@ -19,7 +20,7 @@ func (s *Server) handleRegisterSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := s.store.UpsertSession(req.ComputerName, req.ProjectPath)
+	session, err := s.store.UpsertSession(req.ComputerName, req.ProjectPath, req.TranscriptPath)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return

@@ -6,7 +6,7 @@ import (
 
 func TestQueueAndFetchInstruction(t *testing.T) {
 	store := newTestStore(t)
-	sess, _ := store.UpsertSession("mac1", "/proj")
+	sess, _ := store.UpsertSession("mac1", "/proj", "")
 
 	instr, err := store.QueueInstruction(sess.ID, "Run the tests")
 	if err != nil {
