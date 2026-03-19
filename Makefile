@@ -6,7 +6,7 @@ PORT ?= 9999
 CLAUDE_DIR ?= ~/.claude
 SERVER_BIN := server/claude-controller
 
-.PHONY: help build test run open local run-docker run-docker-bg stop-docker logs ngrok hooks clean all
+.PHONY: help build test run stop open local run-docker run-docker-bg stop-docker logs ngrok hooks clean all
 
 .DEFAULT_GOAL := help
 
@@ -33,11 +33,14 @@ run: build ## Build and run the server locally (web UI at http://localhost:PORT)
 	./$(SERVER_BIN) --port $(PORT)
 
 local: ## Stop everything, rebuild, and start fresh
-	-@pkill -f './server/claude-controller' 2>/dev/null || true
+	-@pkill -f 'claude-controller' 2>/dev/null || true
 	-@docker compose down 2>/dev/null || true
 	rm -f $(SERVER_BIN)
 	cd server && go build -o claude-controller .
 	./$(SERVER_BIN) --port $(PORT)
+
+stop: ## Stop the running Go server process
+	@pkill -f 'claude-controller' 2>/dev/null && echo "Server stopped." || echo "No server process found."
 
 open: ## Open the web UI in default browser
 	open http://localhost:$(PORT)
