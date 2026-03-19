@@ -457,32 +457,45 @@ document.addEventListener('alpine:init', () => {
             this.stopSessionSSE();
             return;
           }
-          // Extract text content from assistant messages
-          let content = event.data;
-          let msgType = 'text';
+
+          // Only display assistant messages and error events
           if (data.type === 'assistant' && data.message) {
-            // Try to extract text from the message content
-            if (typeof data.message === 'string') {
-              content = data.message;
-            } else if (data.message.content) {
-              content = typeof data.message.content === 'string' ? data.message.content : JSON.stringify(data.message.content);
+            // Extract text blocks from message content
+            let textParts = [];
+            const contentArr = data.message.content || [];
+            if (Array.isArray(contentArr)) {
+              for (const block of contentArr) {
+                if (block.type === 'text' && block.text) {
+                  textParts.push(block.text);
+                }
+              }
+            } else if (typeof data.message.content === 'string') {
+              textParts.push(data.message.content);
+            } else if (typeof data.message === 'string') {
+              textParts.push(data.message);
             }
+            if (textParts.length > 0) {
+              this.chatMessages.push({
+                role: 'assistant',
+                content: textParts.join('\n'),
+                msg_type: 'text',
+                timestamp: new Date().toISOString()
+              });
+              this.$nextTick(() => this.scrollToBottom());
+            }
+          } else if (data.type === 'system' && data.error) {
+            // Show error messages from the server
+            this.chatMessages.push({
+              role: 'system',
+              content: data.stderr || 'Process error (exit code ' + data.exit_code + ')',
+              msg_type: 'text',
+              timestamp: new Date().toISOString()
+            });
+            this.$nextTick(() => this.scrollToBottom());
           }
-          this.chatMessages.push({
-            role: data.type || 'assistant',
-            content: content,
-            msg_type: msgType,
-            timestamp: new Date().toISOString()
-          });
-          this.$nextTick(() => this.scrollToBottom());
+          // Skip: system init, user echo, result, tool_use, tool_result
         } catch (e) {
-          this.chatMessages.push({
-            role: 'assistant',
-            content: event.data,
-            msg_type: 'text',
-            timestamp: new Date().toISOString()
-          });
-          this.$nextTick(() => this.scrollToBottom());
+          // Ignore unparseable lines
         }
       };
 
@@ -520,12 +533,14 @@ document.addEventListener('alpine:init', () => {
         });
         if (!res.ok) return;
         const msgs = await res.json();
-        this.chatMessages = (msgs || []).map(m => ({
-          role: m.role,
-          content: m.content,
-          msg_type: 'text',
-          timestamp: m.created_at
-        }));
+        this.chatMessages = (msgs || [])
+          .filter(m => m.role === 'assistant' || (m.role === 'system' && m.content && m.content.includes('"error"')))
+          .map(m => ({
+            role: m.role,
+            content: m.content,
+            msg_type: 'text',
+            timestamp: m.created_at
+          }));
         this.$nextTick(() => this.scrollToBottom(true));
       } catch (e) {
         console.error('Failed to fetch messages:', e);

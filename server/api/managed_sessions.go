@@ -132,9 +132,14 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 		onLine := func(line string) {
 			role := parseRole(line)
-			_, _ = s.store.CreateMessage(sessionID, role, line)
 
+			// Only persist assistant text to the DB — skip system init,
+			// user echo, tool_use, tool_result, and result messages.
 			if role == "assistant" {
+				text := extractAssistantText(line)
+				if text != "" {
+					_, _ = s.store.CreateMessage(sessionID, role, text)
+				}
 				turnCount++
 				if turnCount >= sess.MaxTurns {
 					log.Printf("session %s hit turn limit (%d), interrupting", sessionID, sess.MaxTurns)
@@ -235,4 +240,40 @@ func parseRole(line string) string {
 		return "system"
 	}
 	return obj.Type
+}
+
+// extractAssistantText pulls human-readable text from an assistant NDJSON line.
+// Returns empty string if no text content is found.
+func extractAssistantText(line string) string {
+	var msg struct {
+		Message struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(line), &msg); err != nil {
+		return ""
+	}
+
+	// Try as array of content blocks
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(msg.Message.Content, &blocks); err == nil {
+		var parts []string
+		for _, b := range blocks {
+			if b.Type == "text" && b.Text != "" {
+				parts = append(parts, b.Text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+
+	// Try as plain string
+	var s string
+	if err := json.Unmarshal(msg.Message.Content, &s); err == nil {
+		return s
+	}
+
+	return ""
 }
