@@ -162,7 +162,32 @@ document.addEventListener('alpine:init', () => {
         });
         if (resp.status === 401) { this.disconnect(); return; }
         if (resp.ok) {
-          this.chatMessages = await resp.json();
+          const messages = await resp.json();
+          // Append answered prompt responses not yet in the transcript
+          // so all tabs see the user's reply immediately
+          const answeredPrompts = this.prompts.filter(p =>
+            p.session_id === sessionId &&
+            p.status === 'answered' &&
+            p.response
+          );
+          for (const p of answeredPrompts) {
+            const responseText = p.response.trim();
+            if (!responseText) continue;
+            // Check if this response already appears as a recent user message
+            const lastUserMsgs = messages.filter(m => m.role === 'user').slice(-3);
+            const alreadyVisible = lastUserMsgs.some(m =>
+              m.content.trim() === responseText
+            );
+            if (!alreadyVisible) {
+              messages.push({
+                role: 'user',
+                content: responseText,
+                timestamp: p.answered_at || p.created_at,
+                msg_type: 'text'
+              });
+            }
+          }
+          this.chatMessages = messages;
           this.$nextTick(() => this.scrollToBottom(forceScroll));
         }
       } catch (e) {}
