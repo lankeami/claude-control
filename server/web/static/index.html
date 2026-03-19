@@ -52,6 +52,10 @@
           </button>
         </div>
         <div class="session-list">
+          <button class="btn btn-sm btn-primary" @click="showNewSessionModal = true"
+                  style="width:100%; margin-bottom:8px; font-size:13px;">
+            + New Session
+          </button>
           <div class="session-item" :class="{ active: !selectedSessionId }"
                @click="selectedSessionId = null">
             <span>All Sessions</span>
@@ -63,6 +67,8 @@
               <span class="status-dot" :class="sessionStatus(session)"></span>
               <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                     x-text="sessionName(session)"></span>
+              <span x-show="session.mode === 'managed'"
+                    style="font-size:10px; background:var(--accent); color:white; padding:1px 4px; border-radius:3px; margin-left:4px; flex-shrink:0;">managed</span>
               <span class="badge" x-show="pendingCountFor(session.id) > 0"
                     x-text="pendingCountFor(session.id)"></span>
               <button class="session-delete" @click.stop="deleteSession(session.id)"
@@ -78,6 +84,11 @@
           <h2 x-text="selectedSessionId
             ? sessionName(sessions.find(s => s.id === selectedSessionId) || {computer_name:'',project_path:''})
             : 'All Sessions'"></h2>
+          <button class="btn btn-sm" x-show="currentSession?.mode === 'managed' && currentSession?.status === 'running'"
+                  @click="interruptSession()"
+                  style="background:#e74c3c; color:white; margin-left:8px;">
+            Stop
+          </button>
         </div>
 
         <!-- Mobile session selector -->
@@ -131,21 +142,40 @@
           </button>
         </div>
 
-        <!-- Instruction bar (only when no pending prompt) -->
+        <!-- Input bar (managed mode messages OR hook-mode instructions) -->
         <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt">
-          <input type="text" x-model="instructionText"
-                 placeholder="Send instruction (delivered on next stop)..."
-                 @keydown.enter="sendInstruction()"
-                 :disabled="instructionSending">
-          <button class="btn btn-primary btn-sm" :disabled="!instructionText.trim() || instructionSending"
-                  @click="sendInstruction()" style="width:auto">
-            <span x-show="!instructionSuccess">Send</span>
-            <span x-show="instructionSuccess" style="color:#16a34a">Sent!</span>
+          <input type="text" x-model="inputText"
+                 :placeholder="currentSession?.mode === 'managed' ? 'Send message...' : 'Send instruction (delivered on next stop)...'"
+                 @keydown.enter="handleInput()"
+                 :disabled="inputSending">
+          <button class="btn btn-primary btn-sm" :disabled="!inputText.trim() || inputSending"
+                  @click="handleInput()" style="width:auto">
+            <span x-show="!inputSuccess">Send</span>
+            <span x-show="inputSuccess" style="color:#16a34a">Sent!</span>
           </button>
         </div>
       </div>
     </div>
   </template>
+
+  <!-- New Session Modal -->
+  <div x-show="showNewSessionModal" x-cloak
+       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
+       @click.self="showNewSessionModal = false">
+    <div style="background:var(--bg); border-radius:12px; padding:24px; width:400px; max-width:90vw; border:1px solid var(--border);">
+      <h3 style="margin-top:0;">New Managed Session</h3>
+      <label style="display:block; margin-bottom:12px;">
+        <span style="font-size:13px; color:var(--text-muted);">Project Directory</span>
+        <input x-model="newSessionCWD" type="text" placeholder="/path/to/project"
+               style="width:100%; padding:8px; margin-top:4px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); box-sizing:border-box;"
+               @keydown.enter="createManagedSession()">
+      </label>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn btn-sm" @click="showNewSessionModal = false">Cancel</button>
+        <button class="btn btn-sm btn-primary" @click="createManagedSession()" :disabled="!newSessionCWD.trim()">Create</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast -->
   <div class="toast" :class="{ visible: showToast }" x-text="toastMessage"></div>

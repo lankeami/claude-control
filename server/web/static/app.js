@@ -22,10 +22,15 @@ document.addEventListener('alpine:init', () => {
     sseFailCount: 0,
     pollInterval: null,
 
-    // Instruction
-    instructionText: '',
-    instructionSending: false,
-    instructionSuccess: false,
+    // Unified input (replaces old instructionText)
+    inputText: '',
+    inputSending: false,
+    inputSuccess: false,
+
+    // Managed session state
+    showNewSessionModal: false,
+    newSessionCWD: '',
+    sessionSSE: null,
 
     // Toast
     showToast: false,
@@ -94,7 +99,12 @@ document.addEventListener('alpine:init', () => {
             this.toast('Respond here or in the CLI \u2014 one per turn, not both.');
           }
           if (this.selectedSessionId) {
-            this.fetchTranscript(this.selectedSessionId);
+            const sess = this.sessions.find(s => s.id === this.selectedSessionId);
+            if (sess && sess.mode === 'managed') {
+              // Don't refetch managed messages on every SSE tick — they stream via per-session SSE
+            } else {
+              this.fetchTranscript(this.selectedSessionId);
+            }
           }
         } catch (err) {}
       });
@@ -253,22 +263,49 @@ document.addEventListener('alpine:init', () => {
       return age > 2 * 60 * 1000;
     },
 
+    get currentSession() {
+      if (!this.selectedSessionId) return null;
+      return this.sessions.find(s => s.id === this.selectedSessionId) || null;
+    },
+
     sessionName(session) {
+      if (session.mode === 'managed' && session.cwd) {
+        const parts = session.cwd.split('/');
+        return parts[parts.length - 1] || parts[parts.length - 2] || session.cwd;
+      }
       const parts = session.project_path.split('/');
       const proj = parts[parts.length - 1] || parts[parts.length - 2] || session.project_path;
       return `${session.computer_name} / ${proj}`;
     },
 
     sessionStatus(session) {
+      if (session.mode === 'managed') {
+        return session.status; // managed sessions have accurate status (idle/running)
+      }
       const lastSeen = new Date(session.last_seen_at);
       const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
       if (lastSeen < fiveMinAgo) return 'idle';
       return session.status;
     },
 
-    selectSession(id) {
+    async selectSession(id) {
       this.selectedSessionId = this.selectedSessionId === id ? null : id;
-      this.fetchTranscript(this.selectedSessionId, true);
+      this.stopSessionSSE();
+
+      if (!this.selectedSessionId) {
+        this.chatMessages = [];
+        return;
+      }
+
+      const sess = this.sessions.find(s => s.id === this.selectedSessionId);
+      if (sess && sess.mode === 'managed') {
+        await this.fetchManagedMessages(this.selectedSessionId);
+        if (sess.status === 'running') {
+          this.startSessionSSE(this.selectedSessionId);
+        }
+      } else {
+        this.fetchTranscript(this.selectedSessionId, true);
+      }
     },
 
     async deleteSession(id) {
@@ -332,9 +369,20 @@ document.addEventListener('alpine:init', () => {
       } catch (e) { return false; }
     },
 
+    async handleInput() {
+      if (!this.selectedSessionId || !this.inputText.trim()) return;
+      const sess = this.currentSession;
+
+      if (sess && sess.mode === 'managed') {
+        await this.sendManagedMessage();
+      } else {
+        await this.sendInstruction();
+      }
+    },
+
     async sendInstruction() {
-      if (!this.selectedSessionId || !this.instructionText.trim()) return;
-      this.instructionSending = true;
+      if (!this.selectedSessionId || !this.inputText.trim()) return;
+      this.inputSending = true;
       try {
         const resp = await fetch(`/api/sessions/${this.selectedSessionId}/instruct`, {
           method: 'POST',
@@ -342,16 +390,147 @@ document.addEventListener('alpine:init', () => {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ message: this.instructionText.trim() })
+          body: JSON.stringify({ message: this.inputText.trim() })
         });
         if (resp.status === 401) { this.disconnect(); return; }
         if (resp.ok) {
-          this.instructionText = '';
-          this.instructionSuccess = true;
-          setTimeout(() => this.instructionSuccess = false, 1500);
+          this.inputText = '';
+          this.inputSuccess = true;
+          setTimeout(() => this.inputSuccess = false, 1500);
         }
       } catch (e) {}
-      this.instructionSending = false;
+      this.inputSending = false;
+    },
+
+    async createManagedSession() {
+      if (!this.newSessionCWD.trim()) return;
+      try {
+        const res = await fetch('/api/sessions/create', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cwd: this.newSessionCWD.trim() })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        this.showNewSessionModal = false;
+        this.newSessionCWD = '';
+        this.toast('Session created');
+      } catch (e) {
+        this.toast('Error: ' + e.message);
+      }
+    },
+
+    async sendManagedMessage() {
+      if (!this.inputText.trim() || !this.selectedSessionId) return;
+      const msg = this.inputText.trim();
+      this.inputText = '';
+      this.inputSending = true;
+
+      try {
+        const res = await fetch(`/api/sessions/${this.selectedSessionId}/message`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg })
+        });
+        if (!res.ok) throw new Error(await res.text());
+
+        // Add user message to chat immediately
+        this.chatMessages.push({ role: 'user', content: msg, msg_type: 'text', timestamp: new Date().toISOString() });
+        this.$nextTick(() => this.scrollToBottom(true));
+
+        // Start SSE stream for this session
+        this.startSessionSSE(this.selectedSessionId);
+      } catch (e) {
+        this.toast('Error: ' + e.message);
+      }
+      this.inputSending = false;
+    },
+
+    startSessionSSE(sessionId) {
+      this.stopSessionSSE();
+      const url = `/api/sessions/${sessionId}/stream?token=${encodeURIComponent(this.apiKey)}`;
+      this.sessionSSE = new EventSource(url);
+
+      this.sessionSSE.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'done') {
+            this.stopSessionSSE();
+            return;
+          }
+          // Extract text content from assistant messages
+          let content = event.data;
+          let msgType = 'text';
+          if (data.type === 'assistant' && data.message) {
+            // Try to extract text from the message content
+            if (typeof data.message === 'string') {
+              content = data.message;
+            } else if (data.message.content) {
+              content = typeof data.message.content === 'string' ? data.message.content : JSON.stringify(data.message.content);
+            }
+          }
+          this.chatMessages.push({
+            role: data.type || 'assistant',
+            content: content,
+            msg_type: msgType,
+            timestamp: new Date().toISOString()
+          });
+          this.$nextTick(() => this.scrollToBottom());
+        } catch (e) {
+          this.chatMessages.push({
+            role: 'assistant',
+            content: event.data,
+            msg_type: 'text',
+            timestamp: new Date().toISOString()
+          });
+          this.$nextTick(() => this.scrollToBottom());
+        }
+      };
+
+      this.sessionSSE.onerror = () => {
+        this.stopSessionSSE();
+      };
+    },
+
+    stopSessionSSE() {
+      if (this.sessionSSE) {
+        this.sessionSSE.close();
+        this.sessionSSE = null;
+      }
+    },
+
+    async interruptSession() {
+      if (!this.selectedSessionId) return;
+      try {
+        await fetch(`/api/sessions/${this.selectedSessionId}/interrupt`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        this.toast('Session interrupted');
+      } catch (e) {
+        this.toast('Error: ' + e.message);
+      }
+    },
+
+    async fetchManagedMessages(sessionId) {
+      if (!sessionId) return;
+      this.chatLoading = true;
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/messages`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!res.ok) return;
+        const msgs = await res.json();
+        this.chatMessages = (msgs || []).map(m => ({
+          role: m.role,
+          content: m.content,
+          msg_type: 'text',
+          timestamp: m.created_at
+        }));
+        this.$nextTick(() => this.scrollToBottom(true));
+      } catch (e) {
+        console.error('Failed to fetch messages:', e);
+      }
+      this.chatLoading = false;
     },
 
     // Bubble rendering
