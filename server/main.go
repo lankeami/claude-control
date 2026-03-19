@@ -20,6 +20,7 @@ import (
 
 	"github.com/jaychinthrajah/claude-controller/server/api"
 	"github.com/jaychinthrajah/claude-controller/server/db"
+	"github.com/jaychinthrajah/claude-controller/server/managed"
 	"github.com/jaychinthrajah/claude-controller/server/tunnel"
 )
 
@@ -55,7 +56,15 @@ func main() {
 
 	apiKey := loadOrCreateAPIKey(*dbPath)
 
-	router := api.NewRouter(store, apiKey)
+	loadDotEnv(".env")
+	managedCfg := managed.Config{
+		ClaudeBin:  envOrDefault("CLAUDE_BIN", "claude"),
+		ClaudeArgs: strings.Fields(os.Getenv("CLAUDE_ARGS")),
+		ClaudeEnv:  splitEnv(os.Getenv("CLAUDE_ENV")),
+	}
+	mgr := managed.NewManager(managedCfg)
+
+	router := api.NewRouter(store, apiKey, mgr)
 
 	// Start local server
 	bindHost := "localhost"
@@ -138,6 +147,36 @@ func generateAPIKey() string {
 	b := make([]byte, 24)
 	rand.Read(b)
 	return "sk-" + hex.EncodeToString(b)
+}
+
+func loadDotEnv(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if k, v, ok := strings.Cut(line, "="); ok {
+			os.Setenv(strings.TrimSpace(k), strings.TrimSpace(v))
+		}
+	}
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func splitEnv(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
 }
 
 func displayQRCode(ngrokURL, apiKey string) {

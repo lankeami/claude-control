@@ -4,15 +4,17 @@ import (
 	"net/http"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
+	"github.com/jaychinthrajah/claude-controller/server/managed"
 	"github.com/jaychinthrajah/claude-controller/server/web"
 )
 
 type Server struct {
-	store *db.Store
+	store   *db.Store
+	manager *managed.Manager
 }
 
-func NewRouter(store *db.Store, apiKey string) http.Handler {
-	s := &Server{store: store}
+func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handler {
+	s := &Server{store: store, manager: mgr}
 
 	// API mux — all existing endpoints, behind auth middleware
 	apiMux := http.NewServeMux()
@@ -41,6 +43,12 @@ func NewRouter(store *db.Store, apiKey string) http.Handler {
 	apiMux.HandleFunc("GET /api/pairing", s.handlePairing)
 	apiMux.HandleFunc("GET /api/status", s.handleStatus)
 
+	// Managed session endpoints
+	apiMux.HandleFunc("POST /api/sessions/create", s.handleCreateManagedSession)
+	apiMux.HandleFunc("POST /api/sessions/{id}/message", s.handleSendMessage)
+	apiMux.HandleFunc("POST /api/sessions/{id}/interrupt", s.handleInterrupt)
+	apiMux.HandleFunc("GET /api/sessions/{id}/messages", s.handleListMessages)
+
 	rl := NewRateLimiter(60, 10)
 	authedAPI := rl.Middleware(AuthMiddleware(apiKey, rl, apiMux))
 
@@ -50,6 +58,11 @@ func NewRouter(store *db.Store, apiKey string) http.Handler {
 	// SSE endpoint — handles its own auth via query param
 	root.HandleFunc("GET /api/events", func(w http.ResponseWriter, r *http.Request) {
 		s.handleSSEEvents(w, r, apiKey)
+	})
+
+	// Per-session SSE stream — handles its own auth via query param
+	root.HandleFunc("GET /api/sessions/{id}/stream", func(w http.ResponseWriter, r *http.Request) {
+		s.handleSessionStream(w, r, apiKey)
 	})
 
 	// All other /api/ routes — through auth middleware

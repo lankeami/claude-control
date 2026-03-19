@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
 )
@@ -60,6 +61,10 @@ type archiveRequest struct {
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Teardown managed process if running
+	if s.manager != nil {
+		s.manager.Teardown(id, 5*time.Second)
+	}
 	if err := s.store.DeleteSession(id); err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
