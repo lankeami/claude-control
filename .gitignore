@@ -3,4 +3,5 @@
 xcuserdata/
 .env
 .superpowers/
+server/claude-controller
 .playwright-mcp/
