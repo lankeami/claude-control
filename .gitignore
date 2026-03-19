@@ -3,3 +3,4 @@
 xcuserdata/
 .env
 .superpowers/
+.playwright-mcp/
