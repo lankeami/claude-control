@@ -32,6 +32,11 @@ document.addEventListener('alpine:init', () => {
     newSessionCWD: '',
     sessionSSE: null,
 
+    // Directory browser state
+    browsePath: '',
+    browseEntries: [],
+    browseLoading: false,
+
     // Toast
     showToast: false,
     toastMessage: '',
@@ -404,6 +409,51 @@ document.addEventListener('alpine:init', () => {
         }
       } catch (e) {}
       this.inputSending = false;
+    },
+
+    async openNewSessionModal() {
+      this.showNewSessionModal = true;
+      this.newSessionCWD = '';
+      this.browsePath = '';
+      this.browseEntries = [];
+      await this.browseTo('');
+    },
+
+    async browseTo(path) {
+      this.browseLoading = true;
+      try {
+        const url = '/api/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
+        const res = await fetch(url, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        this.browsePath = data.current;
+        this.browseEntries = data.entries || [];
+        this.newSessionCWD = data.current;
+      } catch (e) {
+        this.toast('Error browsing: ' + e.message);
+      }
+      this.browseLoading = false;
+    },
+
+    get breadcrumbs() {
+      if (!this.browsePath) return [];
+      const home = this.browsePath.split('/').slice(0, 3).join('/'); // e.g. /Users/username
+      const parts = this.browsePath.split('/').filter(Boolean);
+      const crumbs = [];
+      let accumulated = '';
+      for (let i = 0; i < parts.length; i++) {
+        accumulated += '/' + parts[i];
+        const isHome = accumulated === home;
+        crumbs.push({
+          label: isHome ? '~' : parts[i],
+          path: accumulated,
+          skipPrior: isHome
+        });
+      }
+      const homeIdx = crumbs.findIndex(c => c.skipPrior);
+      return homeIdx >= 0 ? crumbs.slice(homeIdx) : crumbs;
     },
 
     async createManagedSession() {
