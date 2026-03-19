@@ -4,6 +4,11 @@ set -euo pipefail
 # Claude Controller - Stop Hook (macOS)
 # Reads Claude's stop event, posts to local server, long-polls for response.
 
+# Skip hooks when running inside a managed session (prevents duplicate sessions)
+if [[ "${CLAUDE_CONTROLLER_MANAGED:-}" == "1" ]]; then
+    exit 0
+fi
+
 # Read JSON from stdin
 INPUT=$(cat)
 

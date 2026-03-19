@@ -56,11 +56,6 @@
                   style="width:100%; margin-bottom:8px; font-size:13px;">
             + New Session
           </button>
-          <div class="session-item" :class="{ active: !selectedSessionId }"
-               @click="selectedSessionId = null">
-            <span>All Sessions</span>
-            <span class="badge" x-show="totalPendingCount > 0" x-text="totalPendingCount"></span>
-          </div>
           <template x-for="session in sessions" :key="session.id">
             <div class="session-item" :class="{ active: selectedSessionId === session.id }"
                  @click="selectSession(session.id)">
@@ -83,7 +78,7 @@
         <div class="main-header">
           <h2 x-text="selectedSessionId
             ? sessionName(sessions.find(s => s.id === selectedSessionId) || {computer_name:'',project_path:''})
-            : 'All Sessions'"></h2>
+            : 'Select a Session'"></h2>
           <button class="btn btn-sm" x-show="currentSession?.mode === 'managed' && currentSession?.status === 'running'"
                   @click="interruptSession()"
                   style="background:#e74c3c; color:white; margin-left:8px;">
@@ -95,7 +90,6 @@
         <div class="mobile-session-select">
           <select x-model="selectedSessionId"
                   @change="selectedSessionId = $event.target.value || null">
-            <option value="">All Sessions</option>
             <template x-for="session in sessions" :key="session.id">
               <option :value="session.id" x-text="sessionName(session)"></option>
             </template>

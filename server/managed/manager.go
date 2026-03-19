@@ -77,6 +77,7 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	cmd := exec.Command(m.cfg.ClaudeBin, args...)
 	cmd.Dir = opts.CWD
 	cmd.Env = append(os.Environ(), m.cfg.ClaudeEnv...)
+	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1")
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

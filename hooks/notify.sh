@@ -4,6 +4,11 @@ set -euo pipefail
 # Claude Controller - Notification Hook (macOS)
 # Fire-and-forget: posts notification to server.
 
+# Skip hooks when running inside a managed session (prevents duplicate sessions)
+if [[ "${CLAUDE_CONTROLLER_MANAGED:-}" == "1" ]]; then
+    exit 0
+fi
+
 INPUT=$(cat)
 
 MESSAGE=$(echo "$INPUT" | jq -r '.message // ""')

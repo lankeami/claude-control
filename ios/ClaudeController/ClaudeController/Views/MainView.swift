@@ -26,7 +26,6 @@ struct MainView: View {
                     // Session selector
                     if !polling.sessions.isEmpty {
                         Picker("Session", selection: $polling.selectedSessionId) {
-                            Text("All Sessions").tag(String?.none)
                             ForEach(polling.sessions) { session in
                                 HStack {
                                     Circle()

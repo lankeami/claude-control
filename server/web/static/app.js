@@ -98,7 +98,10 @@ document.addEventListener('alpine:init', () => {
           if (!hadPending && this.currentPendingPrompt) {
             this.toast('Respond here or in the CLI \u2014 one per turn, not both.');
           }
-          if (this.selectedSessionId) {
+          // Auto-select first session if none selected
+          if (!this.selectedSessionId && this.sessions.length > 0) {
+            this.selectSession(this.sessions[0].id);
+          } else if (this.selectedSessionId) {
             const sess = this.sessions.find(s => s.id === this.selectedSessionId);
             if (sess && sess.mode === 'managed') {
               // Don't refetch managed messages on every SSE tick — they stream via per-session SSE
@@ -289,13 +292,9 @@ document.addEventListener('alpine:init', () => {
     },
 
     async selectSession(id) {
-      this.selectedSessionId = this.selectedSessionId === id ? null : id;
+      if (this.selectedSessionId === id) return;
+      this.selectedSessionId = id;
       this.stopSessionSSE();
-
-      if (!this.selectedSessionId) {
-        this.chatMessages = [];
-        return;
-      }
 
       const sess = this.sessions.find(s => s.id === this.selectedSessionId);
       if (sess && sess.mode === 'managed') {
@@ -317,8 +316,13 @@ document.addEventListener('alpine:init', () => {
         if (resp.status === 401) { this.disconnect(); return; }
         if (resp.ok) {
           if (this.selectedSessionId === id) {
-            this.selectedSessionId = null;
             this.chatMessages = [];
+            const remaining = this.sessions.filter(s => s.id !== id);
+            if (remaining.length > 0) {
+              this.selectSession(remaining[0].id);
+            } else {
+              this.selectedSessionId = null;
+            }
           }
         }
       } catch (e) {}
