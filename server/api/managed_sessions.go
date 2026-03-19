@@ -90,7 +90,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--session-id", sessionID)
 	}
 
-	args = append(args, "--output-format", "stream-json")
+	args = append(args, "--output-format", "stream-json", "--verbose")
 
 	if sess.AllowedTools != "" {
 		var tools []string
