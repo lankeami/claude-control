@@ -17,6 +17,30 @@ type Session struct {
 	CreatedAt      time.Time `json:"created_at"`
 	LastSeenAt     time.Time `json:"last_seen_at"`
 	Archived       bool      `json:"archived"`
+	Mode           string    `json:"mode"`
+	CWD            string    `json:"cwd,omitempty"`
+	AllowedTools   string    `json:"allowed_tools,omitempty"`
+	MaxTurns       int       `json:"max_turns"`
+	MaxBudgetUSD   float64   `json:"max_budget_usd"`
+	Initialized    bool      `json:"initialized"`
+}
+
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized`
+
+func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
+	var sess Session
+	var archived, initialized int
+	err := scanner.Scan(
+		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &sess.TranscriptPath,
+		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
+		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
+	)
+	if err != nil {
+		return sess, err
+	}
+	sess.Archived = archived != 0
+	sess.Initialized = initialized != 0
+	return sess, nil
 }
 
 func (s *Store) UpsertSession(computerName, projectPath, transcriptPath string) (*Session, error) {
@@ -37,54 +61,62 @@ func (s *Store) UpsertSession(computerName, projectPath, transcriptPath string) 
 }
 
 func (s *Store) getSessionByKey(computerName, projectPath string) (*Session, error) {
-	var sess Session
-	var archived int
-	var transcriptPath sql.NullString
-	err := s.db.QueryRow(`
-		SELECT id, computer_name, project_path, transcript_path, status, created_at, last_seen_at, archived
-		FROM sessions WHERE computer_name = ? AND project_path = ?
-	`, computerName, projectPath).Scan(
-		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &transcriptPath, &sess.Status,
-		&sess.CreatedAt, &sess.LastSeenAt, &archived,
-	)
+	row := s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE computer_name = ? AND project_path = ?`,
+		computerName, projectPath)
+	sess, err := scanSession(row)
 	if err != nil {
 		return nil, fmt.Errorf("get session: %w", err)
-	}
-	sess.Archived = archived != 0
-	if transcriptPath.Valid {
-		sess.TranscriptPath = transcriptPath.String
 	}
 	return &sess, nil
 }
 
 func (s *Store) ListSessions(includeArchived bool) ([]Session, error) {
-	query := "SELECT id, computer_name, project_path, transcript_path, status, created_at, last_seen_at, archived FROM sessions"
+	query := "SELECT " + sessionColumns + " FROM sessions"
 	if !includeArchived {
 		query += " WHERE archived = 0"
 	}
 	query += " ORDER BY last_seen_at DESC"
-
 	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
 	defer rows.Close()
-
 	var sessions []Session
 	for rows.Next() {
-		var sess Session
-		var archived int
-		var transcriptPath sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.ComputerName, &sess.ProjectPath, &transcriptPath, &sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived); err != nil {
+		sess, err := scanSession(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
-		}
-		sess.Archived = archived != 0
-		if transcriptPath.Valid {
-			sess.TranscriptPath = transcriptPath.String
 		}
 		sessions = append(sessions, sess)
 	}
 	return sessions, rows.Err()
+}
+
+func (s *Store) GetSessionByID(id string) (*Session, error) {
+	row := s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id)
+	sess, err := scanSession(row)
+	if err != nil {
+		return nil, fmt.Errorf("get session by id: %w", err)
+	}
+	return &sess, nil
+}
+
+func (s *Store) CreateManagedSession(cwd, allowedTools string, maxTurns int, maxBudgetUSD float64) (*Session, error) {
+	id := uuid.New().String()
+	// Use "__managed__" as computer_name and cwd as project_path to avoid
+	// colliding with the existing UNIQUE(computer_name, project_path) constraint.
+	_, err := s.db.Exec(`INSERT INTO sessions (id, computer_name, project_path, mode, cwd, allowed_tools, max_turns, max_budget_usd, status)
+		VALUES (?, '__managed__', ?, 'managed', ?, ?, ?, ?, 'idle')`,
+		id, cwd, cwd, allowedTools, maxTurns, maxBudgetUSD)
+	if err != nil {
+		return nil, fmt.Errorf("create managed session: %w", err)
+	}
+	return s.GetSessionByID(id)
+}
+
+func (s *Store) SetInitialized(id string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET initialized = 1 WHERE id = ?`, id)
+	return err
 }
 
 func (s *Store) GetTranscriptPath(sessionID string) (string, error) {
@@ -126,9 +158,22 @@ func (s *Store) SetSessionStatus(id, status string) error {
 }
 
 func (s *Store) DeleteSession(id string) error {
-	// Delete related data first
-	s.db.Exec("DELETE FROM prompts WHERE session_id = ?", id)
-	s.db.Exec("DELETE FROM instructions WHERE session_id = ?", id)
-	_, err := s.db.Exec("DELETE FROM sessions WHERE id = ?", id)
-	return err
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin delete transaction: %w", err)
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		"DELETE FROM messages WHERE session_id = ?",
+		"DELETE FROM prompts WHERE session_id = ?",
+		"DELETE FROM instructions WHERE session_id = ?",
+	} {
+		if _, err := tx.Exec(q, id); err != nil {
+			return fmt.Errorf("cascade delete: %w", err)
+		}
+	}
+	if _, err := tx.Exec("DELETE FROM sessions WHERE id = ?", id); err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	return tx.Commit()
 }

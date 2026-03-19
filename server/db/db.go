@@ -66,6 +66,24 @@ func migrate(db *sql.DB) error {
 			delivered_at DATETIME
 		)`,
 		`ALTER TABLE sessions ADD COLUMN transcript_path TEXT`,
+		`ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'hook'`,
+		`ALTER TABLE sessions ADD COLUMN cwd TEXT`,
+		`ALTER TABLE sessions ADD COLUMN allowed_tools TEXT`,
+		`ALTER TABLE sessions ADD COLUMN max_turns INTEGER NOT NULL DEFAULT 50`,
+		`ALTER TABLE sessions ADD COLUMN max_budget_usd REAL NOT NULL DEFAULT 5.0`,
+		`ALTER TABLE sessions ADD COLUMN initialized INTEGER NOT NULL DEFAULT 0`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_cwd ON sessions(cwd) WHERE mode = 'managed'`,
+		`CREATE TABLE IF NOT EXISTS messages (
+			id TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL REFERENCES sessions(id),
+			seq INTEGER NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			exit_code INTEGER,
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			UNIQUE(session_id, seq)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq)`,
 	}
 
 	for _, m := range migrations {

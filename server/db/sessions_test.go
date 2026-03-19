@@ -83,6 +83,29 @@ func TestArchiveSession(t *testing.T) {
 	}
 }
 
+func TestCreateManagedSession(t *testing.T) {
+	store := newTestStore(t)
+
+	sess, err := store.CreateManagedSession("/tmp/project", `["Bash","Read"]`, 50, 5.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Mode != "managed" {
+		t.Errorf("mode=%s, want managed", sess.Mode)
+	}
+	if sess.CWD != "/tmp/project" {
+		t.Errorf("cwd=%s, want /tmp/project", sess.CWD)
+	}
+	if sess.Initialized {
+		t.Error("new session should not be initialized")
+	}
+
+	_, err = store.CreateManagedSession("/tmp/project", `["Bash"]`, 50, 5.0)
+	if err == nil {
+		t.Error("expected error for duplicate cwd, got nil")
+	}
+}
+
 func TestHeartbeat(t *testing.T) {
 	store := newTestStore(t)
 
