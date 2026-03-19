@@ -43,6 +43,9 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handle
 	apiMux.HandleFunc("GET /api/pairing", s.handlePairing)
 	apiMux.HandleFunc("GET /api/status", s.handleStatus)
 
+	// Browse endpoint
+	apiMux.HandleFunc("GET /api/browse", s.handleBrowse)
+
 	// Managed session endpoints
 	apiMux.HandleFunc("POST /api/sessions/create", s.handleCreateManagedSession)
 	apiMux.HandleFunc("POST /api/sessions/{id}/message", s.handleSendMessage)
