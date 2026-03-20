@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -95,10 +96,14 @@ func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
 		entries = []fileTreeEntry{}
 	}
 
+	// Get git branch and summary info
+	gitInfo := gitSummary(cwd)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"files": entries,
 		"cwd":   cwd,
+		"git":   gitInfo,
 	})
 }
 
@@ -220,6 +225,83 @@ func gitListFiles(cwd string) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+type gitSummaryInfo struct {
+	Branch    string `json:"branch"`
+	Modified  int    `json:"modified"`
+	Added     int    `json:"added"`
+	Deleted   int    `json:"deleted"`
+	Untracked int    `json:"untracked"`
+	Staged    int    `json:"staged"`
+	Ahead     int    `json:"ahead"`
+	Behind    int    `json:"behind"`
+}
+
+func gitSummary(cwd string) gitSummaryInfo {
+	info := gitSummaryInfo{}
+
+	// Get branch name
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = cwd
+	if out, err := cmd.Output(); err == nil {
+		info.Branch = strings.TrimSpace(string(out))
+	}
+
+	// Get ahead/behind from tracking branch
+	cmd2 := exec.Command("git", "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
+	cmd2.Dir = cwd
+	if out, err := cmd2.Output(); err == nil {
+		parts := strings.Fields(strings.TrimSpace(string(out)))
+		if len(parts) == 2 {
+			if n, err := parseInt(parts[0]); err == nil {
+				info.Behind = n
+			}
+			if n, err := parseInt(parts[1]); err == nil {
+				info.Ahead = n
+			}
+		}
+	}
+
+	// Parse porcelain status for file counts
+	cmd3 := exec.Command("git", "status", "--porcelain")
+	cmd3.Dir = cwd
+	if out, err := cmd3.Output(); err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			if len(line) < 3 {
+				continue
+			}
+			x, y := line[0], line[1]
+			// Staged changes (index column)
+			if x == 'M' || x == 'A' || x == 'D' || x == 'R' {
+				info.Staged++
+			}
+			// Working tree changes
+			switch {
+			case x == '?' && y == '?':
+				info.Untracked++
+			case y == 'M':
+				info.Modified++
+			case y == 'D':
+				info.Deleted++
+			case y == 'A':
+				info.Added++
+			}
+		}
+	}
+
+	return info
+}
+
+func parseInt(s string) (int, error) {
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("not a number")
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n, nil
 }
 
 // gitStatus returns a map of relative path -> status code

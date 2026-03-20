@@ -214,6 +214,24 @@
             </div>
           </template>
         </div>
+        <div class="git-status-bar" x-show="gitInfo">
+          <div class="git-branch-row">
+            <span class="git-branch-icon">⎇</span>
+            <span class="git-branch-name" x-text="gitInfo?.branch || 'detached'"></span>
+            <span class="git-ahead" x-show="gitInfo?.ahead > 0" x-text="'↑' + gitInfo?.ahead" title="Commits ahead of remote"></span>
+            <span class="git-behind" x-show="gitInfo?.behind > 0" x-text="'↓' + gitInfo?.behind" title="Commits behind remote"></span>
+          </div>
+          <div class="git-file-counts" x-show="gitInfo?.modified || gitInfo?.added || gitInfo?.deleted || gitInfo?.untracked || gitInfo?.staged">
+            <span class="git-stat git-stat-staged" x-show="gitInfo?.staged > 0" x-text="gitInfo?.staged + ' staged'" title="Staged changes"></span>
+            <span class="git-stat git-stat-modified" x-show="gitInfo?.modified > 0" x-text="gitInfo?.modified + ' modified'" title="Modified files"></span>
+            <span class="git-stat git-stat-added" x-show="gitInfo?.added > 0" x-text="gitInfo?.added + ' added'" title="Added files"></span>
+            <span class="git-stat git-stat-deleted" x-show="gitInfo?.deleted > 0" x-text="gitInfo?.deleted + ' deleted'" title="Deleted files"></span>
+            <span class="git-stat git-stat-untracked" x-show="gitInfo?.untracked > 0" x-text="gitInfo?.untracked + ' untracked'" title="Untracked files"></span>
+          </div>
+          <div class="git-clean" x-show="!gitInfo?.modified && !gitInfo?.added && !gitInfo?.deleted && !gitInfo?.untracked && !gitInfo?.staged">
+            <span class="git-clean-text">Working tree clean</span>
+          </div>
+        </div>
       </div>
     </div>
   </template>
