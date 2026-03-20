@@ -1037,5 +1037,45 @@ document.addEventListener('alpine:init', () => {
 
       return { render: (c) => this.renderPlainText(c), label: '' };
     },
+
+    renderCode(content, language) {
+      if (!content) return '<pre class="code-viewer"><code></code></pre>';
+
+      let highlighted;
+      let detectedLang = language || '';
+
+      if (typeof hljs !== 'undefined') {
+        try {
+          if (language && language !== 'plaintext') {
+            const result = hljs.highlight(content, { language, ignoreIllegals: true });
+            highlighted = result.value;
+            detectedLang = result.language || language;
+          } else if (language === 'plaintext') {
+            highlighted = this.escapeHtml(content);
+          } else {
+            const result = hljs.highlightAuto(content);
+            highlighted = result.value;
+            detectedLang = result.language || '';
+          }
+        } catch (e) {
+          highlighted = this.escapeHtml(content);
+        }
+      } else {
+        highlighted = this.escapeHtml(content);
+      }
+
+      const lines = highlighted.split('\n');
+      const lineHtml = lines.map(line => '<span class="line">' + (line || ' ') + '</span>').join('\n');
+
+      const badge = detectedLang ? '<span class="language-badge">' + this.escapeHtml(detectedLang) + '</span>' : '';
+
+      return '<div class="code-viewer-wrapper">' + badge +
+        '<pre class="code-viewer"><code>' + lineHtml + '</code></pre></div>';
+    },
+
+    renderPlainText(content) {
+      if (!content) return '<pre class="full-file-content-pre"></pre>';
+      return '<pre class="full-file-content-pre">' + this.escapeHtml(content) + '</pre>';
+    },
   }));
 });
