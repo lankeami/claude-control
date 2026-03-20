@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // claudeProjectDir encodes a CWD to match Claude Code's project directory naming.
@@ -126,4 +127,86 @@ func (s *Server) handleResumableList(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"sessions": results})
+}
+
+func (s *Server) handleResumeSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+
+	var req struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if req.SessionID == "" {
+		http.Error(w, "session_id is required", http.StatusBadRequest)
+		return
+	}
+
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		if strings.Contains(err.Error(), "no rows") {
+			http.Error(w, "session not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
+		return
+	}
+	if sess.Mode != "managed" {
+		http.Error(w, "not a managed session", http.StatusBadRequest)
+		return
+	}
+
+	// Validate that session_id exists in the resumable list
+	indexPath, err := sessionsIndexPath(sess.CWD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		http.Error(w, "cannot read sessions index", http.StatusInternalServerError)
+		return
+	}
+	var index sessionsIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		http.Error(w, "cannot parse sessions index", http.StatusInternalServerError)
+		return
+	}
+	found := false
+	for _, e := range index.Entries {
+		if e.SessionID == req.SessionID && !e.IsSidechain {
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.Error(w, "session_id not found in resumable sessions", http.StatusBadRequest)
+		return
+	}
+
+	// Teardown any running process
+	if s.manager.IsRunning(sessionID) {
+		if err := s.manager.Teardown(sessionID, 5*time.Second); err != nil {
+			http.Error(w, fmt.Sprintf("failed to stop running process: %v", err), http.StatusConflict)
+			return
+		}
+	}
+
+	// Atomically: set claude_session_id, initialized, delete old messages, set idle
+	if err := s.store.ResumeSession(sessionID, req.SessionID); err != nil {
+		http.Error(w, fmt.Sprintf("failed to resume session: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Re-fetch and return updated session
+	updated, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(updated)
 }

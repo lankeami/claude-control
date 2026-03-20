@@ -52,6 +52,7 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handle
 	apiMux.HandleFunc("POST /api/sessions/{id}/interrupt", s.handleInterrupt)
 	apiMux.HandleFunc("GET /api/sessions/{id}/messages", s.handleListMessages)
 	apiMux.HandleFunc("GET /api/sessions/{id}/resumable", s.handleResumableList)
+	apiMux.HandleFunc("POST /api/sessions/{id}/resume", s.handleResumeSession)
 
 	rl := NewRateLimiter(60, 10)
 	authedAPI := rl.Middleware(AuthMiddleware(apiKey, rl, apiMux))
