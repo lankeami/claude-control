@@ -344,6 +344,7 @@ document.addEventListener('alpine:init', () => {
       this.sessionFiles = [];
       this.fileTreeData = [];
       this.fileContentCache = {};
+      this.renderedContentCache = {};
 
       const sess = this.sessions.find(s => s.id === this.selectedSessionId);
       if (sess && sess.mode === 'managed') {
@@ -728,6 +729,7 @@ document.addEventListener('alpine:init', () => {
 
     // File browser methods
     async loadSessionFiles(sessionId) {
+      this.renderedContentCache = {};
       if (!sessionId) { this.sessionFiles = []; this.fileTreeData = []; return; }
       try {
         const resp = await fetch(`/api/sessions/${sessionId}/filetree`, {
@@ -842,32 +844,62 @@ document.addEventListener('alpine:init', () => {
     async switchToFullView() {
       this.viewerMode = 'full';
       if (!this.viewerFile) return;
-      const cacheKey = this.viewerFile + ':' + this.selectedSessionId;
-      if (this.fileContentCache[cacheKey]) {
-        const cached = this.fileContentCache[cacheKey];
-        this.viewerContent = cached.content;
+
+      const cacheKey = this.viewerFile + '::' + this.selectedSessionId;
+
+      if (this.renderedContentCache[cacheKey]) {
+        const cached = this.renderedContentCache[cacheKey];
+        this.viewerFullHtml = cached.html;
+        this.viewerFileType = cached.fileType;
         this.viewerBinary = cached.binary;
         this.viewerTruncated = cached.truncated;
         return;
       }
-      this.viewerLoading = true;
-      try {
-        const params = new URLSearchParams({ path: this.viewerFile, session_id: this.selectedSessionId });
-        const resp = await fetch('/api/files/content?' + params, {
-          headers: { 'Authorization': 'Bearer ' + this.apiKey }
-        });
-        if (!resp.ok) { this.viewerContent = 'Error loading file.'; return; }
-        const data = await resp.json();
-        this.viewerContent = data.content || '';
-        this.viewerBinary = data.binary || false;
-        this.viewerTruncated = data.truncated || false;
-        if (!data.exists) this.viewerContent = 'File no longer exists on disk.';
-        this.fileContentCache[cacheKey] = data;
-      } catch (e) {
-        this.viewerContent = 'Error loading file.';
-      } finally {
-        this.viewerLoading = false;
+
+      const rawCacheKey = this.viewerFile + ':' + this.selectedSessionId;
+      let data;
+      if (this.fileContentCache[rawCacheKey]) {
+        data = this.fileContentCache[rawCacheKey];
+      } else {
+        this.viewerLoading = true;
+        try {
+          const params = new URLSearchParams({ path: this.viewerFile, session_id: this.selectedSessionId });
+          const resp = await fetch('/api/files/content?' + params, {
+            headers: { 'Authorization': 'Bearer ' + this.apiKey }
+          });
+          if (!resp.ok) { this.viewerFullHtml = '<pre>' + this.escapeHtml('Error loading file.') + '</pre>'; return; }
+          data = await resp.json();
+          if (!data.exists) { this.viewerFullHtml = '<pre>' + this.escapeHtml('File no longer exists on disk.') + '</pre>'; return; }
+          this.fileContentCache[rawCacheKey] = data;
+        } catch (e) {
+          this.viewerFullHtml = '<pre>' + this.escapeHtml('Error loading file.') + '</pre>';
+          return;
+        } finally {
+          this.viewerLoading = false;
+        }
       }
+
+      this.viewerBinary = data.binary || false;
+      this.viewerTruncated = data.truncated || false;
+
+      const ext = this.viewerFile.split('.').pop().toLowerCase();
+      const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp'];
+      if (data.binary && !imageExts.includes(ext)) {
+        this.viewerFullHtml = '';
+        this.viewerFileType = '';
+        return;
+      }
+
+      const renderer = this.getRenderer(this.viewerFile);
+      this.viewerFileType = renderer.label;
+      this.viewerFullHtml = renderer.render(data.content, this.viewerFile);
+
+      this.renderedContentCache[cacheKey] = {
+        html: this.viewerFullHtml,
+        fileType: this.viewerFileType,
+        binary: this.viewerBinary,
+        truncated: this.viewerTruncated,
+      };
     },
 
     renderDiffHtml(data) {
@@ -897,6 +929,8 @@ document.addEventListener('alpine:init', () => {
       this.viewerDiffs = [];
       this.viewerDiffHtml = '';
       this.viewerContent = '';
+      this.viewerFullHtml = '';
+      this.viewerFileType = '';
     },
 
     // Bubble rendering
