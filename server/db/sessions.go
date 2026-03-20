@@ -22,10 +22,11 @@ type Session struct {
 	AllowedTools   string    `json:"allowed_tools,omitempty"`
 	MaxTurns       int       `json:"max_turns"`
 	MaxBudgetUSD   float64   `json:"max_budget_usd"`
-	Initialized    bool      `json:"initialized"`
+	Initialized     bool   `json:"initialized"`
+	ClaudeSessionID string `json:"claude_session_id,omitempty"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,'')`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -34,6 +35,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &sess.TranscriptPath,
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
+		&sess.ClaudeSessionID,
 	)
 	if err != nil {
 		return sess, err
@@ -117,6 +119,21 @@ func (s *Store) CreateManagedSession(cwd, allowedTools string, maxTurns int, max
 func (s *Store) SetInitialized(id string) error {
 	_, err := s.db.Exec(`UPDATE sessions SET initialized = 1 WHERE id = ?`, id)
 	return err
+}
+
+func (s *Store) ResumeSession(id, claudeSessionID string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin resume transaction: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 1, status = 'idle' WHERE id = ?`, claudeSessionID, id); err != nil {
+		return fmt.Errorf("set claude_session_id: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
+		return fmt.Errorf("delete messages: %w", err)
+	}
+	return tx.Commit()
 }
 
 func (s *Store) GetTranscriptPath(sessionID string) (string, error) {
