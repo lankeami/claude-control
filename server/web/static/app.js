@@ -963,7 +963,15 @@ document.addEventListener('alpine:init', () => {
 
       if (msg.msg_type === 'text') {
         if (msg.role === 'assistant' && typeof marked !== 'undefined') {
-          const html = marked.parse(msg.content || '', { breaks: true });
+          const r = new marked.Renderer();
+          r.link = function(href, title, text) {
+            const h = typeof href === 'object' ? href.href : href;
+            const t = typeof href === 'object' ? href.title : title;
+            const tx = typeof href === 'object' ? href.text : text;
+            const titleAttr = t ? ` title="${t}"` : '';
+            return `<a href="${h}" target="_blank" rel="noopener noreferrer"${titleAttr}>${tx}</a>`;
+          };
+          const html = marked.parse(msg.content || '', { renderer: r, breaks: true });
           return `<div class="markdown-content">${html}</div>${time}`;
         }
         return `${esc(msg.content)}${time}`;
@@ -1129,6 +1137,13 @@ document.addEventListener('alpine:init', () => {
 
       const renderer = new marked.Renderer();
       const self = this;
+      renderer.link = function(href, title, text) {
+        const h = typeof href === 'object' ? href.href : href;
+        const t = typeof href === 'object' ? href.title : title;
+        const tx = typeof href === 'object' ? href.text : text;
+        const titleAttr = t ? ` title="${self.escapeHtml(t)}"` : '';
+        return `<a href="${self.escapeHtml(h)}" target="_blank" rel="noopener noreferrer"${titleAttr}>${tx}</a>`;
+      };
       renderer.code = function(code, language) {
         const text = typeof code === 'object' ? code.text : code;
         const lang = typeof code === 'object' ? code.lang : language;
