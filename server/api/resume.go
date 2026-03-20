@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -38,12 +39,12 @@ func claudeConfigDir() (string, error) {
 	return filepath.Join(home, ".claude"), nil
 }
 
-func sessionsIndexPath(cwd string) (string, error) {
+func claudeProjectsDir(cwd string) (string, error) {
 	configDir, err := claudeConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(configDir, "projects", claudeProjectDir(cwd), "sessions-index.json"), nil
+	return filepath.Join(configDir, "projects", claudeProjectDir(cwd)), nil
 }
 
 type sessionsIndex struct {
@@ -72,6 +73,98 @@ type resumableSession struct {
 	GitBranch    string `json:"git_branch"`
 }
 
+// loadSessionsFromIndex reads sessions-index.json if it exists.
+func loadSessionsFromIndex(projectDir string) ([]sessionEntry, error) {
+	indexPath := filepath.Join(projectDir, "sessions-index.json")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		return nil, err
+	}
+	var index sessionsIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		return nil, fmt.Errorf("parse sessions index: %w", err)
+	}
+	return index.Entries, nil
+}
+
+// loadSessionsFromJSONL scans *.jsonl files directly (fallback when no sessions-index.json).
+// Reads the first user message from each file for the prompt and uses file mtime as modified time.
+func loadSessionsFromJSONL(projectDir string) ([]sessionEntry, error) {
+	matches, err := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	var entries []sessionEntry
+	for _, fpath := range matches {
+		base := filepath.Base(fpath)
+		sessionID := strings.TrimSuffix(base, ".jsonl")
+
+		info, err := os.Stat(fpath)
+		if err != nil {
+			continue
+		}
+
+		prompt := extractFirstPrompt(fpath)
+		if prompt == "" {
+			prompt = "No prompt"
+		}
+
+		entries = append(entries, sessionEntry{
+			SessionID:    sessionID,
+			FirstPrompt:  prompt,
+			Summary:      "",
+			MessageCount: 0,
+			Created:      info.ModTime().UTC().Format(time.RFC3339),
+			Modified:     info.ModTime().UTC().Format(time.RFC3339),
+		})
+	}
+	return entries, nil
+}
+
+// extractFirstPrompt reads a JSONL file and returns the text of the first user message.
+func extractFirstPrompt(fpath string) string {
+	f, err := os.Open(fpath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		var line struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			continue
+		}
+		if line.Type != "user" {
+			continue
+		}
+		// Try content as array of blocks
+		var blocks []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(line.Message.Content, &blocks); err == nil {
+			for _, b := range blocks {
+				if b.Type == "text" && b.Text != "" {
+					return b.Text
+				}
+			}
+		}
+		// Try content as plain string
+		var s string
+		if err := json.Unmarshal(line.Message.Content, &s); err == nil && s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
 func (s *Server) handleResumableList(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
@@ -89,30 +182,24 @@ func (s *Server) handleResumableList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	indexPath, err := sessionsIndexPath(sess.CWD)
+	projectDir, err := claudeProjectsDir(sess.CWD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	data, err := os.ReadFile(indexPath)
+	// Try sessions-index.json first, fall back to scanning JSONL files
+	entries, err := loadSessionsFromIndex(projectDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		entries, err = loadSessionsFromJSONL(projectDir)
+		if err != nil || len(entries) == 0 {
 			http.Error(w, "no CLI sessions found for this project", http.StatusNotFound)
-		} else {
-			http.Error(w, fmt.Sprintf("read sessions index: %v", err), http.StatusInternalServerError)
+			return
 		}
-		return
-	}
-
-	var index sessionsIndex
-	if err := json.Unmarshal(data, &index); err != nil {
-		http.Error(w, fmt.Sprintf("parse sessions index: %v", err), http.StatusInternalServerError)
-		return
 	}
 
 	var results []resumableSession
-	for _, e := range index.Entries {
+	for _, e := range entries {
 		if e.IsSidechain {
 			continue
 		}
@@ -179,23 +266,17 @@ func (s *Server) handleResumeSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate that session_id exists in the resumable list
-	indexPath, err := sessionsIndexPath(sess.CWD)
+	projectDir, err := claudeProjectsDir(sess.CWD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	data, err := os.ReadFile(indexPath)
+	entries, err := loadSessionsFromIndex(projectDir)
 	if err != nil {
-		http.Error(w, "cannot read sessions index", http.StatusInternalServerError)
-		return
-	}
-	var index sessionsIndex
-	if err := json.Unmarshal(data, &index); err != nil {
-		http.Error(w, "cannot parse sessions index", http.StatusInternalServerError)
-		return
+		entries, _ = loadSessionsFromJSONL(projectDir)
 	}
 	found := false
-	for _, e := range index.Entries {
+	for _, e := range entries {
 		if e.SessionID == req.SessionID && !e.IsSidechain {
 			found = true
 			break
