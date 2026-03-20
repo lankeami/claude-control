@@ -54,6 +54,9 @@ document.addEventListener('alpine:init', () => {
     viewerBinary: false,
     viewerTruncated: false,
     fileContentCache: {},
+    viewerFullHtml: '',
+    viewerFileType: '',
+    renderedContentCache: {},
 
     // Toast
     showToast: false,
@@ -947,6 +950,92 @@ document.addEventListener('alpine:init', () => {
       const hours = Math.floor(minutes / 60);
       if (hours < 24) return `${hours}h ago`;
       return `${Math.floor(hours / 24)}d ago`;
-    }
+    },
+
+    escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    },
+
+    sanitizeHtml(html) {
+      const allowed = new Set([
+        'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'ul', 'ol', 'li', 'a', 'strong', 'em', 'b', 'i',
+        'code', 'pre', 'blockquote',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'img', 'br', 'hr', 'span', 'div', 'del', 'sup', 'sub'
+      ]);
+      return html
+        .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (match, tag) => {
+          if (!allowed.has(tag.toLowerCase())) return '';
+          return match
+            .replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '')
+            .replace(/\s+href\s*=\s*"javascript:[^"]*"/gi, '')
+            .replace(/\s+href\s*=\s*'javascript:[^']*'/gi, '');
+        });
+    },
+
+    getRenderer(filePath) {
+      const name = filePath.split('/').pop();
+      const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+
+      const extMap = {
+        'md': { render: (c) => this.renderMarkdown(c), label: 'Markdown' },
+        'mdx': { render: (c) => this.renderMarkdown(c), label: 'Markdown' },
+        'json': { render: (c) => this.renderJSON(c), label: 'JSON' },
+        'csv': { render: (c) => this.renderCSV(c, ','), label: 'CSV' },
+        'tsv': { render: (c) => this.renderCSV(c, '\t'), label: 'TSV' },
+        'html': { render: (c) => this.renderHTMLPreview(c), label: 'HTML' },
+        'htm': { render: (c) => this.renderHTMLPreview(c), label: 'HTML' },
+        'png': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
+        'jpg': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
+        'jpeg': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
+        'gif': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
+        'svg': { render: (c, f) => this.renderImage(c, f), label: 'SVG' },
+        'webp': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
+        'ico': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
+        'bmp': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
+      };
+
+      const codeExts = [
+        'py', 'go', 'js', 'ts', 'jsx', 'tsx', 'rb', 'java', 'rs', 'css', 'scss',
+        'sh', 'bash', 'zsh', 'sql', 'yaml', 'yml', 'toml', 'xml', 'c', 'cpp',
+        'h', 'hpp', 'swift', 'kt', 'lua', 'r', 'php', 'pl', 'ex', 'erl', 'hs',
+        'scala', 'clj', 'dart', 'vim', 'dockerfile'
+      ];
+      const langMap = {
+        'py': 'python', 'js': 'javascript', 'ts': 'typescript', 'rb': 'ruby',
+        'rs': 'rust', 'sh': 'bash', 'bash': 'bash', 'zsh': 'bash',
+        'yml': 'yaml', 'kt': 'kotlin', 'ex': 'elixir', 'erl': 'erlang',
+        'hs': 'haskell', 'clj': 'clojure', 'hpp': 'cpp', 'h': 'c',
+        'jsx': 'javascript', 'tsx': 'typescript', 'scss': 'scss',
+        'pl': 'perl', 'dockerfile': 'dockerfile'
+      };
+
+      if (extMap[ext]) return extMap[ext];
+
+      if (codeExts.includes(ext)) {
+        const lang = langMap[ext] || ext;
+        return { render: (c) => this.renderCode(c, lang), label: lang.charAt(0).toUpperCase() + lang.slice(1) };
+      }
+
+      const filenameMap = {
+        'Dockerfile': { lang: 'dockerfile', label: 'Dockerfile' },
+        'Makefile': { lang: 'makefile', label: 'Makefile' },
+        'Gemfile': { lang: 'ruby', label: 'Ruby' },
+        'Rakefile': { lang: 'ruby', label: 'Ruby' },
+        'Vagrantfile': { lang: 'ruby', label: 'Ruby' },
+        'Procfile': { lang: 'yaml', label: 'YAML' },
+        '.gitignore': { lang: 'plaintext', label: 'Git Ignore' },
+        '.env': { lang: 'bash', label: 'Env' },
+        '.dockerignore': { lang: 'plaintext', label: 'Docker Ignore' },
+      };
+      if (filenameMap[name]) {
+        const fm = filenameMap[name];
+        return { render: (c) => this.renderCode(c, fm.lang), label: fm.label };
+      }
+
+      return { render: (c) => this.renderPlainText(c), label: '' };
+    },
   }));
 });
