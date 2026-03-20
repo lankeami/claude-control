@@ -70,8 +70,8 @@ A shared `escapeHtml(str)` utility function handles this. Every renderer calls i
 - `renderCode` — escape content before wrapping in `<code>` tags. highlight.js operates on the escaped text (it handles entities correctly).
 - `renderJSON` — escape all keys and string values before inserting into tree HTML.
 - `renderCSV` — escape all cell values before inserting into `<td>` elements.
-- `renderMarkdown` — uses marked.js with `{ breaks: true }`. All HTML tags in the markdown source are escaped by configuring marked.js to escape HTML (`marked.setOptions({ sanitize: false })` is NOT used). Instead, use a custom marked renderer that escapes raw HTML blocks, or pass the output through a simple tag-stripper that only allows safe markdown-generated tags (`<p>`, `<h1>`–`<h6>`, `<ul>`, `<ol>`, `<li>`, `<a>`, `<strong>`, `<em>`, `<code>`, `<pre>`, `<blockquote>`, `<table>`, `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>`, `<img>`, `<br>`, `<hr>`). This prevents script injection while preserving markdown rendering.
-- `renderHTMLPreview` — sandboxed iframe with `sandbox=""` (no permissions). Source view uses `renderCode` which escapes content. A "Run with scripts" toggle is available but defaults to off.
+- `renderMarkdown` — uses marked.js with `{ breaks: true }`. After `marked.parse()`, a post-processing step strips any HTML tags not in an allowlist: `<p>`, `<h1>`–`<h6>`, `<ul>`, `<ol>`, `<li>`, `<a>`, `<strong>`, `<em>`, `<code>`, `<pre>`, `<blockquote>`, `<table>`, `<thead>`, `<tbody>`, `<tr>`, `<th>`, `<td>`, `<img>`, `<br>`, `<hr>`, `<span>`, `<div>`. This strips `<script>`, `<iframe>`, event handler attributes, etc. while preserving normal markdown output. Note: the existing chat message rendering also uses unsanitized `marked.parse()` but that is out of scope for this feature.
+- `renderHTMLPreview` — sandboxed iframe with `sandbox=""` (no permissions, no script execution). Source view uses `renderCode` which escapes content.
 - `renderPlainText` — escape content before inserting into `<pre>`.
 - `renderImage` — no file content is inserted as HTML text; base64 data goes into `src` attribute only.
 
@@ -87,9 +87,9 @@ Raw HTML in markdown source is sanitized per the Security section above — only
 
 ### `renderCode(content, language)`
 
-HTML-escapes content, then wraps in `<pre class="code-viewer"><code class="language-{lang}">`. After insertion into the DOM, highlight.js is applied via `hljs.highlightElement()`. Line numbers are rendered using a CSS counter on each line (content split into `<span class="line">` elements). A language badge is displayed in the top-right corner showing the detected/specified language name.
+Uses `hljs.highlight(content, {language: lang})` which takes raw (unescaped) content and returns `{value: '<escaped+highlighted HTML>', language: '...'}`. The highlighted HTML is wrapped in `<pre class="code-viewer"><code>`. Line numbers are rendered by splitting the highlighted output into lines and wrapping each in `<span class="line">` for CSS counter numbering. A language badge is displayed in the top-right corner showing the detected/specified language name.
 
-When no explicit language is provided, highlight.js auto-detection is used. The auto-detected language name is shown in the badge.
+When no explicit language is provided, uses `hljs.highlightAuto(content)` for auto-detection. The auto-detected language name is shown in the badge.
 
 Languages not included in the highlight.js common bundle (e.g., Elixir, Erlang, Haskell, Scala, Clojure, Dart) will render unhighlighted with line numbers — this is acceptable degradation. The common bundle covers ~35 languages which handles the vast majority of files.
 
@@ -196,7 +196,7 @@ After fetching content from `/api/files/content`, instead of setting `viewerCont
 3. Set `viewerFullHtml` to the returned HTML
 4. Set `viewerFileType` to the detected type label
 
-**Caching:** The existing `fileContentCache` continues to cache raw API responses. Add a parallel `renderedContentCache` keyed by `filePath + sessionId` that caches the rendered HTML string. This avoids re-running highlight.js on large files when toggling between diff/full views. Both caches are invalidated together when the file tree refreshes.
+**Caching:** The existing `fileContentCache` continues to cache raw API responses. Add a parallel `renderedContentCache` keyed by `filePath + '::' + sessionId` that caches the rendered HTML string. This avoids re-running highlight.js on large files when toggling between diff/full views. Both caches are invalidated together when the file tree refreshes.
 
 **New functions:**
 - `getRenderer(filePath)` — extension/filename lookup, returns `{render, label}` object
