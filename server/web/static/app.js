@@ -1157,5 +1157,73 @@ document.addEventListener('alpine:init', () => {
 
       return html;
     },
+
+    renderCSV(content, delimiter) {
+      if (!content) return '<div class="csv-table-wrapper"></div>';
+
+      const lines = content.split('\n').filter(l => l.trim());
+      if (lines.length === 0) return this.renderPlainText(content);
+
+      const parseLine = (line, delim) => {
+        const fields = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (inQuotes) {
+            if (ch === '"' && line[i + 1] === '"') {
+              current += '"';
+              i++;
+            } else if (ch === '"') {
+              inQuotes = false;
+            } else {
+              current += ch;
+            }
+          } else {
+            if (ch === '"') {
+              inQuotes = true;
+            } else if (ch === delim) {
+              fields.push(current);
+              current = '';
+            } else {
+              current += ch;
+            }
+          }
+        }
+        fields.push(current);
+        return fields;
+      };
+
+      const rows = lines.map(l => parseLine(l, delimiter));
+
+      if (rows.length > 1) {
+        const headerLen = rows[0].length;
+        const badRows = rows.filter(r => Math.abs(r.length - headerLen) / headerLen > 0.2).length;
+        if (badRows > rows.length * 0.2) {
+          return this.renderCode(content, delimiter === '\t' ? 'tsv' : 'csv');
+        }
+      }
+
+      const esc = (s) => this.escapeHtml(s);
+      let html = '<div class="csv-table-wrapper"><table class="csv-table">';
+
+      html += '<thead><tr>';
+      for (const cell of rows[0]) {
+        html += '<th>' + esc(cell) + '</th>';
+      }
+      html += '</tr></thead>';
+
+      html += '<tbody>';
+      for (let i = 1; i < rows.length; i++) {
+        html += '<tr>';
+        for (const cell of rows[i]) {
+          html += '<td>' + esc(cell) + '</td>';
+        }
+        html += '</tr>';
+      }
+      html += '</tbody></table></div>';
+
+      return html;
+    },
   }));
 });
