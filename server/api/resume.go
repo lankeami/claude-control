@@ -18,12 +18,32 @@ func claudeProjectDir(cwd string) string {
 	return r.Replace(cwd)
 }
 
-func sessionsIndexPath(cwd string) (string, error) {
+func claudeConfigDir() (string, error) {
+	// Check CLAUDE_CONFIG_DIR directly first
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		return dir, nil
+	}
+	// Also check CLAUDE_ENV (comma-separated KEY=VAL pairs passed to managed sessions)
+	for _, pair := range strings.Split(os.Getenv("CLAUDE_ENV"), ",") {
+		if k, v, ok := strings.Cut(pair, "="); ok {
+			if strings.TrimSpace(k) == "CLAUDE_CONFIG_DIR" {
+				return strings.TrimSpace(v), nil
+			}
+		}
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine home directory: %w", err)
 	}
-	return filepath.Join(home, ".claude", "projects", claudeProjectDir(cwd), "sessions-index.json"), nil
+	return filepath.Join(home, ".claude"), nil
+}
+
+func sessionsIndexPath(cwd string) (string, error) {
+	configDir, err := claudeConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, "projects", claudeProjectDir(cwd), "sessions-index.json"), nil
 }
 
 type sessionsIndex struct {
