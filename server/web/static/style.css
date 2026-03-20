@@ -496,8 +496,17 @@ body {
 .file-tree-item.is-selected { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 .file-tree-icon { width: 12px; font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
 .file-tree-name { overflow: hidden; text-overflow: ellipsis; }
+.file-tree-name.name-modified { color: var(--yellow); }
+.file-tree-status {
+  font-size: 10px; font-weight: 600; padding: 1px 4px; border-radius: 3px; flex-shrink: 0; margin-left: auto;
+}
+.file-tree-status.git-M { color: var(--yellow); }
+.file-tree-status.git-A { color: var(--green); }
+.file-tree-status.git-D { color: var(--red); }
+.file-tree-status.git-R { color: var(--accent); }
+.file-tree-status.git-untracked { color: var(--text-muted); }
 .file-tree-action {
-  margin-left: auto; font-size: 10px; font-weight: 600; padding: 1px 4px; border-radius: 3px; flex-shrink: 0;
+  font-size: 10px; font-weight: 600; padding: 1px 4px; border-radius: 3px; flex-shrink: 0;
 }
 .file-tree-action.action-edit { color: var(--yellow); }
 .file-tree-action.action-write { color: var(--green); }

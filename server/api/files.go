@@ -150,33 +150,6 @@ func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authorization: verify the file was touched in this session
-	var authorized bool
-	if sess.Mode == "managed" {
-		authorized, err = s.store.SessionFileExists(sessionID, filePath)
-		if err != nil {
-			http.Error(w, `{"error":"authorization check failed"}`, http.StatusInternalServerError)
-			return
-		}
-	} else {
-		if sess.TranscriptPath != "" {
-			entries, err := extractFilesFromTranscript(sess.TranscriptPath)
-			if err == nil {
-				for _, e := range entries {
-					if e.Path == filePath {
-						authorized = true
-						break
-					}
-				}
-			}
-		}
-	}
-
-	if !authorized {
-		http.Error(w, `{"error":"file not associated with this session"}`, http.StatusForbidden)
-		return
-	}
-
 	// Symlink resolution and path validation
 	resolved, err := filepath.EvalSymlinks(filePath)
 	if err != nil {

@@ -1,0 +1,179 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+type fileTreeEntry struct {
+	Path      string `json:"path"`
+	GitStatus string `json:"git_status,omitempty"` // "M", "A", "D", "?", "R", "" (unmodified)
+	Action    string `json:"action,omitempty"`      // "edit", "write", "read" (from session)
+}
+
+func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
+		return
+	}
+
+	cwd := sess.CWD
+	if cwd == "" {
+		cwd = sess.ProjectPath
+	}
+	if cwd == "" {
+		http.Error(w, `{"error":"session has no working directory"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Get all tracked files from git
+	allFiles, err := gitListFiles(cwd)
+	if err != nil {
+		http.Error(w, `{"error":"failed to list files: `+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Get git status for changed files
+	statusMap, err := gitStatus(cwd)
+	if err != nil {
+		// Non-fatal: continue without status
+		statusMap = map[string]string{}
+	}
+
+	// Get session-touched files
+	actionMap := map[string]string{}
+	if sess.Mode == "managed" {
+		dbFiles, err := s.store.ListSessionFiles(sessionID)
+		if err == nil {
+			for _, f := range dbFiles {
+				rel, err := filepath.Rel(cwd, f.FilePath)
+				if err == nil {
+					actionMap[rel] = f.Action
+				}
+				// Also store absolute path mapping
+				actionMap[f.FilePath] = f.Action
+			}
+		}
+	} else if sess.TranscriptPath != "" {
+		entries, err := extractFilesFromTranscript(sess.TranscriptPath)
+		if err == nil {
+			for _, e := range entries {
+				rel, err := filepath.Rel(cwd, e.Path)
+				if err == nil {
+					actionMap[rel] = e.Action
+				}
+				actionMap[e.Path] = e.Action
+			}
+		}
+	}
+
+	// Build response
+	var entries []fileTreeEntry
+	for _, relPath := range allFiles {
+		absPath := filepath.Join(cwd, relPath)
+		entry := fileTreeEntry{
+			Path:      absPath,
+			GitStatus: statusMap[relPath],
+		}
+		// Check action by relative or absolute path
+		if action, ok := actionMap[relPath]; ok {
+			entry.Action = action
+		} else if action, ok := actionMap[absPath]; ok {
+			entry.Action = action
+		}
+		entries = append(entries, entry)
+	}
+
+	if entries == nil {
+		entries = []fileTreeEntry{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"files": entries,
+		"cwd":   cwd,
+	})
+}
+
+// gitListFiles returns all files known to git (tracked + untracked non-ignored)
+func gitListFiles(cwd string) ([]string, error) {
+	// Get tracked files
+	cmd := exec.Command("git", "ls-files")
+	cmd.Dir = cwd
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	fileSet := map[string]struct{}{}
+	var files []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		fileSet[line] = struct{}{}
+		files = append(files, line)
+	}
+
+	// Get untracked non-ignored files
+	cmd2 := exec.Command("git", "ls-files", "--others", "--exclude-standard")
+	cmd2.Dir = cwd
+	out2, err := cmd2.Output()
+	if err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(out2)), "\n") {
+			if line == "" {
+				continue
+			}
+			if _, exists := fileSet[line]; !exists {
+				files = append(files, line)
+			}
+		}
+	}
+
+	return files, nil
+}
+
+// gitStatus returns a map of relative path -> status code
+func gitStatus(cwd string) (map[string]string, error) {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = cwd
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	result := map[string]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		xy := line[:2]
+		path := strings.TrimSpace(line[3:])
+
+		// Handle renames: "R  old -> new"
+		if idx := strings.Index(path, " -> "); idx >= 0 {
+			path = path[idx+4:]
+		}
+
+		switch {
+		case xy[0] == '?' || xy[1] == '?':
+			result[path] = "?"
+		case xy[0] == 'A' || xy[1] == 'A':
+			result[path] = "A"
+		case xy[0] == 'D' || xy[1] == 'D':
+			result[path] = "D"
+		case xy[0] == 'R' || xy[1] == 'R':
+			result[path] = "R"
+		case xy[0] == 'M' || xy[1] == 'M':
+			result[path] = "M"
+		}
+	}
+
+	return result, nil
+}
