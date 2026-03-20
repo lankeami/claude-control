@@ -1,35 +1,40 @@
 # Claude Controller
 
-Remotely control multiple Claude Code sessions from your iPhone.
+Remotely control multiple Claude Code sessions from any device.
 
 ```
-┌─────────────────────────────────────┐
-│          Mac/PC                     │
-│                                     │
-│  Claude Code ──hooks──▶ Go Server   │
-│                         │  (REST API + SQLite)
-│                         │           │
-│                         ▼           │
-│                       ngrok         │
-└─────────────────────┬───────────────┘
+┌──────────────────────────────────────────────┐
+│          Mac/PC                               │
+│                                               │
+│  Claude Code ──hooks──▶ Go Server ◀── Web UI │
+│                         │  (REST API + SQLite) │
+│       ▲                 │                      │
+│       └── managed ──────┘  (spawns claude -p)  │
+│                         ▼                      │
+│                       ngrok                    │
+└─────────────────────┬────────────────────────┘
                       │ public tunnel
                       ▼
 ┌─────────────────────────────────────┐
-│          iPhone App (SwiftUI)       │
+│     Browser / iPhone App            │
 │                                     │
-│  Polls Go server via ngrok URL      │
-│  Displays prompt queue              │
-│  Sends responses back               │
+│  Web UI or iOS app via ngrok URL    │
+│  Chat with Claude, manage sessions  │
+│  Resume previous CLI sessions       │
 └─────────────────────────────────────┘
 ```
 
-When Claude Code finishes a turn, hook scripts POST the output to a local Go server and block until you respond from the iOS app. Your response is fed back to Claude as context, so it keeps working — all from your phone.
+Two modes of operation:
+
+- **Hook mode** — Claude Code runs independently; hook scripts POST output to the server and block until you respond from the web UI or iOS app. Your response is fed back to Claude as context.
+- **Managed mode** — The server spawns `claude -p` directly as a child process, streaming output to the web UI via SSE. Full lifecycle control: send messages, interrupt mid-turn, enforce turn limits, and restrict tools — all from the browser.
 
 ## Components
 
 | Component | Technology | Location |
 |-----------|------------|----------|
 | Server | Go + SQLite + ngrok | `server/` |
+| Web UI | Alpine.js (embedded in server binary) | `server/web/static/` |
 | Hooks | Bash (macOS) + PowerShell (Windows) | `hooks/` |
 | iOS App | Swift / SwiftUI (iOS 17+) | `ios/` |
 
@@ -68,17 +73,44 @@ Open the Claude Controller app on your iPhone and scan the QR code displayed in 
 
 ## How It Works
 
+### Hook Mode (original)
+
 1. Claude Code finishes a turn and fires the **Stop hook**
 2. The hook extracts Claude's last message from the transcript
 3. It POSTs the message to the Go server as a pending prompt
 4. The hook **blocks** and long-polls the server for your response
-5. You see the prompt on your iPhone and type a reply
+5. You see the prompt on your phone/browser and type a reply
 6. The hook receives your response and returns `{"decision": "block", "reason": "User responded: ..."}` to Claude Code
 7. Claude reads your response and continues working
 
-**Instructions** can also be queued from the iOS app — they're delivered the next time Claude finishes a turn.
+**Instructions** can also be queued from the web UI or iOS app — they're delivered the next time Claude finishes a turn.
 
-**Notifications** (e.g., "build succeeded") are fire-and-forget — they appear in the app but don't block Claude.
+**Notifications** (e.g., "build succeeded") are fire-and-forget — they appear in the UI but don't block Claude.
+
+### Managed Mode
+
+1. Create a session in the web UI — pick a working directory and configure tool permissions
+2. Type a message in the chat interface
+3. The server spawns `claude -p "<message>" --session-id <uuid> --output-format stream-json`
+4. NDJSON output streams to the browser in real-time via SSE
+5. When Claude finishes, type another message — the server uses `--resume <uuid>` to continue the conversation
+6. Hit **Stop** to interrupt mid-turn (sends SIGINT); the session can resume on the next message
+
+**Key capabilities:**
+- **Tool restrictions** — each session has an allowed-tools list (e.g., read-only: `Read,Glob,Grep`)
+- **Turn limiting** — server counts assistant turns and sends SIGINT when the limit is hit
+- **Budget caps** — `--max-budget-usd` passed to the CLI for cost control
+- **Session resumption** — type `/resume` in the chat to pick up a previous Claude Code CLI session (see below)
+
+### Resuming Previous Sessions
+
+The `/resume` command in the web UI lets you continue any previous Claude Code CLI session from the current project:
+
+1. Type `/resume` in a managed session's chat input
+2. The server reads Claude Code's native session index (`~/.claude/projects/<encoded-cwd>/sessions-index.json`)
+3. A picker shows recent sessions with their summary, first prompt, branch, and message count
+4. Select a session — the managed session switches to use `--resume <chosen-uuid>` for subsequent messages
+5. Continue the conversation where the CLI session left off
 
 ## Server
 
@@ -91,18 +123,39 @@ cd server && go run . --port 9090              # Custom port
 
 ### API Endpoints
 
+**Hook-mode endpoints:**
+
 | Method | Path | Caller | Purpose |
 |--------|------|--------|---------|
 | POST | `/api/sessions/register` | Hook | Register/upsert a session |
 | POST | `/api/sessions/:id/heartbeat` | Hook | Keep session active |
 | POST | `/api/prompts` | Hook | Submit a prompt |
 | GET | `/api/prompts/:id/response` | Hook | Long-poll for response (30s timeout) |
-| GET | `/api/sessions` | iOS | List active sessions |
-| GET | `/api/prompts?status=pending` | iOS | Get pending prompts |
-| POST | `/api/prompts/:id/respond` | iOS | Send a response |
-| POST | `/api/sessions/:id/instruct` | iOS | Queue an instruction |
+
+**Managed session endpoints:**
+
+| Method | Path | Caller | Purpose |
+|--------|------|--------|---------|
+| POST | `/api/sessions/create` | Web UI | Create a managed session (cwd, tools, budget) |
+| POST | `/api/sessions/:id/message` | Web UI | Send a message (spawns `claude -p`) |
+| POST | `/api/sessions/:id/interrupt` | Web UI | SIGINT the running process |
+| DELETE | `/api/sessions/:id` | Web UI | Tear down a session |
+| GET | `/api/sessions/:id/stream` | Web UI | SSE stream of live NDJSON output |
+| GET | `/api/sessions/:id/messages` | Web UI | Fetch full message history |
+| GET | `/api/sessions/:id/resumable` | Web UI | List resumable CLI sessions for this project |
+| POST | `/api/sessions/:id/resume` | Web UI | Switch to resume a specific CLI session |
+
+**Shared endpoints:**
+
+| Method | Path | Caller | Purpose |
+|--------|------|--------|---------|
+| GET | `/api/sessions` | Web UI / iOS | List active sessions |
+| GET | `/api/prompts?status=pending` | Web UI / iOS | Get pending prompts |
+| POST | `/api/prompts/:id/respond` | Web UI / iOS | Send a response |
+| POST | `/api/sessions/:id/instruct` | Web UI / iOS | Queue an instruction |
+| GET | `/api/events` | Web UI | SSE stream for global state updates |
 | GET | `/api/pairing` | iOS | Validate pairing |
-| GET | `/api/status` | iOS | Health check |
+| GET | `/api/status` | Any | Health check |
 
 All endpoints require `Authorization: Bearer <api-key>`.
 

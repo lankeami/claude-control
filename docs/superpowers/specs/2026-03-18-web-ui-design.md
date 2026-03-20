@@ -2,6 +2,8 @@
 
 Replace the native iOS app with a browser-based UI served directly by the Go server. This makes the remote control device-agnostic — any phone, tablet, or desktop browser can manage Claude Code sessions.
 
+> **Note:** This spec covers the initial web UI for hook-mode sessions. The web UI was later extended with a **chat interface for managed sessions** (see `2026-03-18-chat-ui-design.md`) and a **`/resume` command** for continuing previous CLI sessions (see `2026-03-19-resume-command-design.md`).
+
 ## Motivation
 
 The iOS app adds build complexity (Xcode, signing, App Store) and limits access to Apple devices. A web UI eliminates all of that. The Go server already runs an HTTP server, so serving static files is trivial. The existing REST API stays unchanged; the web UI is a new consumer alongside the hooks.

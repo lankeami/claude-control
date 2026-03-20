@@ -5,7 +5,11 @@
 
 ## Overview
 
-A system for remotely controlling multiple Claude Code sessions from an iPhone. Three components: a Go server running on the user's Mac/PC, Claude Code hook scripts, and a native iOS app. No cloud hosting — the Go server runs locally and is exposed via ngrok.
+A system for remotely controlling multiple Claude Code sessions from any device. Three components: a Go server running on the user's Mac/PC (with embedded web UI), Claude Code hook scripts, and a native iOS app. No cloud hosting — the Go server runs locally and is exposed via ngrok.
+
+> **Note:** This spec covers the original hook-based architecture. The system was later extended with **managed sessions** (server spawns `claude -p` directly) and a **`/resume` command** (continue previous CLI sessions in the web UI). See the dedicated specs for those features:
+> - `docs/superpowers/specs/2026-03-19-managed-sessions-design.md`
+> - `docs/superpowers/specs/2026-03-19-resume-command-design.md`
 
 ## Architecture
 
