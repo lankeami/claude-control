@@ -96,57 +96,117 @@
           </select>
         </div>
 
-        <!-- Chat area -->
-        <div class="chat-area" id="chat-area">
-          <template x-if="!selectedSessionId">
-            <div class="chat-empty">
-              <div>
-                <p style="font-size:1.125rem">Select a session</p>
-                <p style="font-size:0.875rem;margin-top:0.5rem">Choose a session from the sidebar to view the conversation</p>
+        <div class="main-content-split">
+          <div class="chat-column" :class="{ 'has-viewer': viewerFile }">
+            <!-- Chat area -->
+            <div class="chat-area" id="chat-area">
+              <template x-if="!selectedSessionId">
+                <div class="chat-empty">
+                  <div>
+                    <p style="font-size:1.125rem">Select a session</p>
+                    <p style="font-size:0.875rem;margin-top:0.5rem">Choose a session from the sidebar to view the conversation</p>
+                  </div>
+                </div>
+              </template>
+              <template x-if="selectedSessionId && chatMessages.length === 0 && !chatLoading">
+                <div class="chat-empty">
+                  <div>
+                    <p style="font-size:1.125rem">No messages yet</p>
+                    <p style="font-size:0.875rem;margin-top:0.5rem">Conversation will appear here</p>
+                  </div>
+                </div>
+              </template>
+              <template x-for="(msg, idx) in chatMessages" :key="idx">
+                <div class="chat-bubble"
+                     :class="bubbleClass(msg, idx)"
+                     x-html="bubbleHTML(msg)">
+                </div>
+              </template>
+            </div>
+
+            <!-- Response textarea (only when pending prompt) -->
+            <div class="response-area" x-show="currentPendingPrompt">
+              <textarea x-model="responseText" :placeholder="isPromptStale ? 'Hook timed out — will queue as instruction...' : 'Type your response...'"
+                        @keydown.enter.prevent="if(!$event.shiftKey && responseText.trim()){
+                          responseSending=true;
+                          respondToPrompt(currentPendingPrompt.id, responseText).then(() => responseSending=false);
+                        }"
+                        :disabled="responseSending"></textarea>
+              <button class="send-btn" :disabled="!responseText.trim() || responseSending"
+                      @click="responseSending=true;respondToPrompt(currentPendingPrompt.id, responseText).then(() => responseSending=false)">
+                &#9654;
+              </button>
+            </div>
+
+            <!-- Input bar (managed mode messages OR hook-mode instructions) -->
+            <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt">
+              <input type="text" x-model="inputText"
+                     :placeholder="currentSession?.mode === 'managed' ? 'Send a message... (type /resume to continue a previous session)' : 'Send instruction (delivered on next stop)...'"
+                     @keydown.enter="handleInput()"
+                     :disabled="inputSending">
+              <button class="btn btn-primary btn-sm" :disabled="!inputText.trim() || inputSending"
+                      @click="handleInput()" style="width:auto">
+                <span x-show="!inputSuccess">Send</span>
+                <span x-show="inputSuccess" style="color:#16a34a">Sent!</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- File Viewer Panel -->
+          <div class="file-viewer-column" x-show="viewerFile" x-cloak>
+            <div class="file-viewer-header">
+              <span class="file-viewer-path" x-text="viewerFileName"></span>
+              <div class="file-viewer-controls">
+                <button :class="{ active: viewerMode === 'diff' }" @click="viewerMode = 'diff'">Diff</button>
+                <button :class="{ active: viewerMode === 'full' }" @click="switchToFullView()">Full</button>
+                <button class="file-viewer-close" @click="closeFileViewer()">&times;</button>
               </div>
             </div>
-          </template>
-          <template x-if="selectedSessionId && chatMessages.length === 0 && !chatLoading">
-            <div class="chat-empty">
-              <div>
-                <p style="font-size:1.125rem">No messages yet</p>
-                <p style="font-size:0.875rem;margin-top:0.5rem">Conversation will appear here</p>
+            <div class="file-viewer-body">
+              <div x-show="viewerMode === 'diff'" class="diff-view">
+                <template x-if="viewerDiffs.length === 0">
+                  <div class="diff-empty">No edits recorded for this file. Switch to Full view to see content.</div>
+                </template>
+                <template x-for="(diff, i) in viewerDiffs" :key="i">
+                  <div class="diff-block">
+                    <div class="diff-old" x-show="diff.old_string" x-text="diff.old_string"></div>
+                    <div class="diff-new" x-text="diff.new_string || diff.content"></div>
+                  </div>
+                </template>
+              </div>
+              <div x-show="viewerMode === 'full'" class="full-view">
+                <div x-show="viewerLoading" class="viewer-loading">Loading...</div>
+                <div x-show="viewerBinary" class="viewer-binary">Binary file — cannot display.</div>
+                <pre x-show="!viewerLoading && !viewerBinary" class="full-file-content" x-text="viewerContent"></pre>
+                <div x-show="viewerTruncated" class="viewer-truncated">File truncated (exceeds 1MB).</div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- File Tree Sidebar -->
+      <div class="file-tree-sidebar" x-show="authenticated && selectedSessionId">
+        <div class="file-tree-header">
+          <span>Files</span>
+          <span class="file-count-badge" x-show="sessionFiles.length > 0" x-text="sessionFiles.length"></span>
+        </div>
+        <div class="file-tree-list">
+          <template x-if="visibleFileNodes.length === 0">
+            <div class="file-tree-empty">No files modified yet</div>
           </template>
-          <template x-for="(msg, idx) in chatMessages" :key="idx">
-            <div class="chat-bubble"
-                 :class="bubbleClass(msg, idx)"
-                 x-html="bubbleHTML(msg)">
+          <template x-for="node in visibleFileNodes" :key="node.path + (node.action || '')">
+            <div class="file-tree-item"
+                 :class="{ 'is-dir': node.isDir, 'is-selected': viewerFile === node.path }"
+                 :style="'padding-left: ' + (node.depth * 16 + 8) + 'px'"
+                 @click="node.isDir ? toggleDir(node) : openFileViewer(node.path)">
+              <span class="file-tree-icon" x-text="node.isDir ? (node.open ? '▾' : '▸') : ''"></span>
+              <span class="file-tree-name" x-text="node.name" :title="node.path"></span>
+              <span class="file-tree-action" :class="'action-' + (node.action || '')"
+                    x-show="!node.isDir && node.action"
+                    x-text="node.action === 'edit' ? 'M' : node.action === 'write' ? 'A' : 'R'"></span>
             </div>
           </template>
-        </div>
-
-        <!-- Response textarea (only when pending prompt) -->
-        <div class="response-area" x-show="currentPendingPrompt">
-          <textarea x-model="responseText" :placeholder="isPromptStale ? 'Hook timed out — will queue as instruction...' : 'Type your response...'"
-                    @keydown.enter.prevent="if(!$event.shiftKey && responseText.trim()){
-                      responseSending=true;
-                      respondToPrompt(currentPendingPrompt.id, responseText).then(() => responseSending=false);
-                    }"
-                    :disabled="responseSending"></textarea>
-          <button class="send-btn" :disabled="!responseText.trim() || responseSending"
-                  @click="responseSending=true;respondToPrompt(currentPendingPrompt.id, responseText).then(() => responseSending=false)">
-            &#9654;
-          </button>
-        </div>
-
-        <!-- Input bar (managed mode messages OR hook-mode instructions) -->
-        <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt">
-          <input type="text" x-model="inputText"
-                 :placeholder="currentSession?.mode === 'managed' ? 'Send a message... (type /resume to continue a previous session)' : 'Send instruction (delivered on next stop)...'"
-                 @keydown.enter="handleInput()"
-                 :disabled="inputSending">
-          <button class="btn btn-primary btn-sm" :disabled="!inputText.trim() || inputSending"
-                  @click="handleInput()" style="width:auto">
-            <span x-show="!inputSuccess">Send</span>
-            <span x-show="inputSuccess" style="color:#16a34a">Sent!</span>
-          </button>
         </div>
       </div>
     </div>

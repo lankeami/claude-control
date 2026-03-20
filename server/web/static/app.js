@@ -42,6 +42,18 @@ document.addEventListener('alpine:init', () => {
     resumableSessions: [],
     resumeLoading: false,
 
+    // File browser state
+    sessionFiles: [],
+    fileTreeData: [],
+    viewerFile: null,
+    viewerMode: 'diff',
+    viewerDiffs: [],
+    viewerContent: '',
+    viewerLoading: false,
+    viewerBinary: false,
+    viewerTruncated: false,
+    fileContentCache: {},
+
     // Toast
     showToast: false,
     toastMessage: '',
@@ -281,6 +293,25 @@ document.addEventListener('alpine:init', () => {
       return this.sessions.find(s => s.id === this.selectedSessionId) || null;
     },
 
+    get visibleFileNodes() {
+      const nodes = [];
+      const walk = (items) => {
+        for (const node of items) {
+          nodes.push(node);
+          if (node.isDir && node.open && node.children) {
+            walk(node.children);
+          }
+        }
+      };
+      walk(this.fileTreeData);
+      return nodes;
+    },
+
+    get viewerFileName() {
+      if (!this.viewerFile) return '';
+      return this.viewerFile.split('/').pop();
+    },
+
     sessionName(session) {
       if (session.mode === 'managed' && session.cwd) {
         const parts = session.cwd.split('/');
@@ -305,6 +336,10 @@ document.addEventListener('alpine:init', () => {
       if (this.selectedSessionId === id) return;
       this.selectedSessionId = id;
       this.stopSessionSSE();
+      this.closeFileViewer();
+      this.sessionFiles = [];
+      this.fileTreeData = [];
+      this.fileContentCache = {};
 
       const sess = this.sessions.find(s => s.id === this.selectedSessionId);
       if (sess && sess.mode === 'managed') {
@@ -313,8 +348,9 @@ document.addEventListener('alpine:init', () => {
           this.startSessionSSE(this.selectedSessionId);
         }
       } else {
-        this.fetchTranscript(this.selectedSessionId, true);
+        await this.fetchTranscript(this.selectedSessionId, true);
       }
+      this.loadSessionFiles(this.selectedSessionId);
     },
 
     async deleteSession(id) {
@@ -561,6 +597,20 @@ document.addEventListener('alpine:init', () => {
             });
             this.$nextTick(() => this.scrollToBottom());
           }
+          // Extract file paths from tool_use events for the file tree
+          if (data.type === 'assistant' && data.message && data.message.content && Array.isArray(data.message.content)) {
+            for (const block of data.message.content) {
+              if (block.type === 'tool_use' && block.input && block.input.file_path) {
+                if (['Edit', 'Write', 'Read'].includes(block.name)) {
+                  const action = block.name.toLowerCase();
+                  if (!this.sessionFiles.find(f => f.path === block.input.file_path && f.action === action)) {
+                    this.sessionFiles.push({ path: block.input.file_path, action });
+                    this.fileTreeData = this.buildFileTree(this.sessionFiles);
+                  }
+                }
+              }
+            }
+          }
           // Skip: system init, user echo, result, tool_use, tool_result
         } catch (e) {
           // Ignore unparseable lines
@@ -663,6 +713,124 @@ document.addEventListener('alpine:init', () => {
         console.error('Failed to fetch messages:', e);
       }
       this.chatLoading = false;
+    },
+
+    // File browser methods
+    async loadSessionFiles(sessionId) {
+      if (!sessionId) { this.sessionFiles = []; this.fileTreeData = []; return; }
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/files`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!resp.ok) { this.sessionFiles = []; this.fileTreeData = []; return; }
+        const data = await resp.json();
+        this.sessionFiles = data.files || [];
+        this.fileTreeData = this.buildFileTree(this.sessionFiles);
+      } catch (e) {
+        this.sessionFiles = [];
+        this.fileTreeData = [];
+      }
+    },
+
+    buildFileTree(files) {
+      if (!files || files.length === 0) return [];
+      const paths = files.map(f => f.path);
+      const prefix = this.commonPrefix(paths);
+      const root = {};
+      for (const file of files) {
+        const rel = file.path.substring(prefix.length).replace(/^\//, '');
+        const parts = rel.split('/');
+        let node = root;
+        for (let i = 0; i < parts.length; i++) {
+          if (!node[parts[i]]) node[parts[i]] = {};
+          if (i < parts.length - 1) { node = node[parts[i]]; }
+          else { node[parts[i]]._file = file; }
+        }
+      }
+      const toArray = (obj, depth) => {
+        const entries = Object.entries(obj).filter(([k]) => k !== '_file');
+        entries.sort(([a, aVal], [b, bVal]) => {
+          const aDir = !aVal._file; const bDir = !bVal._file;
+          if (aDir !== bDir) return aDir ? -1 : 1;
+          return a.localeCompare(b);
+        });
+        const result = [];
+        for (const [name, val] of entries) {
+          if (val._file) {
+            result.push({ name, path: val._file.path, action: val._file.action, isDir: false, depth, open: false, children: [] });
+          } else {
+            const children = toArray(val, depth + 1);
+            result.push({ name, path: prefix + name, isDir: true, depth, open: true, children, action: null });
+          }
+        }
+        return result;
+      };
+      return toArray(root, 0);
+    },
+
+    commonPrefix(paths) {
+      if (paths.length === 0) return '';
+      if (paths.length === 1) return paths[0].substring(0, paths[0].lastIndexOf('/') + 1);
+      let prefix = paths[0];
+      for (let i = 1; i < paths.length; i++) {
+        while (prefix.length > 0 && !paths[i].startsWith(prefix)) {
+          prefix = prefix.substring(0, prefix.lastIndexOf('/'));
+        }
+      }
+      if (prefix && !prefix.endsWith('/')) prefix = prefix.substring(0, prefix.lastIndexOf('/') + 1);
+      return prefix || '/';
+    },
+
+    toggleDir(node) { node.open = !node.open; },
+
+    openFileViewer(filePath) {
+      if (this.viewerFile === filePath) { this.closeFileViewer(); return; }
+      this.viewerFile = filePath;
+      this.viewerMode = 'diff';
+      this.viewerContent = '';
+      this.viewerLoading = false;
+      this.viewerBinary = false;
+      this.viewerTruncated = false;
+      this.viewerDiffs = this.chatMessages
+        .filter(m => m.file_path === filePath && (m.msg_type === 'edit' || m.msg_type === 'write'))
+        .map(m => ({ old_string: m.old_string || '', new_string: m.new_string || '', content: m.content || '', type: m.msg_type }));
+    },
+
+    async switchToFullView() {
+      this.viewerMode = 'full';
+      if (!this.viewerFile) return;
+      const cacheKey = this.viewerFile + ':' + this.selectedSessionId;
+      if (this.fileContentCache[cacheKey]) {
+        const cached = this.fileContentCache[cacheKey];
+        this.viewerContent = cached.content;
+        this.viewerBinary = cached.binary;
+        this.viewerTruncated = cached.truncated;
+        return;
+      }
+      this.viewerLoading = true;
+      try {
+        const params = new URLSearchParams({ path: this.viewerFile, session_id: this.selectedSessionId });
+        const resp = await fetch('/api/files/content?' + params, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!resp.ok) { this.viewerContent = 'Error loading file.'; return; }
+        const data = await resp.json();
+        this.viewerContent = data.content || '';
+        this.viewerBinary = data.binary || false;
+        this.viewerTruncated = data.truncated || false;
+        if (!data.exists) this.viewerContent = 'File no longer exists on disk.';
+        this.fileContentCache[cacheKey] = data;
+      } catch (e) {
+        this.viewerContent = 'Error loading file.';
+      } finally {
+        this.viewerLoading = false;
+      }
+    },
+
+    closeFileViewer() {
+      this.viewerFile = null;
+      this.viewerDiffs = [];
+      this.viewerContent = '';
     },
 
     // Bubble rendering
