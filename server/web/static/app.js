@@ -1225,5 +1225,45 @@ document.addEventListener('alpine:init', () => {
 
       return html;
     },
+
+    renderImage(content, filePath) {
+      if (!content) return '<div class="image-preview">No image data</div>';
+
+      const ext = filePath.split('.').pop().toLowerCase();
+      const mimeMap = {
+        'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+        'gif': 'image/gif', 'svg': 'image/svg+xml', 'webp': 'image/webp',
+        'ico': 'image/x-icon', 'bmp': 'image/bmp'
+      };
+      const mime = mimeMap[ext] || 'image/png';
+      const fileName = filePath.split('/').pop();
+
+      let src;
+      if (ext === 'svg') {
+        src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(content);
+      } else {
+        src = 'data:' + mime + ';base64,' + content;
+      }
+
+      return '<div class="image-preview">' +
+        '<img src="' + src + '" alt="' + this.escapeHtml(fileName) + '">' +
+        '<div class="image-filename">' + this.escapeHtml(fileName) + '</div>' +
+        '</div>';
+    },
+
+    renderHTMLPreview(content) {
+      if (!content) return '<div class="html-preview"></div>';
+
+      const srcdocContent = content.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+
+      return '<div class="html-preview">' +
+        '<div class="html-preview-tabs">' +
+          '<button class="html-tab active" onclick="this.classList.add(\'active\');this.nextElementSibling.classList.remove(\'active\');this.parentElement.nextElementSibling.style.display=\'block\';this.parentElement.nextElementSibling.nextElementSibling.style.display=\'none\'">Preview</button>' +
+          '<button class="html-tab" onclick="this.classList.add(\'active\');this.previousElementSibling.classList.remove(\'active\');this.parentElement.nextElementSibling.style.display=\'none\';this.parentElement.nextElementSibling.nextElementSibling.style.display=\'block\'">Source</button>' +
+        '</div>' +
+        '<iframe class="html-preview-frame" srcdoc="' + srcdocContent + '" sandbox=""></iframe>' +
+        '<div class="html-source" style="display:none">' + this.renderCode(content, 'html') + '</div>' +
+        '</div>';
+    },
   }));
 });
