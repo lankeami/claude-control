@@ -37,6 +37,11 @@ document.addEventListener('alpine:init', () => {
     browseEntries: [],
     browseLoading: false,
 
+    // Resume picker state
+    showResumePicker: false,
+    resumableSessions: [],
+    resumeLoading: false,
+
     // Toast
     showToast: false,
     toastMessage: '',
@@ -382,6 +387,13 @@ document.addEventListener('alpine:init', () => {
       if (!this.selectedSessionId || !this.inputText.trim()) return;
       const sess = this.currentSession;
 
+      // Intercept /resume command for managed sessions
+      if (sess && sess.mode === 'managed' && this.inputText.trim().toLowerCase() === '/resume') {
+        this.inputText = '';
+        await this.openResumePicker();
+        return;
+      }
+
       if (sess && sess.mode === 'managed') {
         await this.sendManagedMessage();
       } else {
@@ -573,6 +585,46 @@ document.addEventListener('alpine:init', () => {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
         });
         this.toast('Session interrupted');
+      } catch (e) {
+        this.toast('Error: ' + e.message);
+      }
+    },
+
+    async openResumePicker() {
+      this.resumeLoading = true;
+      this.showResumePicker = true;
+      this.resumableSessions = [];
+      try {
+        const res = await fetch(`/api/sessions/${this.selectedSessionId}/resumable`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (res.status === 404) {
+          this.toast('No previous CLI sessions found for this project');
+          this.showResumePicker = false;
+          this.resumeLoading = false;
+          return;
+        }
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        this.resumableSessions = data.sessions || [];
+      } catch (e) {
+        this.toast('Error: ' + e.message);
+        this.showResumePicker = false;
+      }
+      this.resumeLoading = false;
+    },
+
+    async resumeSession(claudeSessionId, summary) {
+      try {
+        const res = await fetch(`/api/sessions/${this.selectedSessionId}/resume`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: claudeSessionId })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        this.showResumePicker = false;
+        this.chatMessages = [];
+        this.toast('Resumed: ' + (summary || 'session'));
       } catch (e) {
         this.toast('Error: ' + e.message);
       }

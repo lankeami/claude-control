@@ -139,7 +139,7 @@
         <!-- Input bar (managed mode messages OR hook-mode instructions) -->
         <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt">
           <input type="text" x-model="inputText"
-                 :placeholder="currentSession?.mode === 'managed' ? 'Send message...' : 'Send instruction (delivered on next stop)...'"
+                 :placeholder="currentSession?.mode === 'managed' ? 'Send a message... (type /resume to continue a previous session)' : 'Send instruction (delivered on next stop)...'"
                  @keydown.enter="handleInput()"
                  :disabled="inputSending">
           <button class="btn btn-primary btn-sm" :disabled="!inputText.trim() || inputSending"
@@ -202,6 +202,44 @@
         <button class="btn btn-sm btn-primary" @click="createManagedSession()" :disabled="!newSessionCWD.trim()">
           Select This Folder
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resume Picker Modal -->
+  <div x-show="showResumePicker" x-cloak
+       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
+       @click.self="showResumePicker = false">
+    <div style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:70vh;">
+      <h3 style="margin-top:0; margin-bottom:12px;">Resume a Session</h3>
+
+      <template x-if="resumeLoading">
+        <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading sessions...</div>
+      </template>
+
+      <template x-if="!resumeLoading && resumableSessions.length === 0">
+        <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:13px;">No sessions to resume</div>
+      </template>
+
+      <div style="overflow-y:auto; flex:1; min-height:0;">
+        <template x-for="rs in resumableSessions" :key="rs.session_id">
+          <div @click="resumeSession(rs.session_id, rs.summary)"
+               style="padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.15s;"
+               onmouseenter="this.style.background='var(--hover)'"
+               onmouseleave="this.style.background='transparent'">
+            <div style="font-weight:600; font-size:14px; margin-bottom:2px;" x-text="rs.summary || 'Untitled session'"></div>
+            <div style="font-size:12px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="rs.first_prompt"></div>
+            <div style="display:flex; gap:8px; margin-top:4px; font-size:11px; color:var(--text-muted);">
+              <span x-show="rs.git_branch" x-text="rs.git_branch" style="background:var(--input-bg); padding:1px 5px; border-radius:3px;"></span>
+              <span x-text="rs.message_count + ' messages'"></span>
+              <span x-text="timeAgo(rs.modified)"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-shrink:0;">
+        <button class="btn btn-sm" @click="showResumePicker = false">Cancel</button>
       </div>
     </div>
   </div>
