@@ -817,17 +817,27 @@ document.addEventListener('alpine:init', () => {
     async openFileViewer(filePath) {
       if (this.viewerFile === filePath) { this.closeFileViewer(); return; }
       this.viewerFile = filePath;
-      this.viewerMode = 'diff';
+      this.viewerMode = 'full';
       this.viewerContent = '';
-      this.viewerLoading = true;
+      this.viewerLoading = false;
       this.viewerBinary = false;
       this.viewerTruncated = false;
       this.viewerDiffs = [];
       this.viewerDiffHtml = '';
+      this.viewerFullHtml = '';
+      this.viewerFileType = '';
 
-      // Fetch git diff for this file
+      // Default to full view — fetch and render immediately
+      await this.switchToFullView();
+    },
+
+    async switchToDiffView() {
+      this.viewerMode = 'diff';
+      if (!this.viewerFile || this.viewerDiffHtml) return;
+
+      this.viewerLoading = true;
       try {
-        const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId });
+        const params = new URLSearchParams({ path: this.viewerFile, session_id: this.selectedSessionId });
         const resp = await fetch('/api/files/diff?' + params, {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
         });
@@ -1099,7 +1109,7 @@ document.addEventListener('alpine:init', () => {
       }
 
       const lines = highlighted.split('\n');
-      const lineHtml = lines.map(line => '<span class="line">' + (line || ' ') + '</span>').join('\n');
+      const lineHtml = lines.map(line => '<span class="line">' + (line || ' ') + '</span>').join('');
 
       const badge = detectedLang ? '<span class="language-badge">' + this.escapeHtml(detectedLang) + '</span>' : '';
 

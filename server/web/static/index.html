@@ -164,7 +164,7 @@
               <span class="file-viewer-path" x-text="viewerFileName"></span>
               <span class="file-type-badge" x-text="viewerFileType" x-show="viewerFileType"></span>
               <div class="file-viewer-controls">
-                <button :class="{ active: viewerMode === 'diff' }" @click="viewerMode = 'diff'">Diff</button>
+                <button :class="{ active: viewerMode === 'diff' }" @click="switchToDiffView()">Diff</button>
                 <button :class="{ active: viewerMode === 'full' }" @click="switchToFullView()">Full</button>
                 <button class="file-viewer-close" @click="closeFileViewer()">&times;</button>
               </div>
