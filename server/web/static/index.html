@@ -6,6 +6,9 @@
   <title>Claude Controller</title>
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script defer src="/app.js"></script>
   <script defer src="/alpine.min.js"></script>
 </head>
@@ -159,6 +162,7 @@
           <div class="file-viewer-column" x-show="viewerFile" x-cloak>
             <div class="file-viewer-header">
               <span class="file-viewer-path" x-text="viewerFileName"></span>
+              <span class="file-type-badge" x-text="viewerFileType" x-show="viewerFileType"></span>
               <div class="file-viewer-controls">
                 <button :class="{ active: viewerMode === 'diff' }" @click="viewerMode = 'diff'">Diff</button>
                 <button :class="{ active: viewerMode === 'full' }" @click="switchToFullView()">Full</button>
@@ -174,7 +178,7 @@
               <div x-show="viewerMode === 'full'" class="full-view">
                 <div x-show="viewerLoading" class="viewer-loading">Loading...</div>
                 <div x-show="viewerBinary" class="viewer-binary">Binary file — cannot display.</div>
-                <pre x-show="!viewerLoading && !viewerBinary" class="full-file-content" x-text="viewerContent"></pre>
+                <div x-show="!viewerLoading && !viewerBinary" class="full-file-content" x-html="viewerFullHtml"></div>
                 <div x-show="viewerTruncated" class="viewer-truncated">File truncated (exceeds 1MB).</div>
               </div>
             </div>
