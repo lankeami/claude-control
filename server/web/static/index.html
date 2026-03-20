@@ -193,18 +193,22 @@
         </div>
         <div class="file-tree-list">
           <template x-if="visibleFileNodes.length === 0">
-            <div class="file-tree-empty">No files modified yet</div>
+            <div class="file-tree-empty">No files found</div>
           </template>
           <template x-for="node in visibleFileNodes" :key="node.path + (node.action || '')">
             <div class="file-tree-item"
-                 :class="{ 'is-dir': node.isDir, 'is-selected': viewerFile === node.path }"
+                 :class="{ 'is-dir': node.isDir, 'is-selected': viewerFile === node.path, 'has-changes': !node.isDir && (node.gitStatus || node.action) }"
                  :style="'padding-left: ' + (node.depth * 16 + 8) + 'px'"
                  @click="node.isDir ? toggleDir(node) : openFileViewer(node.path)">
               <span class="file-tree-icon" x-text="node.isDir ? (node.open ? '▾' : '▸') : ''"></span>
-              <span class="file-tree-name" x-text="node.name" :title="node.path"></span>
+              <span class="file-tree-name" :class="{ 'name-modified': !node.isDir && node.gitStatus }" x-text="node.name" :title="node.path"></span>
+              <span class="file-tree-status" :class="'git-' + (node.gitStatus === '?' ? 'untracked' : (node.gitStatus || ''))"
+                    x-show="!node.isDir && node.gitStatus"
+                    x-text="node.gitStatus"></span>
               <span class="file-tree-action" :class="'action-' + (node.action || '')"
+                    :style="!node.gitStatus ? 'margin-left:auto' : ''"
                     x-show="!node.isDir && node.action"
-                    x-text="node.action === 'edit' ? 'M' : node.action === 'write' ? 'A' : 'R'"></span>
+                    x-text="node.action === 'edit' ? 'E' : node.action === 'write' ? 'W' : 'R'"></span>
             </div>
           </template>
         </div>

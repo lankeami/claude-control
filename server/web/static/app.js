@@ -603,8 +603,15 @@ document.addEventListener('alpine:init', () => {
               if (block.type === 'tool_use' && block.input && block.input.file_path) {
                 if (['Edit', 'Write', 'Read'].includes(block.name)) {
                   const action = block.name.toLowerCase();
-                  if (!this.sessionFiles.find(f => f.path === block.input.file_path && f.action === action)) {
-                    this.sessionFiles.push({ path: block.input.file_path, action });
+                  const existing = this.sessionFiles.find(f => f.path === block.input.file_path);
+                  if (existing) {
+                    // Update action on existing entry (file already in tree from filetree endpoint)
+                    if (!existing.action || (action === 'edit' || action === 'write')) {
+                      existing.action = action;
+                      this.fileTreeData = this.buildFileTree(this.sessionFiles);
+                    }
+                  } else {
+                    this.sessionFiles.push({ path: block.input.file_path, action, git_status: 'M' });
                     this.fileTreeData = this.buildFileTree(this.sessionFiles);
                   }
                 }
@@ -719,10 +726,20 @@ document.addEventListener('alpine:init', () => {
     async loadSessionFiles(sessionId) {
       if (!sessionId) { this.sessionFiles = []; this.fileTreeData = []; return; }
       try {
-        const resp = await fetch(`/api/sessions/${sessionId}/files`, {
+        const resp = await fetch(`/api/sessions/${sessionId}/filetree`, {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
         });
-        if (!resp.ok) { this.sessionFiles = []; this.fileTreeData = []; return; }
+        if (!resp.ok) {
+          // Fallback to old endpoint if filetree not available
+          const fallback = await fetch(`/api/sessions/${sessionId}/files`, {
+            headers: { 'Authorization': 'Bearer ' + this.apiKey }
+          });
+          if (!fallback.ok) { this.sessionFiles = []; this.fileTreeData = []; return; }
+          const data = await fallback.json();
+          this.sessionFiles = data.files || [];
+          this.fileTreeData = this.buildFileTree(this.sessionFiles);
+          return;
+        }
         const data = await resp.json();
         this.sessionFiles = data.files || [];
         this.fileTreeData = this.buildFileTree(this.sessionFiles);
@@ -747,7 +764,7 @@ document.addEventListener('alpine:init', () => {
           else { node[parts[i]]._file = file; }
         }
       }
-      const toArray = (obj, depth) => {
+      const toArray = (obj, depth, parentPath) => {
         const entries = Object.entries(obj).filter(([k]) => k !== '_file');
         entries.sort(([a, aVal], [b, bVal]) => {
           const aDir = !aVal._file; const bDir = !bVal._file;
@@ -757,15 +774,23 @@ document.addEventListener('alpine:init', () => {
         const result = [];
         for (const [name, val] of entries) {
           if (val._file) {
-            result.push({ name, path: val._file.path, action: val._file.action, isDir: false, depth, open: false, children: [] });
+            result.push({
+              name, path: val._file.path,
+              action: val._file.action || null,
+              gitStatus: val._file.git_status || null,
+              isDir: false, depth, open: false, children: []
+            });
           } else {
-            const children = toArray(val, depth + 1);
-            result.push({ name, path: prefix + name, isDir: true, depth, open: true, children, action: null });
+            const dirPath = parentPath ? parentPath + '/' + name : prefix + name;
+            const children = toArray(val, depth + 1, dirPath);
+            // Directories are collapsed by default; open if small or has changes
+            const hasChanges = children.some(c => c.gitStatus || c.action || (c.isDir && c.open));
+            result.push({ name, path: dirPath, isDir: true, depth, open: hasChanges, children, action: null, gitStatus: null });
           }
         }
         return result;
       };
-      return toArray(root, 0);
+      return toArray(root, 0, '');
     },
 
     commonPrefix(paths) {

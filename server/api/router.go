@@ -56,6 +56,7 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handle
 
 	// File browser endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/files", s.handleListSessionFiles)
+	apiMux.HandleFunc("GET /api/sessions/{id}/filetree", s.handleFileTree)
 	apiMux.HandleFunc("GET /api/files/content", s.handleGetFileContent)
 
 	rl := NewRateLimiter(60, 10)
