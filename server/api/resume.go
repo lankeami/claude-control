@@ -121,6 +121,69 @@ func loadSessionsFromJSONL(projectDir string) ([]sessionEntry, error) {
 	return entries, nil
 }
 
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// extractRecentMessages reads a JSONL file and returns the last N user/assistant messages.
+func extractRecentMessages(fpath string, n int) []chatMessage {
+	f, err := os.Open(fpath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var all []chatMessage
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		var line struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			continue
+		}
+		if line.Type != "user" && line.Type != "assistant" {
+			continue
+		}
+		text := extractTextContent(line.Message.Content)
+		if text == "" {
+			continue
+		}
+		all = append(all, chatMessage{Role: line.Type, Content: text})
+	}
+	if len(all) > n {
+		all = all[len(all)-n:]
+	}
+	return all
+}
+
+// extractTextContent pulls text from either an array of content blocks or a plain string.
+func extractTextContent(raw json.RawMessage) string {
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &blocks); err == nil {
+		var parts []string
+		for _, b := range blocks {
+			if b.Type == "text" && b.Text != "" {
+				parts = append(parts, b.Text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return ""
+}
+
 // extractFirstPrompt reads a JSONL file and returns the text of the first user message.
 func extractFirstPrompt(fpath string) string {
 	f, err := os.Open(fpath)
@@ -144,22 +207,8 @@ func extractFirstPrompt(fpath string) string {
 		if line.Type != "user" {
 			continue
 		}
-		// Try content as array of blocks
-		var blocks []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		}
-		if err := json.Unmarshal(line.Message.Content, &blocks); err == nil {
-			for _, b := range blocks {
-				if b.Type == "text" && b.Text != "" {
-					return b.Text
-				}
-			}
-		}
-		// Try content as plain string
-		var s string
-		if err := json.Unmarshal(line.Message.Content, &s); err == nil && s != "" {
-			return s
+		if text := extractTextContent(line.Message.Content); text != "" {
+			return text
 		}
 	}
 	return ""
@@ -301,13 +350,23 @@ func (s *Server) handleResumeSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Re-fetch and return updated session
+	// Re-fetch updated session
 	updated, err := s.store.GetSessionByID(sessionID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
+	// Read recent messages from the JSONL file for context playback
+	var recentMessages []chatMessage
+	jsonlPath := filepath.Join(projectDir, req.SessionID+".jsonl")
+	if _, err := os.Stat(jsonlPath); err == nil {
+		recentMessages = extractRecentMessages(jsonlPath, 6)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(updated)
+	json.NewEncoder(w).Encode(map[string]any{
+		"session":         updated,
+		"recent_messages": recentMessages,
+	})
 }

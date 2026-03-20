@@ -622,8 +622,17 @@ document.addEventListener('alpine:init', () => {
           body: JSON.stringify({ session_id: claudeSessionId })
         });
         if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
         this.showResumePicker = false;
-        this.chatMessages = [];
+
+        // Show recent messages from the resumed session for context
+        this.chatMessages = (data.recent_messages || []).map(m => ({
+          role: m.role,
+          content: m.content,
+          msg_type: 'text',
+          timestamp: new Date().toISOString()
+        }));
+        this.$nextTick(() => this.scrollToBottom(true));
         this.toast('Resumed: ' + (summary || 'session'));
       } catch (e) {
         this.toast('Error: ' + e.message);
