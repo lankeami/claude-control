@@ -45,6 +45,7 @@ document.addEventListener('alpine:init', () => {
     // File browser state
     sessionFiles: [],
     fileTreeData: [],
+    gitInfo: null,
     viewerFile: null,
     viewerMode: 'diff',
     viewerDiffs: [],
@@ -730,7 +731,7 @@ document.addEventListener('alpine:init', () => {
     // File browser methods
     async loadSessionFiles(sessionId) {
       this.renderedContentCache = {};
-      if (!sessionId) { this.sessionFiles = []; this.fileTreeData = []; return; }
+      if (!sessionId) { this.sessionFiles = []; this.fileTreeData = []; this.gitInfo = null; return; }
       try {
         const resp = await fetch(`/api/sessions/${sessionId}/filetree`, {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
@@ -740,18 +741,21 @@ document.addEventListener('alpine:init', () => {
           const fallback = await fetch(`/api/sessions/${sessionId}/files`, {
             headers: { 'Authorization': 'Bearer ' + this.apiKey }
           });
-          if (!fallback.ok) { this.sessionFiles = []; this.fileTreeData = []; return; }
+          if (!fallback.ok) { this.sessionFiles = []; this.fileTreeData = []; this.gitInfo = null; return; }
           const data = await fallback.json();
           this.sessionFiles = data.files || [];
           this.fileTreeData = this.buildFileTree(this.sessionFiles);
+          this.gitInfo = null;
           return;
         }
         const data = await resp.json();
         this.sessionFiles = data.files || [];
         this.fileTreeData = this.buildFileTree(this.sessionFiles);
+        this.gitInfo = data.git || null;
       } catch (e) {
         this.sessionFiles = [];
         this.fileTreeData = [];
+        this.gitInfo = null;
       }
     },
 

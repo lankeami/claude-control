@@ -528,6 +528,30 @@ body {
 .file-tree-action.action-write { color: var(--green); }
 .file-tree-action.action-read { color: var(--text-muted); }
 
+/* Git Status Bar */
+.git-status-bar {
+  border-top: 1px solid var(--border); padding: 10px 12px;
+  font-size: 12px; background: var(--bg-secondary); flex-shrink: 0;
+}
+.git-branch-row {
+  display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 4px;
+}
+.git-branch-icon { font-size: 14px; color: var(--text-muted); }
+.git-branch-name { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-ahead { color: var(--green); font-size: 11px; font-weight: 500; }
+.git-behind { color: var(--yellow); font-size: 11px; font-weight: 500; }
+.git-file-counts {
+  display: flex; flex-wrap: wrap; gap: 4px 8px; color: var(--text-muted); font-size: 11px;
+}
+.git-stat { white-space: nowrap; }
+.git-stat-staged { color: var(--green); }
+.git-stat-modified { color: var(--yellow); }
+.git-stat-added { color: var(--green); }
+.git-stat-deleted { color: var(--red); }
+.git-stat-untracked { color: var(--text-muted); }
+.git-clean { color: var(--text-muted); font-size: 11px; }
+.git-clean-text { font-style: italic; }
+
 /* Main content split */
 .main-content-split { display: flex; flex: 1; overflow: hidden; }
 .chat-column { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow: hidden; }
