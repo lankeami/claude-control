@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -362,6 +363,9 @@ func (s *Server) handleResumeSession(w http.ResponseWriter, r *http.Request) {
 	jsonlPath := filepath.Join(projectDir, req.SessionID+".jsonl")
 	if _, err := os.Stat(jsonlPath); err == nil {
 		recentMessages = extractRecentMessages(jsonlPath, 6)
+		log.Printf("resume: loaded %d recent messages from %s", len(recentMessages), jsonlPath)
+	} else {
+		log.Printf("resume: JSONL not found at %s: %v", jsonlPath, err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

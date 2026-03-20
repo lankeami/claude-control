@@ -389,6 +389,8 @@ document.addEventListener('alpine:init', () => {
 
       // Intercept /resume command for managed sessions
       if (sess && sess.mode === 'managed' && this.inputText.trim().toLowerCase() === '/resume') {
+        this.chatMessages.push({ role: 'user', content: '/resume', msg_type: 'text', timestamp: new Date().toISOString() });
+        this.$nextTick(() => this.scrollToBottom(true));
         this.inputText = '';
         await this.openResumePicker();
         return;
