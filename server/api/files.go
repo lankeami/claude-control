@@ -3,11 +3,23 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+var imageExtensions = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true,
+	".gif": true, ".webp": true, ".ico": true, ".bmp": true,
+}
+
+func isImageFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return imageExtensions[ext]
+}
 
 type fileEntry struct {
 	Path   string `json:"path"`
@@ -208,6 +220,19 @@ func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 		checkLen = 512
 	}
 	binary := bytes.IndexByte(buf[:checkLen], 0) >= 0
+
+	// For image files, always return base64 regardless of null-byte detection
+	if isImageFile(filePath) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(fileContentResponse{
+			Path:      filePath,
+			Content:   base64.StdEncoding.EncodeToString(buf),
+			Exists:    true,
+			Truncated: truncated,
+			Binary:    true,
+		})
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fileContentResponse{
