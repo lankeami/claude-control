@@ -1077,5 +1077,27 @@ document.addEventListener('alpine:init', () => {
       if (!content) return '<pre class="full-file-content-pre"></pre>';
       return '<pre class="full-file-content-pre">' + this.escapeHtml(content) + '</pre>';
     },
+
+    renderMarkdown(content) {
+      if (!content) return '<div class="markdown-content"></div>';
+
+      if (typeof marked === 'undefined') return this.renderPlainText(content);
+
+      const renderer = new marked.Renderer();
+      const self = this;
+      renderer.code = function(code, language) {
+        const text = typeof code === 'object' ? code.text : code;
+        const lang = typeof code === 'object' ? code.lang : language;
+        if (typeof hljs !== 'undefined' && lang) {
+          try {
+            return '<pre><code class="hljs">' + hljs.highlight(text, { language: lang, ignoreIllegals: true }).value + '</code></pre>';
+          } catch (e) {}
+        }
+        return '<pre><code>' + self.escapeHtml(text) + '</code></pre>';
+      };
+
+      const html = marked.parse(content, { renderer, breaks: true });
+      return '<div class="markdown-content">' + this.sanitizeHtml(html) + '</div>';
+    },
   }));
 });
