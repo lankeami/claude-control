@@ -85,6 +85,15 @@ func migrate(db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq)`,
 		`ALTER TABLE sessions ADD COLUMN claude_session_id TEXT`,
+		`CREATE TABLE IF NOT EXISTS session_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    action TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id),
+    UNIQUE(session_id, file_path, action)
+)`,
 	}
 
 	for _, m := range migrations {

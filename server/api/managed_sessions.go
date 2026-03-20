@@ -151,6 +151,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 					_ = s.manager.Interrupt(sessionID)
 				}
 			}
+
+			// Extract file paths from tool_use content blocks
+			extractSessionFiles(line, sessionID, s.store)
 		}
 
 		managed.StreamNDJSON(proc.Stdout, broadcaster, onLine)
@@ -281,4 +284,49 @@ func extractAssistantText(line string) string {
 	}
 
 	return ""
+}
+
+// extractSessionFiles pulls file paths from tool_use content blocks in NDJSON lines.
+func extractSessionFiles(line, sessionID string, store *db.Store) {
+	var msg struct {
+		Message struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(line), &msg); err != nil || msg.Message.Content == nil {
+		return
+	}
+
+	var blocks []struct {
+		Type  string          `json:"type"`
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(msg.Message.Content, &blocks); err != nil {
+		return
+	}
+
+	for _, b := range blocks {
+		if b.Type != "tool_use" {
+			continue
+		}
+		var inp struct {
+			FilePath string `json:"file_path"`
+		}
+		if json.Unmarshal(b.Input, &inp) != nil || inp.FilePath == "" {
+			continue
+		}
+		action := ""
+		switch b.Name {
+		case "Edit":
+			action = "edit"
+		case "Write":
+			action = "write"
+		case "Read":
+			action = "read"
+		}
+		if action != "" {
+			_ = store.InsertSessionFile(sessionID, inp.FilePath, action)
+		}
+	}
 }
