@@ -84,10 +84,15 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	var args []string
 	args = append(args, "-p", req.Message)
 
+	// Use claude_session_id if set (resumed session), otherwise use managed session's own ID
+	resumeID := sessionID
+	if sess.ClaudeSessionID != "" {
+		resumeID = sess.ClaudeSessionID
+	}
 	if sess.Initialized {
-		args = append(args, "--resume", sessionID)
+		args = append(args, "--resume", resumeID)
 	} else {
-		args = append(args, "--session-id", sessionID)
+		args = append(args, "--session-id", resumeID)
 	}
 
 	args = append(args, "--output-format", "stream-json", "--verbose")
