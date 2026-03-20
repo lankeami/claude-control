@@ -701,7 +701,7 @@ document.addEventListener('alpine:init', () => {
         if (!res.ok) return;
         const msgs = await res.json();
         this.chatMessages = (msgs || [])
-          .filter(m => m.role === 'assistant' || (m.role === 'system' && m.content && m.content.includes('"error"')))
+          .filter(m => m.role === 'user' || m.role === 'assistant' || (m.role === 'system' && m.content && m.content.includes('"error"')))
           .map(m => ({
             role: m.role,
             content: m.content,
@@ -852,6 +852,10 @@ document.addEventListener('alpine:init', () => {
       const time = `<span class="bubble-time">${esc(this.timeAgo(msg.timestamp))}</span>`;
 
       if (msg.msg_type === 'text') {
+        if (msg.role === 'assistant' && typeof marked !== 'undefined') {
+          const html = marked.parse(msg.content || '', { breaks: true });
+          return `<div class="markdown-content">${html}</div>${time}`;
+        }
         return `${esc(msg.content)}${time}`;
       }
       if (msg.msg_type === 'edit') {
