@@ -605,3 +605,309 @@ body {
   .file-tree-sidebar { display: none; }
   .file-viewer-column { display: none; }
 }
+
+/* ===== Smart File Viewer Styles ===== */
+
+/* File type badge */
+.file-type-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: white;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+/* Code viewer with line numbers */
+.code-viewer-wrapper {
+  position: relative;
+}
+
+.code-viewer-wrapper .language-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--input-bg);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  z-index: 1;
+}
+
+.code-viewer {
+  margin: 0;
+  padding: 12px 12px 12px 52px;
+  font-family: 'SF Mono', Consolas, 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  counter-reset: line;
+  background: transparent;
+}
+
+.code-viewer .line {
+  display: block;
+  counter-increment: line;
+}
+
+.code-viewer .line::before {
+  content: counter(line);
+  display: inline-block;
+  width: 32px;
+  margin-left: -40px;
+  margin-right: 8px;
+  text-align: right;
+  color: var(--text-muted);
+  opacity: 0.5;
+  font-size: 11px;
+  user-select: none;
+}
+
+/* Markdown rendered content */
+.full-file-content .markdown-content {
+  padding: 16px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.full-file-content .markdown-content h1,
+.full-file-content .markdown-content h2,
+.full-file-content .markdown-content h3,
+.full-file-content .markdown-content h4,
+.full-file-content .markdown-content h5,
+.full-file-content .markdown-content h6 {
+  margin-top: 1.2em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.full-file-content .markdown-content h1 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+.full-file-content .markdown-content h2 { font-size: 1.3em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+.full-file-content .markdown-content h3 { font-size: 1.15em; }
+
+.full-file-content .markdown-content p { margin: 0.8em 0; }
+.full-file-content .markdown-content ul,
+.full-file-content .markdown-content ol { padding-left: 2em; margin: 0.5em 0; }
+
+.full-file-content .markdown-content code {
+  background: var(--input-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-family: 'SF Mono', Consolas, 'Menlo', monospace;
+}
+
+.full-file-content .markdown-content pre {
+  background: var(--input-bg);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.full-file-content .markdown-content pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.full-file-content .markdown-content blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 0.8em 0;
+  padding: 0.5em 1em;
+  color: var(--text-muted);
+}
+
+.full-file-content .markdown-content table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  width: 100%;
+}
+
+.full-file-content .markdown-content th,
+.full-file-content .markdown-content td {
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  text-align: left;
+}
+
+.full-file-content .markdown-content th {
+  background: var(--input-bg);
+  font-weight: 600;
+}
+
+.full-file-content .markdown-content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.full-file-content .markdown-content a:hover {
+  text-decoration: underline;
+}
+
+.full-file-content .markdown-content img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+.full-file-content .markdown-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+
+/* JSON tree */
+.json-tree {
+  padding: 12px;
+  font-family: 'SF Mono', Consolas, 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.json-line {
+  white-space: nowrap;
+}
+
+.json-toggle {
+  cursor: pointer;
+  user-select: none;
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.json-toggle:hover {
+  color: var(--accent);
+}
+
+.json-key {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.json-string { color: var(--green); }
+.json-number { color: var(--accent); }
+.json-boolean { color: #e67e22; }
+.json-null { color: var(--text-muted); font-style: italic; }
+.json-bracket { color: var(--text-muted); }
+.json-count { color: var(--text-muted); font-size: 10px; font-style: italic; }
+
+/* CSV table */
+.csv-table-wrapper {
+  overflow-x: auto;
+  padding: 8px;
+}
+
+.csv-table {
+  border-collapse: collapse;
+  font-family: 'SF Mono', Consolas, 'Menlo', monospace;
+  font-size: 12px;
+  width: 100%;
+}
+
+.csv-table th,
+.csv-table td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.csv-table th {
+  background: var(--input-bg);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.csv-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--input-bg) 50%, var(--bg));
+}
+
+/* Image preview */
+.image-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  min-height: 200px;
+}
+
+.image-preview img {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.image-preview .image-filename {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* HTML preview */
+.html-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.html-preview-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+.html-tab {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.html-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.html-preview-frame {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: white;
+  min-height: 300px;
+}
+
+.html-source {
+  overflow: auto;
+  flex: 1;
+}
+
+/* Plain text fallback */
+.full-file-content-pre {
+  margin: 0;
+  padding: 12px;
+  font-family: 'SF Mono', Consolas, 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
