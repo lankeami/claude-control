@@ -1099,5 +1099,63 @@ document.addEventListener('alpine:init', () => {
       const html = marked.parse(content, { renderer, breaks: true });
       return '<div class="markdown-content">' + this.sanitizeHtml(html) + '</div>';
     },
+
+    renderJSON(content) {
+      if (!content) return '<div class="json-tree"></div>';
+
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch (e) {
+        return this.renderCode(content, 'json');
+      }
+
+      const topLevelCount = Array.isArray(parsed) ? parsed.length :
+        (typeof parsed === 'object' && parsed !== null) ? Object.keys(parsed).length : 0;
+      const defaultExpanded = topLevelCount < 100;
+
+      return '<div class="json-tree">' + this.buildJSONTree(parsed, null, 0, defaultExpanded) + '</div>';
+    },
+
+    buildJSONTree(value, key, depth, expanded) {
+      const esc = (s) => this.escapeHtml(String(s));
+      const keyPrefix = key !== null ? '<span class="json-key">' + esc(key) + '</span>: ' : '';
+      const indent = depth * 16;
+
+      if (value === null) {
+        return '<div class="json-line" style="padding-left:' + indent + 'px">' + keyPrefix + '<span class="json-null">null</span></div>';
+      }
+      if (typeof value === 'boolean') {
+        return '<div class="json-line" style="padding-left:' + indent + 'px">' + keyPrefix + '<span class="json-boolean">' + value + '</span></div>';
+      }
+      if (typeof value === 'number') {
+        return '<div class="json-line" style="padding-left:' + indent + 'px">' + keyPrefix + '<span class="json-number">' + value + '</span></div>';
+      }
+      if (typeof value === 'string') {
+        return '<div class="json-line" style="padding-left:' + indent + 'px">' + keyPrefix + '<span class="json-string">"' + esc(value) + '"</span></div>';
+      }
+
+      const isArray = Array.isArray(value);
+      const entries = isArray ? value.map((v, i) => [i, v]) : Object.entries(value);
+      const open = isArray ? '[' : '{';
+      const close = isArray ? ']' : '}';
+      const shouldExpand = expanded && depth < 5;
+      const id = 'jt-' + Math.random().toString(36).substr(2, 8);
+
+      let html = '<div class="json-line" style="padding-left:' + indent + 'px">';
+      html += '<span class="json-toggle" onclick="var el=document.getElementById(\'' + id + '\');var t=this;if(el.style.display===\'none\'){el.style.display=\'block\';t.textContent=\'▼\'}else{el.style.display=\'none\';t.textContent=\'▶\'}">' + (shouldExpand ? '▼' : '▶') + '</span> ';
+      html += keyPrefix + '<span class="json-bracket">' + open + '</span>';
+      html += ' <span class="json-count">' + entries.length + (isArray ? ' items' : ' keys') + '</span>';
+      html += '</div>';
+
+      html += '<div id="' + id + '" style="display:' + (shouldExpand ? 'block' : 'none') + '">';
+      for (const [k, v] of entries) {
+        html += this.buildJSONTree(v, isArray ? null : k, depth + 1, shouldExpand);
+      }
+      html += '<div class="json-line" style="padding-left:' + indent + 'px"><span class="json-bracket">' + close + '</span></div>';
+      html += '</div>';
+
+      return html;
+    },
   }));
 });
