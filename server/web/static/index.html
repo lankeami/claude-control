@@ -164,15 +164,9 @@
             </div>
             <div class="file-viewer-body">
               <div x-show="viewerMode === 'diff'" class="diff-view">
-                <template x-if="viewerDiffs.length === 0">
-                  <div class="diff-empty">No edits recorded for this file. Switch to Full view to see content.</div>
-                </template>
-                <template x-for="(diff, i) in viewerDiffs" :key="i">
-                  <div class="diff-block">
-                    <div class="diff-old" x-show="diff.old_string" x-text="diff.old_string"></div>
-                    <div class="diff-new" x-text="diff.new_string || diff.content"></div>
-                  </div>
-                </template>
+                <div x-show="viewerLoading" class="viewer-loading">Loading diff...</div>
+                <div x-show="!viewerLoading && !viewerDiffHtml" class="diff-empty">No changes detected for this file.</div>
+                <div x-show="!viewerLoading && viewerDiffHtml" x-html="viewerDiffHtml"></div>
               </div>
               <div x-show="viewerMode === 'full'" class="full-view">
                 <div x-show="viewerLoading" class="viewer-loading">Loading...</div>
@@ -190,6 +184,7 @@
         <div class="file-tree-header">
           <span>Files</span>
           <span class="file-count-badge" x-show="sessionFiles.length > 0" x-text="sessionFiles.length"></span>
+          <button class="file-tree-refresh" @click="loadSessionFiles(selectedSessionId)" title="Refresh files">↻</button>
         </div>
         <div class="file-tree-list">
           <template x-if="visibleFileNodes.length === 0">
