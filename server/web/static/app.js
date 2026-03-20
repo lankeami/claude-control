@@ -48,6 +48,7 @@ document.addEventListener('alpine:init', () => {
     viewerFile: null,
     viewerMode: 'diff',
     viewerDiffs: [],
+    viewerDiffHtml: '',
     viewerContent: '',
     viewerLoading: false,
     viewerBinary: false,
@@ -808,17 +809,31 @@ document.addEventListener('alpine:init', () => {
 
     toggleDir(node) { node.open = !node.open; },
 
-    openFileViewer(filePath) {
+    async openFileViewer(filePath) {
       if (this.viewerFile === filePath) { this.closeFileViewer(); return; }
       this.viewerFile = filePath;
       this.viewerMode = 'diff';
       this.viewerContent = '';
-      this.viewerLoading = false;
+      this.viewerLoading = true;
       this.viewerBinary = false;
       this.viewerTruncated = false;
-      this.viewerDiffs = this.chatMessages
-        .filter(m => m.file_path === filePath && (m.msg_type === 'edit' || m.msg_type === 'write'))
-        .map(m => ({ old_string: m.old_string || '', new_string: m.new_string || '', content: m.content || '', type: m.msg_type }));
+      this.viewerDiffs = [];
+      this.viewerDiffHtml = '';
+
+      // Fetch git diff for this file
+      try {
+        const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId });
+        const resp = await fetch('/api/files/diff?' + params, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          this.viewerDiffHtml = this.renderDiffHtml(data);
+        }
+      } catch (e) {
+        // Ignore — will show empty diff
+      }
+      this.viewerLoading = false;
     },
 
     async switchToFullView() {
@@ -852,9 +867,32 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    renderDiffHtml(data) {
+      const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      if (data.status === 'new' && data.content) {
+        return '<pre class="git-diff-content">' +
+          data.content.split('\n').map(l => '<span class="diff-line diff-add">' + esc('+ ' + l) + '</span>').join('\n') +
+          '</pre>';
+      }
+      if (data.diff) {
+        return '<pre class="git-diff-content">' +
+          data.diff.split('\n').map(l => {
+            let cls = '';
+            if (l.startsWith('+') && !l.startsWith('+++')) cls = 'diff-add';
+            else if (l.startsWith('-') && !l.startsWith('---')) cls = 'diff-remove';
+            else if (l.startsWith('@@')) cls = 'diff-hunk';
+            else if (l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('---') || l.startsWith('+++')) cls = 'diff-meta';
+            return '<span class="diff-line' + (cls ? ' ' + cls : '') + '">' + esc(l) + '</span>';
+          }).join('\n') +
+          '</pre>';
+      }
+      return '';
+    },
+
     closeFileViewer() {
       this.viewerFile = null;
       this.viewerDiffs = [];
+      this.viewerDiffHtml = '';
       this.viewerContent = '';
     },
 

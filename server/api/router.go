@@ -58,6 +58,7 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handle
 	apiMux.HandleFunc("GET /api/sessions/{id}/files", s.handleListSessionFiles)
 	apiMux.HandleFunc("GET /api/sessions/{id}/filetree", s.handleFileTree)
 	apiMux.HandleFunc("GET /api/files/content", s.handleGetFileContent)
+	apiMux.HandleFunc("GET /api/files/diff", s.handleFileDiff)
 
 	rl := NewRateLimiter(60, 10)
 	authedAPI := rl.Middleware(AuthMiddleware(apiKey, rl, apiMux))

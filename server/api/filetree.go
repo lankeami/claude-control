@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -98,6 +99,88 @@ func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"files": entries,
 		"cwd":   cwd,
+	})
+}
+
+func (s *Server) handleFileDiff(w http.ResponseWriter, r *http.Request) {
+	filePath := r.URL.Query().Get("path")
+	sessionID := r.URL.Query().Get("session_id")
+	if filePath == "" || sessionID == "" {
+		http.Error(w, `{"error":"path and session_id required"}`, http.StatusBadRequest)
+		return
+	}
+
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
+		return
+	}
+
+	cwd := sess.CWD
+	if cwd == "" {
+		cwd = sess.ProjectPath
+	}
+	if cwd == "" {
+		http.Error(w, `{"error":"session has no working directory"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Ensure the file is within the session's working directory
+	absPath, err := filepath.Abs(filePath)
+	if err != nil || !strings.HasPrefix(absPath, cwd) {
+		http.Error(w, `{"error":"file outside session directory"}`, http.StatusForbidden)
+		return
+	}
+
+	relPath, err := filepath.Rel(cwd, absPath)
+	if err != nil {
+		http.Error(w, `{"error":"failed to resolve path"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Try staged + unstaged diff first, then check for untracked files
+	cmd := exec.Command("git", "diff", "HEAD", "--", relPath)
+	cmd.Dir = cwd
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		// Might be an untracked file or only staged changes — try just `git diff`
+		cmd2 := exec.Command("git", "diff", "--", relPath)
+		cmd2.Dir = cwd
+		out2, _ := cmd2.Output()
+		if len(out2) > 0 {
+			out = out2
+		}
+	}
+
+	// If still no diff, check if it's a new untracked file — show full content as added
+	if len(out) == 0 {
+		cmd3 := exec.Command("git", "status", "--porcelain", "--", relPath)
+		cmd3.Dir = cwd
+		statusOut, _ := cmd3.Output()
+		statusLine := strings.TrimSpace(string(statusOut))
+		if strings.HasPrefix(statusLine, "??") || strings.HasPrefix(statusLine, "A") {
+			// Untracked or newly added — read file and format as "all new"
+			content, readErr := os.ReadFile(absPath)
+			if readErr == nil && len(content) > 0 {
+				// Cap at 1MB
+				if len(content) > 1024*1024 {
+					content = content[:1024*1024]
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"diff":    "",
+					"content": string(content),
+					"status":  "new",
+				})
+				return
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"diff":   string(out),
+		"status": "modified",
 	})
 }
 
