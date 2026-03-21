@@ -588,8 +588,10 @@ document.addEventListener('alpine:init', () => {
           this.resetStalenessTimer();
           this.resetHeartbeatTimer();
 
-          if (data.type === 'done') {
+          if (data.type === 'done' || data.type === 'result') {
             this.clearActivityPills();
+          }
+          if (data.type === 'done') {
             this.stopSessionSSE();
             return;
           }
