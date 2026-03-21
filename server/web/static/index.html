@@ -126,6 +126,20 @@
                      x-html="bubbleHTML(msg)">
                 </div>
               </template>
+
+            <!-- Activity Status Pills -->
+            <template x-if="activityPills.length > 0">
+                <div class="activity-pills">
+                    <template x-for="(pill, pidx) in activityPills" :key="pidx">
+                        <span class="activity-pill" :class="pill.state">
+                            <span class="pill-icon" :class="{ pulse: pill.state === 'active' }"
+                                  x-text="pill.state === 'active' ? '●' : pill.state === 'completed' ? '✓' : pill.state === 'stale' ? '⚠' : '✕'"></span>
+                            <span x-text="pill.label"></span>
+                            <span class="pill-duration" x-show="pill.duration" x-text="pill.duration"></span>
+                        </span>
+                    </template>
+                </div>
+            </template>
             </div>
 
             <!-- Response textarea (only when pending prompt) -->
