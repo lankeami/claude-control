@@ -589,7 +589,14 @@ document.addEventListener('alpine:init', () => {
           this.resetHeartbeatTimer();
 
           if (data.type === 'done' || data.type === 'result') {
-            this.clearActivityPills();
+            // Mark the current active pill as completed (don't clear — pills persist until next message)
+            const activePill = this.activityPills.find(p => p.state === 'active');
+            if (activePill) {
+              const elapsed = Math.round((Date.now() - (this.currentPillStart || Date.now())) / 1000);
+              activePill.state = 'completed';
+              activePill.duration = elapsed + 's';
+            }
+            this.clearStalenessTimer();
           }
           if (data.type === 'done') {
             this.stopSessionSSE();
