@@ -65,7 +65,6 @@ document.addEventListener('alpine:init', () => {
     toastTimer: null,
 
     // Activity Status Pills
-    activityPills: [],
     stalenessTimer: null,
     heartbeatTimer: null,
     lastEventTime: null,
@@ -590,10 +589,10 @@ document.addEventListener('alpine:init', () => {
 
           if (data.type === 'done' || data.type === 'result') {
             // Mark the current active pill as completed (don't clear — pills persist until next message)
-            const activePill = this.activityPills.find(p => p.state === 'active');
+            const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
             if (activePill) {
               const elapsed = Math.round((Date.now() - (this.currentPillStart || Date.now())) / 1000);
-              activePill.state = 'completed';
+              activePill.pillState = 'completed';
               activePill.duration = elapsed + 's';
             }
             this.clearStalenessTimer();
@@ -1004,24 +1003,34 @@ document.addEventListener('alpine:init', () => {
 
     addActivityPill(label, state) {
         const now = Date.now();
-        const activePill = this.activityPills.find(p => p.state === 'active');
+        // Complete the current active pill
+        const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
         if (activePill) {
             const elapsed = Math.round((now - (this.currentPillStart || now)) / 1000);
-            activePill.state = 'completed';
+            activePill.pillState = 'completed';
             activePill.duration = elapsed + 's';
         }
-        this.activityPills.push({ label, originalLabel: label, state, duration: null });
+        // Push pill into chatMessages so it appears inline chronologically
+        this.chatMessages.push({
+            role: 'activity',
+            content: label,
+            originalLabel: label,
+            pillState: state,
+            duration: null,
+            timestamp: new Date().toISOString()
+        });
         this.currentPillStart = now;
-        const completed = this.activityPills.filter(p => p.state === 'completed');
+        // Enforce stacking limit: max 10 completed pills
+        const completed = this.chatMessages.filter(m => m.role === 'activity' && m.pillState === 'completed');
         if (completed.length > 10) {
-            const idx = this.activityPills.indexOf(completed[0]);
-            this.activityPills.splice(idx, 1);
+            const idx = this.chatMessages.indexOf(completed[0]);
+            this.chatMessages.splice(idx, 1);
         }
         this.$nextTick(() => this.scrollToBottom());
     },
 
     clearActivityPills() {
-        this.activityPills = [];
+        this.chatMessages = this.chatMessages.filter(m => m.role !== 'activity');
         this.currentPillStart = null;
         this.clearStalenessTimer();
     },
@@ -1045,18 +1054,18 @@ document.addEventListener('alpine:init', () => {
     resetStalenessTimer() {
         this.clearStalenessTimer();
         this.lastEventTime = Date.now();
-        const stalePill = this.activityPills.find(p => p.state === 'stale');
+        const stalePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'stale');
         if (stalePill) {
-            stalePill.state = 'active';
-            stalePill.label = stalePill.originalLabel;
+            stalePill.pillState = 'active';
+            stalePill.content = stalePill.originalLabel;
         }
         this.stalenessTimer = setTimeout(() => {
-            const activePill = this.activityPills.find(p => p.state === 'active');
+            const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
             if (activePill) {
                 const elapsed = Math.round((Date.now() - this.lastEventTime) / 1000);
-                activePill.originalLabel = activePill.label;
-                activePill.state = 'stale';
-                activePill.label = `${activePill.label} — ${elapsed}s, may be stalled`;
+                activePill.originalLabel = activePill.content;
+                activePill.pillState = 'stale';
+                activePill.content = `${activePill.content} — ${elapsed}s, may be stalled`;
             }
         }, 60000);
     },

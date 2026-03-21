@@ -121,25 +121,23 @@
                 </div>
               </template>
               <template x-for="(msg, idx) in chatMessages" :key="idx">
-                <div class="chat-bubble"
-                     :class="bubbleClass(msg, idx)"
-                     x-html="bubbleHTML(msg)">
-                </div>
+                <template x-if="msg.role === 'activity'">
+                  <div class="activity-pills">
+                    <span class="activity-pill" :class="msg.pillState">
+                      <span class="pill-icon" :class="{ pulse: msg.pillState === 'active' }"
+                            x-text="msg.pillState === 'active' ? '●' : msg.pillState === 'completed' ? '✓' : msg.pillState === 'stale' ? '⚠' : '✕'"></span>
+                      <span x-text="msg.content"></span>
+                      <span class="pill-duration" x-show="msg.duration" x-text="msg.duration"></span>
+                    </span>
+                  </div>
+                </template>
+                <template x-if="msg.role !== 'activity'">
+                  <div class="chat-bubble"
+                       :class="bubbleClass(msg, idx)"
+                       x-html="bubbleHTML(msg)">
+                  </div>
+                </template>
               </template>
-
-            <!-- Activity Status Pills -->
-            <template x-if="activityPills.length > 0">
-                <div class="activity-pills">
-                    <template x-for="(pill, pidx) in activityPills" :key="pidx">
-                        <span class="activity-pill" :class="pill.state">
-                            <span class="pill-icon" :class="{ pulse: pill.state === 'active' }"
-                                  x-text="pill.state === 'active' ? '●' : pill.state === 'completed' ? '✓' : pill.state === 'stale' ? '⚠' : '✕'"></span>
-                            <span x-text="pill.label"></span>
-                            <span class="pill-duration" x-show="pill.duration" x-text="pill.duration"></span>
-                        </span>
-                    </template>
-                </div>
-            </template>
             </div>
 
             <!-- Response textarea (only when pending prompt) -->
