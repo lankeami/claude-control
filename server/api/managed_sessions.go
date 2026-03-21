@@ -136,6 +136,11 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		turnCount := 0
 
 		onLine := func(line string) {
+			// Don't persist heartbeat messages
+			if parseRole(line) == "heartbeat" {
+				return
+			}
+
 			role := parseRole(line)
 
 			// Only persist assistant text to the DB — skip system init,
