@@ -46,6 +46,20 @@ document.addEventListener('alpine:init', () => {
     sessionFiles: [],
     fileTreeData: [],
     gitInfo: null,
+
+    // GitHub Issues state
+    githubRepo: null,
+    githubIssues: [],
+    githubIssuesState: 'open',
+    githubIssuesSearch: '',
+    githubIssuesLimit: 10,
+    githubIssuesHasMore: false,
+    githubIssuesLoading: false,
+    githubIssuesError: null,
+    issuesExpanded: true,
+    selectedIssue: null,
+    selectedIssueLoading: false,
+    _searchIssuesTimer: null,
     viewerFile: null,
     viewerMode: 'diff',
     viewerDiffs: [],
@@ -364,6 +378,15 @@ document.addEventListener('alpine:init', () => {
         await this.fetchTranscript(this.selectedSessionId, true);
       }
       this.loadSessionFiles(this.selectedSessionId);
+      if (sess && sess.mode === 'managed') {
+        this.githubIssues = [];
+        this.githubIssuesState = 'open';
+        this.githubIssuesSearch = '';
+        this.githubIssuesLimit = 10;
+        this.selectedIssue = null;
+        this.githubIssuesError = null;
+        this.fetchGithubIssues(this.selectedSessionId);
+      }
     },
 
     async deleteSession(id) {
@@ -790,6 +813,120 @@ document.addEventListener('alpine:init', () => {
       this.chatLoading = false;
     },
 
+    // GitHub Issues methods
+    async fetchGithubIssues(sessionId) {
+      if (!sessionId) return;
+      this.githubIssuesLoading = true;
+      this.githubIssuesError = null;
+      try {
+        const params = new URLSearchParams({
+          state: this.githubIssuesState,
+          limit: this.githubIssuesLimit,
+        });
+        if (this.githubIssuesSearch.trim()) {
+          params.set('search', this.githubIssuesSearch.trim());
+        }
+        const resp = await fetch(`/api/sessions/${sessionId}/github/issues?${params}`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (resp.status === 401) { this.disconnect(); return; }
+        if (!resp.ok) {
+          const text = await resp.text();
+          this.githubIssuesError = text || 'Failed to load issues';
+          return;
+        }
+        const data = await resp.json();
+        this.githubIssues = data.issues || [];
+        this.githubIssuesHasMore = data.has_more || false;
+        if (data.repo) this.githubRepo = data.repo;
+      } catch (e) {
+        this.githubIssuesError = e.message || 'Failed to load issues';
+      } finally {
+        this.githubIssuesLoading = false;
+      }
+    },
+
+    async fetchIssueDetail(sessionId, number) {
+      if (!sessionId) return;
+      this.selectedIssueLoading = true;
+      // Close any open file viewer and open issue in viewer panel
+      this.closeFileViewer();
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/github/issues/${number}`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (resp.status === 401) { this.disconnect(); return; }
+        if (!resp.ok) return;
+        this.selectedIssue = await resp.json();
+      } catch (e) {
+        // Ignore — keep selectedIssue as null
+      } finally {
+        this.selectedIssueLoading = false;
+      }
+    },
+
+    closeIssueViewer() {
+      this.selectedIssue = null;
+    },
+
+    toggleIssueState(state) {
+      this.githubIssuesState = state;
+      this.githubIssuesLimit = 10;
+      this.selectedIssue = null;
+      this.fetchGithubIssues(this.selectedSessionId);
+    },
+
+    searchIssues() {
+      if (this._searchIssuesTimer) clearTimeout(this._searchIssuesTimer);
+      this._searchIssuesTimer = setTimeout(() => {
+        this.githubIssuesLimit = 10;
+        this.fetchGithubIssues(this.selectedSessionId);
+      }, 300);
+    },
+
+    loadMoreIssues() {
+      this.githubIssuesLimit += 10;
+      this.fetchGithubIssues(this.selectedSessionId);
+    },
+
+    generateIssuePrompt(issue) {
+      const prompt = `Work on GitHub issue #${issue.number}: "${issue.title}"
+
+Requirements:
+${issue.body || '(No description provided)'}
+
+Create a feature branch, implement the solution, and open a draft PR linking to issue #${issue.number}.`;
+      this.inputText = prompt;
+      this.$nextTick(() => {
+        const textarea = document.querySelector('.instruction-bar textarea');
+        if (textarea) {
+          textarea.style.height = 'auto';
+          textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+        }
+      });
+    },
+
+    issueTimeAgo(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+      if (seconds < 60) return 'just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      return `${Math.floor(hours / 24)}d ago`;
+    },
+
+    issueLabelStyle(label) {
+      if (!label || !label.color) return '';
+      const hex = label.color.replace('#', '');
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      return `background: rgba(${r},${g},${b},0.2); color: rgb(${r},${g},${b}); border-color: rgba(${r},${g},${b},0.4);`;
+    },
+
     // File browser methods
     async loadSessionFiles(sessionId) {
       this.renderedContentCache = {};
@@ -882,6 +1019,7 @@ document.addEventListener('alpine:init', () => {
 
     async openFileViewer(filePath) {
       if (this.viewerFile === filePath) { this.closeFileViewer(); return; }
+      this.selectedIssue = null; // Close issue viewer if open
       this.viewerFile = filePath;
       this.viewerMode = 'full';
       this.viewerContent = '';
