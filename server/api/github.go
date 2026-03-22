@@ -67,6 +67,52 @@ func reshapeIssue(g ghIssue) issueResponse {
 	}
 }
 
+func (s *Server) handleGetGithubIssue(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
+		return
+	}
+
+	if sess.Mode != "managed" {
+		http.Error(w, `{"error":"github issues only available for managed sessions"}`, http.StatusBadRequest)
+		return
+	}
+
+	cwd := sess.CWD
+	if cwd == "" {
+		http.Error(w, `{"error":"session has no working directory"}`, http.StatusBadRequest)
+		return
+	}
+
+	numberStr := r.PathValue("number")
+	number, err := strconv.Atoi(numberStr)
+	if err != nil || number < 1 {
+		http.Error(w, `{"error":"number must be a positive integer"}`, http.StatusBadRequest)
+		return
+	}
+
+	cmd := exec.Command("gh", "issue", "view", strconv.Itoa(number),
+		"--json", "number,title,state,body,createdAt,author,labels")
+	cmd.Dir = cwd
+	out, err := cmd.Output()
+	if err != nil {
+		http.Error(w, `{"error":"failed to get github issue: `+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	var raw ghIssue
+	if err := json.Unmarshal(out, &raw); err != nil {
+		http.Error(w, `{"error":"failed to parse gh output: `+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(reshapeIssue(raw))
+}
+
 func (s *Server) handleListGithubIssues(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
