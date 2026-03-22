@@ -830,6 +830,23 @@ body {
   background: #2ea043;
 }
 
+.issue-link-btn {
+  padding: 2px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.issue-link-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .generate-prompt-hint {
   display: block;
   text-align: center;

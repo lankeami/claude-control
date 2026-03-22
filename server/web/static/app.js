@@ -48,6 +48,7 @@ document.addEventListener('alpine:init', () => {
     gitInfo: null,
 
     // GitHub Issues state
+    githubRepo: null,
     githubIssues: [],
     githubIssuesState: 'open',
     githubIssuesSearch: '',
@@ -837,6 +838,7 @@ document.addEventListener('alpine:init', () => {
         const data = await resp.json();
         this.githubIssues = data.issues || [];
         this.githubIssuesHasMore = data.has_more || false;
+        if (data.repo) this.githubRepo = data.repo;
       } catch (e) {
         this.githubIssuesError = e.message || 'Failed to load issues';
       } finally {

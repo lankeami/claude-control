@@ -208,6 +208,8 @@
                   <span class="file-viewer-path" x-text="'Issue #' + selectedIssue.number"></span>
                   <span class="file-type-badge" x-text="selectedIssue.state" :style="selectedIssue.state === 'OPEN' ? 'background:#238636;color:#fff' : 'background:#8957e5;color:#fff'"></span>
                   <div class="file-viewer-controls">
+                    <a class="issue-link-btn" :href="'https://github.com/' + githubRepo + '/issues/' + selectedIssue.number" target="_blank" rel="noopener"
+                       title="Open on GitHub">↗ GitHub</a>
                     <button class="generate-prompt-btn" style="padding:2px 10px;font-size:11px;width:auto;border-radius:4px" @click="generateIssuePrompt(selectedIssue)">Generate Prompt</button>
                     <button class="file-viewer-close" @click="closeIssueViewer()">&times;</button>
                   </div>
