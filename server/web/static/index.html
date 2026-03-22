@@ -341,12 +341,19 @@
     <div style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:70vh;">
       <h3 style="margin-top:0; margin-bottom:12px;">New Managed Session</h3>
 
-      <!-- Manual path input -->
-      <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <!-- Path input with search -->
+      <div style="display:flex; gap:8px; margin-bottom:4px;">
         <input x-model="newSessionCWD" type="text" placeholder="/path/to/project"
                style="flex:1; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;"
-               @keydown.enter="createManagedSession()">
+               @keydown="handleBrowseInputKeydown($event)"
+               @input="if (newSessionCWD === browsePath) { browseFilter = ''; } else if (browsePath && newSessionCWD.startsWith(browsePath + '/')) { browseFilter = newSessionCWD.slice(browsePath.length + 1); }">
         <button class="btn btn-sm" @click="browseTo(newSessionCWD)" style="white-space:nowrap;">Go</button>
+      </div>
+      <div x-show="browseConfirmed" style="font-size:11px; color:var(--accent); margin-bottom:8px;">
+        Press Enter again to start session in this folder
+      </div>
+      <div x-show="!browseConfirmed && browseFilter" style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
+        Filtering: <span x-text="browseFilter"></span>
       </div>
 
       <!-- Breadcrumb navigation -->
@@ -365,11 +372,11 @@
         <template x-if="browseLoading">
           <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading...</div>
         </template>
-        <template x-if="!browseLoading && browseEntries.length === 0">
-          <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">No subdirectories</div>
+        <template x-if="!browseLoading && filteredBrowseEntries.length === 0">
+          <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;" x-text="browseFilter ? 'No matching directories' : 'No subdirectories'"></div>
         </template>
-        <template x-for="entry in browseEntries" :key="entry.path">
-          <div class="browse-item" @click="browseTo(entry.path)">
+        <template x-for="entry in filteredBrowseEntries" :key="entry.path">
+          <div class="browse-item" @click="browseFilter = ''; browseTo(entry.path)">
             <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
                   :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
             <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="entry.name"></span>

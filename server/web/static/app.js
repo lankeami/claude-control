@@ -36,6 +36,8 @@ document.addEventListener('alpine:init', () => {
     browsePath: '',
     browseEntries: [],
     browseLoading: false,
+    browseFilter: '',
+    browseConfirmed: false,
 
     // Resume picker state
     showResumePicker: false,
@@ -502,11 +504,15 @@ document.addEventListener('alpine:init', () => {
       this.newSessionCWD = '';
       this.browsePath = '';
       this.browseEntries = [];
+      this.browseFilter = '';
+      this.browseConfirmed = false;
       await this.browseTo('');
     },
 
     async browseTo(path) {
       this.browseLoading = true;
+      this.browseFilter = '';
+      this.browseConfirmed = false;
       try {
         const url = '/api/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
         const res = await fetch(url, {
@@ -540,6 +546,33 @@ document.addEventListener('alpine:init', () => {
       }
       const homeIdx = crumbs.findIndex(c => c.skipPrior);
       return homeIdx >= 0 ? crumbs.slice(homeIdx) : crumbs;
+    },
+
+    get filteredBrowseEntries() {
+      if (!this.browseFilter) return this.browseEntries;
+      const q = this.browseFilter.toLowerCase();
+      return this.browseEntries.filter(e => e.name.toLowerCase().includes(q));
+    },
+
+    handleBrowseInputKeydown(event) {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      const val = this.newSessionCWD.trim();
+      if (!val) return;
+
+      // If the input differs from the browsed path, browse to it first
+      if (val !== this.browsePath) {
+        this.browseConfirmed = false;
+        this.browseTo(val);
+        return;
+      }
+
+      // Same path as browsed — if already confirmed, create the session
+      if (this.browseConfirmed) {
+        this.createManagedSession();
+      } else {
+        this.browseConfirmed = true;
+      }
     },
 
     async createManagedSession() {

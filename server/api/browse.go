@@ -66,7 +66,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sort.Slice(dirs, func(i, j int) bool {
-		return dirs[i].Name < dirs[j].Name
+		return strings.ToLower(dirs[i].Name) < strings.ToLower(dirs[j].Name)
 	})
 
 	w.Header().Set("Content-Type", "application/json")
