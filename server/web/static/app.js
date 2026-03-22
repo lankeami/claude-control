@@ -64,6 +64,12 @@ document.addEventListener('alpine:init', () => {
     toastMessage: '',
     toastTimer: null,
 
+    // Activity Status Pills
+    stalenessTimer: null,
+    heartbeatTimer: null,
+    lastEventTime: null,
+    currentPillStart: null,
+
     async init() {
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
@@ -341,6 +347,7 @@ document.addEventListener('alpine:init', () => {
       if (this.selectedSessionId === id) return;
       this.selectedSessionId = id;
       this.stopSessionSSE();
+      this.clearActivityPills();
       this.closeFileViewer();
       this.sessionFiles = [];
       this.fileTreeData = [];
@@ -547,6 +554,11 @@ document.addEventListener('alpine:init', () => {
         this.chatMessages.push({ role: 'user', content: msg, msg_type: 'text', timestamp: new Date().toISOString() });
         this.$nextTick(() => this.scrollToBottom(true));
 
+        // Start activity pills
+        this.clearActivityPills();
+        this.addActivityPill('Thinking...', 'active');
+        this.resetStalenessTimer();
+
         // Start SSE stream for this session
         this.startSessionSSE(this.selectedSessionId);
       } catch (e) {
@@ -559,13 +571,50 @@ document.addEventListener('alpine:init', () => {
       this.stopSessionSSE();
       const url = `/api/sessions/${sessionId}/stream?token=${encodeURIComponent(this.apiKey)}`;
       this.sessionSSE = new EventSource(url);
+      this.resetHeartbeatTimer();
 
       this.sessionSSE.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Heartbeat: just reset the timer and return
+          if (data.type === 'heartbeat') {
+            this.resetHeartbeatTimer();
+            return;
+          }
+
+          // Reset both timers on any real event
+          this.resetStalenessTimer();
+          this.resetHeartbeatTimer();
+
+          if (data.type === 'done' || data.type === 'result') {
+            // Mark the current active pill as completed (don't clear — pills persist until next message)
+            const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
+            if (activePill) {
+              const elapsed = Math.round((Date.now() - (this.currentPillStart || Date.now())) / 1000);
+              activePill.pillState = 'completed';
+              activePill.duration = elapsed + 's';
+            }
+            this.clearStalenessTimer();
+          }
           if (data.type === 'done') {
             this.stopSessionSSE();
             return;
+          }
+
+          // Activity pill: tool_use blocks in assistant messages
+          if (data.type === 'assistant' && data.message && Array.isArray(data.message.content)) {
+            for (const block of data.message.content) {
+              if (block.type === 'tool_use') {
+                const label = this.extractToolContext(block);
+                this.addActivityPill(label, 'active');
+              }
+            }
+          }
+
+          // Activity pill: tool_result means Claude is thinking again
+          if (data.type === 'tool_result') {
+            this.addActivityPill('Thinking...', 'active');
           }
 
           // Only display assistant messages and error events
@@ -640,6 +689,7 @@ document.addEventListener('alpine:init', () => {
         this.sessionSSE.close();
         this.sessionSSE = null;
       }
+      this.clearHeartbeatTimer();
     },
 
     async interruptSession() {
@@ -714,13 +764,25 @@ document.addEventListener('alpine:init', () => {
         if (!res.ok) return;
         const msgs = await res.json();
         this.chatMessages = (msgs || [])
-          .filter(m => m.role === 'user' || m.role === 'assistant' || (m.role === 'system' && m.content && m.content.includes('"error"')))
-          .map(m => ({
-            role: m.role,
-            content: m.content,
-            msg_type: 'text',
-            timestamp: m.created_at
-          }));
+          .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'activity' || (m.role === 'system' && m.content && m.content.includes('"error"')))
+          .map(m => {
+            if (m.role === 'activity') {
+              return {
+                role: 'activity',
+                content: m.content,
+                originalLabel: m.content,
+                pillState: 'completed',
+                duration: null,
+                timestamp: m.created_at
+              };
+            }
+            return {
+              role: m.role,
+              content: m.content,
+              msg_type: 'text',
+              timestamp: m.created_at
+            };
+          });
         this.$nextTick(() => this.scrollToBottom(true));
       } catch (e) {
         console.error('Failed to fetch messages:', e);
@@ -948,6 +1010,99 @@ document.addEventListener('alpine:init', () => {
     },
 
     // Bubble rendering
+    // --- Activity Status Pills ---
+
+    addActivityPill(label, state) {
+        const now = Date.now();
+        // Complete the current active pill
+        const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
+        if (activePill) {
+            const elapsed = Math.round((now - (this.currentPillStart || now)) / 1000);
+            activePill.pillState = 'completed';
+            activePill.duration = elapsed + 's';
+        }
+        // Push pill into chatMessages so it appears inline chronologically
+        this.chatMessages.push({
+            role: 'activity',
+            content: label,
+            originalLabel: label,
+            pillState: state,
+            duration: null,
+            timestamp: new Date().toISOString()
+        });
+        this.currentPillStart = now;
+        // Enforce stacking limit: max 10 completed pills
+        const completed = this.chatMessages.filter(m => m.role === 'activity' && m.pillState === 'completed');
+        if (completed.length > 10) {
+            const idx = this.chatMessages.indexOf(completed[0]);
+            this.chatMessages.splice(idx, 1);
+        }
+        this.$nextTick(() => this.scrollToBottom());
+    },
+
+    clearActivityPills() {
+        this.chatMessages = this.chatMessages.filter(m => m.role !== 'activity');
+        this.currentPillStart = null;
+        this.clearStalenessTimer();
+    },
+
+    extractToolContext(block) {
+        const name = block.name || 'Tool';
+        const input = block.input || {};
+        let context = '';
+        if (input.file_path) {
+            const parts = input.file_path.split('/');
+            context = parts[parts.length - 1];
+        } else if (input.command) {
+            context = input.command.substring(0, 30);
+        } else if (input.pattern) {
+            context = input.pattern.substring(0, 30);
+        }
+        const full = context ? `${name} ${context}` : name;
+        return full.length > 40 ? full.substring(0, 37) + '...' : full;
+    },
+
+    resetStalenessTimer() {
+        this.clearStalenessTimer();
+        this.lastEventTime = Date.now();
+        const stalePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'stale');
+        if (stalePill) {
+            stalePill.pillState = 'active';
+            stalePill.content = stalePill.originalLabel;
+        }
+        this.stalenessTimer = setTimeout(() => {
+            const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
+            if (activePill) {
+                const elapsed = Math.round((Date.now() - this.lastEventTime) / 1000);
+                activePill.originalLabel = activePill.content;
+                activePill.pillState = 'stale';
+                activePill.content = `${activePill.content} — ${elapsed}s, may be stalled`;
+            }
+        }, 60000);
+    },
+
+    clearStalenessTimer() {
+        if (this.stalenessTimer) {
+            clearTimeout(this.stalenessTimer);
+            this.stalenessTimer = null;
+        }
+    },
+
+    resetHeartbeatTimer() {
+        this.clearHeartbeatTimer();
+        this.heartbeatTimer = setTimeout(() => {
+            this.addActivityPill('Connection lost — server may be down', 'disconnected');
+            this.clearStalenessTimer();
+        }, 30000);
+    },
+
+    clearHeartbeatTimer() {
+        if (this.heartbeatTimer) {
+            clearTimeout(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+        }
+    },
+
     bubbleClass(msg, idx) {
       const classes = [];
       if (msg.msg_type === 'text') {

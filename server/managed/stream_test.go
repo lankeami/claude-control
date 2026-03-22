@@ -1,7 +1,10 @@
 package managed
 
 import (
+	"encoding/json"
+	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -79,12 +82,9 @@ func TestStreamNDJSON(t *testing.T) {
 		persisted = append(persisted, line)
 	}
 
-	lines := StreamNDJSON(strings.NewReader(input), b, onLine)
+	StreamNDJSON(strings.NewReader(input), b, onLine)
 	b.Close()
 
-	if len(lines) != 3 {
-		t.Errorf("got %d lines, want 3", len(lines))
-	}
 	if len(persisted) != 3 {
 		t.Errorf("got %d persisted, want 3", len(persisted))
 	}
@@ -114,5 +114,124 @@ func TestStreamNDJSONCountsAssistantTurns(t *testing.T) {
 
 	if turnCount != 3 {
 		t.Errorf("turnCount=%d, want 3", turnCount)
+	}
+}
+
+func TestStreamNDJSON_SendsHeartbeats(t *testing.T) {
+	oldInterval := HeartbeatInterval
+	HeartbeatInterval = 500 * time.Millisecond
+	defer func() { HeartbeatInterval = oldInterval }()
+
+	pr, pw := io.Pipe()
+	b := NewBroadcaster()
+	ch := b.Subscribe()
+
+	var (
+		mu         sync.Mutex
+		heartbeats []map[string]interface{}
+	)
+
+	// Collect messages from the broadcaster in a goroutine.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for msg := range ch {
+			var obj map[string]interface{}
+			if err := json.Unmarshal([]byte(msg), &obj); err == nil {
+				if obj["type"] == "heartbeat" {
+					mu.Lock()
+					heartbeats = append(heartbeats, obj)
+					mu.Unlock()
+				}
+			}
+		}
+	}()
+
+	// Run StreamNDJSON in a goroutine; close the pipe after 1s.
+	go func() {
+		time.Sleep(1 * time.Second)
+		pw.Close()
+	}()
+
+	StreamNDJSON(pr, b, nil)
+	b.Close()
+	<-done
+
+	mu.Lock()
+	count := len(heartbeats)
+	var firstHB map[string]interface{}
+	if count > 0 {
+		firstHB = heartbeats[0]
+	}
+	mu.Unlock()
+
+	if count == 0 {
+		t.Fatal("expected at least one heartbeat, got none")
+	}
+	if _, ok := firstHB["ts"]; !ok {
+		t.Error("heartbeat missing 'ts' field")
+	}
+}
+
+func TestStreamNDJSON_OnLineNotCalledForHeartbeats(t *testing.T) {
+	oldInterval := HeartbeatInterval
+	HeartbeatInterval = 200 * time.Millisecond
+	defer func() { HeartbeatInterval = oldInterval }()
+
+	pr, pw := io.Pipe()
+	b := NewBroadcaster()
+
+	var (
+		mu        sync.Mutex
+		callCount int
+	)
+	onLine := func(line string) {
+		mu.Lock()
+		callCount++
+		mu.Unlock()
+	}
+
+	// Write one real line, then close after 500ms to allow heartbeats to fire.
+	go func() {
+		pw.Write([]byte("{\"type\":\"result\"}\n"))
+		time.Sleep(500 * time.Millisecond)
+		pw.Close()
+	}()
+
+	StreamNDJSON(pr, b, onLine)
+	b.Close()
+
+	mu.Lock()
+	got := callCount
+	mu.Unlock()
+
+	if got != 1 {
+		t.Errorf("onLine called %d times, want exactly 1 (heartbeats must not trigger onLine)", got)
+	}
+}
+
+func TestStreamNDJSON_BroadcastsLines(t *testing.T) {
+	input := `{"type":"result","cost":0.05}` + "\n"
+	b := NewBroadcaster()
+	ch := b.Subscribe()
+
+	received := make(chan string, 1)
+	go func() {
+		for msg := range ch {
+			received <- msg
+			return
+		}
+	}()
+
+	StreamNDJSON(strings.NewReader(input), b, nil)
+	b.Close()
+
+	select {
+	case msg := <-received:
+		if !strings.Contains(msg, "result") {
+			t.Errorf("broadcast message missing expected content, got: %s", msg)
+		}
+	case <-time.After(time.Second):
+		t.Error("timed out waiting for broadcast message")
 	}
 }

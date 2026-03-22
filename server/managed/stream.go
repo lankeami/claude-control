@@ -2,10 +2,16 @@ package managed
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"log"
 	"sync"
+	"time"
 )
+
+// HeartbeatInterval controls how often a heartbeat message is broadcast.
+// Override in tests to speed things up.
+var HeartbeatInterval = 15 * time.Second
 
 type Broadcaster struct {
 	mu          sync.RWMutex
@@ -58,21 +64,52 @@ func (b *Broadcaster) Close() {
 
 // StreamNDJSON reads NDJSON lines from r, broadcasts each via b, and calls onLine for each.
 // onLine is called synchronously per line (use for persistence/turn counting).
-// Returns all lines read. Blocks until r is closed/EOF.
-func StreamNDJSON(r io.Reader, b *Broadcaster, onLine func(string)) []string {
-	var lines []string
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
+// A heartbeat JSON message is broadcast at HeartbeatInterval; onLine is NOT called for heartbeats.
+// Blocks until r is closed/EOF.
+func StreamNDJSON(r io.Reader, b *Broadcaster, onLine func(string)) {
+	type result struct {
+		line string
+		err  error
+	}
+
+	lineCh := make(chan result)
+
+	go func() {
+		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+			lineCh <- result{line: line}
 		}
-		lines = append(lines, line)
-		b.Send(line)
-		if onLine != nil {
-			onLine(line)
+		if err := scanner.Err(); err != nil {
+			lineCh <- result{err: err}
+		}
+		close(lineCh)
+	}()
+
+	ticker := time.NewTicker(HeartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case res, ok := <-lineCh:
+			if !ok {
+				return
+			}
+			if res.err != nil {
+				log.Printf("StreamNDJSON scanner error: %v", res.err)
+				return
+			}
+			b.Send(res.line)
+			if onLine != nil {
+				onLine(res.line)
+			}
+		case <-ticker.C:
+			hb := fmt.Sprintf(`{"type":"heartbeat","ts":%d}`, time.Now().UnixMilli())
+			b.Send(hb)
 		}
 	}
-	return lines
 }
