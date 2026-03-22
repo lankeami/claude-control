@@ -209,8 +209,8 @@ func gitListFiles(cwd string) ([]string, error) {
 		files = append(files, line)
 	}
 
-	// Get untracked non-ignored files
-	cmd2 := exec.Command("git", "ls-files", "--others", "--exclude-standard")
+	// Get all untracked files (including ignored ones like .env)
+	cmd2 := exec.Command("git", "ls-files", "--others")
 	cmd2.Dir = cwd
 	out2, err := cmd2.Output()
 	if err == nil {
@@ -219,6 +219,7 @@ func gitListFiles(cwd string) ([]string, error) {
 				continue
 			}
 			if _, exists := fileSet[line]; !exists {
+				fileSet[line] = struct{}{}
 				files = append(files, line)
 			}
 		}
