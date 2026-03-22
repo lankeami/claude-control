@@ -121,7 +121,7 @@
                 </div>
               </template>
               <template x-for="(msg, idx) in chatMessages" :key="idx">
-                <div>
+                <div class="chat-item">
                   <template x-if="msg.role === 'activity'">
                     <div class="activity-pills">
                       <span class="activity-pill" :class="msg.pillState">

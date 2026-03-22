@@ -689,7 +689,6 @@ document.addEventListener('alpine:init', () => {
         this.sessionSSE.close();
         this.sessionSSE = null;
       }
-      this.clearActivityPills();
       this.clearHeartbeatTimer();
     },
 

@@ -936,6 +936,11 @@ body {
   word-break: break-word;
 }
 
+/* Chat item wrapper - invisible to flex layout */
+.chat-item {
+    display: contents;
+}
+
 /* Activity Status Pills */
 .activity-pills {
     display: flex;
