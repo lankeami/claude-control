@@ -150,6 +150,10 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				if text != "" {
 					_, _ = s.store.CreateMessage(sessionID, role, text)
 				}
+				// Persist tool_use blocks as activity pills
+				for _, toolName := range extractToolNames(line) {
+					_, _ = s.store.CreateMessage(sessionID, "activity", toolName)
+				}
 				turnCount++
 				if turnCount >= sess.MaxTurns {
 					log.Printf("session %s hit turn limit (%d), interrupting", sessionID, sess.MaxTurns)
@@ -289,6 +293,50 @@ func extractAssistantText(line string) string {
 	}
 
 	return ""
+}
+
+// extractToolNames returns tool names from tool_use content blocks in an assistant NDJSON line.
+func extractToolNames(line string) []string {
+	var msg struct {
+		Message struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(line), &msg); err != nil {
+		return nil
+	}
+	var blocks []struct {
+		Type  string          `json:"type"`
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(msg.Message.Content, &blocks); err != nil {
+		return nil
+	}
+	var names []string
+	for _, b := range blocks {
+		if b.Type == "tool_use" && b.Name != "" {
+			label := b.Name
+			// Extract context from input
+			var input map[string]interface{}
+			if json.Unmarshal(b.Input, &input) == nil {
+				if fp, ok := input["file_path"].(string); ok {
+					parts := strings.Split(fp, "/")
+					label += " " + parts[len(parts)-1]
+				} else if cmd, ok := input["command"].(string); ok {
+					if len(cmd) > 30 {
+						cmd = cmd[:30]
+					}
+					label += " " + cmd
+				}
+			}
+			if len(label) > 40 {
+				label = label[:37] + "..."
+			}
+			names = append(names, label)
+		}
+	}
+	return names
 }
 
 // extractSessionFiles pulls file paths from tool_use content blocks in NDJSON lines.

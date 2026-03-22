@@ -765,13 +765,25 @@ document.addEventListener('alpine:init', () => {
         if (!res.ok) return;
         const msgs = await res.json();
         this.chatMessages = (msgs || [])
-          .filter(m => m.role === 'user' || m.role === 'assistant' || (m.role === 'system' && m.content && m.content.includes('"error"')))
-          .map(m => ({
-            role: m.role,
-            content: m.content,
-            msg_type: 'text',
-            timestamp: m.created_at
-          }));
+          .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'activity' || (m.role === 'system' && m.content && m.content.includes('"error"')))
+          .map(m => {
+            if (m.role === 'activity') {
+              return {
+                role: 'activity',
+                content: m.content,
+                originalLabel: m.content,
+                pillState: 'completed',
+                duration: null,
+                timestamp: m.created_at
+              };
+            }
+            return {
+              role: m.role,
+              content: m.content,
+              msg_type: 'text',
+              timestamp: m.created_at
+            };
+          });
         this.$nextTick(() => this.scrollToBottom(true));
       } catch (e) {
         console.error('Failed to fetch messages:', e);
