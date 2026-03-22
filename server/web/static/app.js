@@ -55,6 +55,7 @@ document.addEventListener('alpine:init', () => {
     githubIssuesHasMore: false,
     githubIssuesLoading: false,
     githubIssuesError: null,
+    issuesExpanded: true,
     selectedIssue: null,
     selectedIssueLoading: false,
     _searchIssuesTimer: null,
@@ -846,6 +847,8 @@ document.addEventListener('alpine:init', () => {
     async fetchIssueDetail(sessionId, number) {
       if (!sessionId) return;
       this.selectedIssueLoading = true;
+      // Close any open file viewer and open issue in viewer panel
+      this.closeFileViewer();
       try {
         const resp = await fetch(`/api/sessions/${sessionId}/github/issues/${number}`, {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
@@ -858,6 +861,10 @@ document.addEventListener('alpine:init', () => {
       } finally {
         this.selectedIssueLoading = false;
       }
+    },
+
+    closeIssueViewer() {
+      this.selectedIssue = null;
     },
 
     toggleIssueState(state) {
@@ -1010,6 +1017,7 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
 
     async openFileViewer(filePath) {
       if (this.viewerFile === filePath) { this.closeFileViewer(); return; }
+      this.selectedIssue = null; // Close issue viewer if open
       this.viewerFile = filePath;
       this.viewerMode = 'full';
       this.viewerContent = '';

@@ -571,6 +571,19 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.issues-toggle {
+  font-size: 8px;
+  color: var(--text-muted);
+}
+
+.issue-row.is-selected {
+  background: var(--bg-secondary);
+  border-left: 2px solid var(--accent);
 }
 
 .issue-state-toggles {

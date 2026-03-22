@@ -101,7 +101,7 @@
         </div>
 
         <div class="main-content-split">
-          <div class="chat-column" :class="{ 'has-viewer': viewerFile }">
+          <div class="chat-column" :class="{ 'has-viewer': viewerFile || selectedIssue }">
             <!-- Chat area -->
             <div class="chat-area" id="chat-area">
               <template x-if="!selectedSessionId">
@@ -173,29 +173,64 @@
           </div>
 
           <!-- File Viewer Panel -->
-          <div class="file-viewer-column" x-show="viewerFile" x-cloak>
-            <div class="file-viewer-header">
-              <span class="file-viewer-path" x-text="viewerFileName"></span>
-              <span class="file-type-badge" x-text="viewerFileType" x-show="viewerFileType"></span>
-              <div class="file-viewer-controls">
-                <button :class="{ active: viewerMode === 'diff' }" @click="switchToDiffView()">Diff</button>
-                <button :class="{ active: viewerMode === 'full' }" @click="switchToFullView()">Full</button>
-                <button class="file-viewer-close" @click="closeFileViewer()">&times;</button>
+          <div class="file-viewer-column" x-show="viewerFile || selectedIssue" x-cloak>
+            <!-- File viewer (existing) -->
+            <template x-if="viewerFile && !selectedIssue">
+              <div>
+                <div class="file-viewer-header">
+                  <span class="file-viewer-path" x-text="viewerFileName"></span>
+                  <span class="file-type-badge" x-text="viewerFileType" x-show="viewerFileType"></span>
+                  <div class="file-viewer-controls">
+                    <button :class="{ active: viewerMode === 'diff' }" @click="switchToDiffView()">Diff</button>
+                    <button :class="{ active: viewerMode === 'full' }" @click="switchToFullView()">Full</button>
+                    <button class="file-viewer-close" @click="closeFileViewer()">&times;</button>
+                  </div>
+                </div>
+                <div class="file-viewer-body">
+                  <div x-show="viewerMode === 'diff'" class="diff-view">
+                    <div x-show="viewerLoading" class="viewer-loading">Loading diff...</div>
+                    <div x-show="!viewerLoading && !viewerDiffHtml" class="diff-empty">No changes detected for this file.</div>
+                    <div x-show="!viewerLoading && viewerDiffHtml" x-html="viewerDiffHtml"></div>
+                  </div>
+                  <div x-show="viewerMode === 'full'" class="full-view">
+                    <div x-show="viewerLoading" class="viewer-loading">Loading...</div>
+                    <div x-show="viewerBinary" class="viewer-binary">Binary file — cannot display.</div>
+                    <div x-show="!viewerLoading && !viewerBinary" class="full-file-content" x-html="viewerFullHtml"></div>
+                    <div x-show="viewerTruncated" class="viewer-truncated">File truncated (exceeds 1MB).</div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="file-viewer-body">
-              <div x-show="viewerMode === 'diff'" class="diff-view">
-                <div x-show="viewerLoading" class="viewer-loading">Loading diff...</div>
-                <div x-show="!viewerLoading && !viewerDiffHtml" class="diff-empty">No changes detected for this file.</div>
-                <div x-show="!viewerLoading && viewerDiffHtml" x-html="viewerDiffHtml"></div>
+            </template>
+            <!-- Issue viewer -->
+            <template x-if="selectedIssue">
+              <div>
+                <div class="file-viewer-header">
+                  <span class="file-viewer-path" x-text="'Issue #' + selectedIssue.number"></span>
+                  <span class="file-type-badge" x-text="selectedIssue.state" :style="selectedIssue.state === 'OPEN' ? 'background:#238636;color:#fff' : 'background:#8957e5;color:#fff'"></span>
+                  <div class="file-viewer-controls">
+                    <button class="generate-prompt-btn" style="padding:2px 10px;font-size:11px;width:auto;border-radius:4px" @click="generateIssuePrompt(selectedIssue)">Generate Prompt</button>
+                    <button class="file-viewer-close" @click="closeIssueViewer()">&times;</button>
+                  </div>
+                </div>
+                <div class="file-viewer-body" style="padding:16px">
+                  <div x-show="selectedIssueLoading" class="viewer-loading">Loading issue...</div>
+                  <div x-show="!selectedIssueLoading">
+                    <h3 style="margin:0 0 8px 0;font-size:16px;color:var(--text)" x-text="selectedIssue.title"></h3>
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+                      opened by <span x-text="selectedIssue.author"></span> ·
+                      <span x-text="issueTimeAgo(selectedIssue.created_at || selectedIssue.updated_at)"></span>
+                    </div>
+                    <div class="issue-labels" x-show="selectedIssue.labels && selectedIssue.labels.length > 0" style="margin-bottom:12px">
+                      <template x-for="label in (selectedIssue.labels || [])" :key="label.name">
+                        <span class="issue-label" :style="issueLabelStyle(label)" x-text="label.name"></span>
+                      </template>
+                    </div>
+                    <div class="issue-body" style="max-height:none;background:transparent;border:none;padding:0"
+                         x-html="typeof marked !== 'undefined' ? marked.parse(selectedIssue.body || '*No description*') : (selectedIssue.body || '(No description)')"></div>
+                  </div>
+                </div>
               </div>
-              <div x-show="viewerMode === 'full'" class="full-view">
-                <div x-show="viewerLoading" class="viewer-loading">Loading...</div>
-                <div x-show="viewerBinary" class="viewer-binary">Binary file — cannot display.</div>
-                <div x-show="!viewerLoading && !viewerBinary" class="full-file-content" x-html="viewerFullHtml"></div>
-                <div x-show="viewerTruncated" class="viewer-truncated">File truncated (exceeds 1MB).</div>
-              </div>
-            </div>
+            </template>
           </div>
         </div>
       </div>
@@ -248,65 +283,43 @@
         </div>
 
         <!-- GitHub Issues Section -->
-        <div x-show="gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
-          <div class="issues-section">
-            <!-- List view -->
-            <template x-if="!selectedIssue">
-              <div>
-                <div class="issues-header">
-                  <span class="issues-title">Issues</span>
-                  <div class="issue-state-toggles">
-                    <button class="issue-state-toggle"
-                            :class="{ 'active-open': githubIssuesState === 'open' }"
-                            @click="toggleIssueState('open')">Open</button>
-                    <button class="issue-state-toggle"
-                            :class="{ 'active-closed': githubIssuesState === 'closed' }"
-                            @click="toggleIssueState('closed')">Closed</button>
+        <div class="issues-section" x-show="gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+          <div class="issues-header" @click="issuesExpanded = !issuesExpanded" style="cursor:pointer">
+            <span class="issues-title">
+              <span class="issues-toggle" x-text="issuesExpanded ? '▼' : '▶'"></span>
+              Issues
+            </span>
+            <div class="issue-state-toggles" x-show="issuesExpanded" @click.stop>
+              <button class="issue-state-toggle"
+                      :class="{ 'active-open': githubIssuesState === 'open' }"
+                      @click="toggleIssueState('open')">Open</button>
+              <button class="issue-state-toggle"
+                      :class="{ 'active-closed': githubIssuesState === 'closed' }"
+                      @click="toggleIssueState('closed')">Closed</button>
+            </div>
+          </div>
+          <div x-show="issuesExpanded" x-collapse>
+            <input type="text" class="issues-search" placeholder="Search issues..."
+                   x-model="githubIssuesSearch"
+                   @input="searchIssues()">
+            <div x-show="githubIssuesLoading" class="issues-loading">Loading...</div>
+            <div x-show="!githubIssuesLoading && githubIssuesError" class="issues-error" x-text="githubIssuesError"></div>
+            <div x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length === 0" class="issues-empty">No issues found</div>
+            <div class="issue-list" x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length > 0">
+              <template x-for="issue in githubIssues" :key="issue.number">
+                <div class="issue-row" :class="{ 'is-selected': selectedIssue?.number === issue.number }"
+                     @click="fetchIssueDetail(selectedSessionId, issue.number)">
+                  <div class="issue-dot" :class="issue.state"></div>
+                  <div class="issue-row-content">
+                    <div class="issue-row-title" x-text="issue.title"></div>
+                    <div class="issue-row-meta" x-text="'#' + issue.number + ' · ' + issueTimeAgo(issue.updated_at)"></div>
                   </div>
                 </div>
-                <input type="text" class="issues-search" placeholder="Search issues..."
-                       x-model="githubIssuesSearch"
-                       @input="searchIssues()">
-                <div x-show="githubIssuesLoading" class="issues-loading">Loading...</div>
-                <div x-show="!githubIssuesLoading && githubIssuesError" class="issues-error" x-text="githubIssuesError"></div>
-                <div x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length === 0" class="issues-empty">No issues found</div>
-                <div class="issue-list" x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length > 0">
-                  <template x-for="issue in githubIssues" :key="issue.number">
-                    <div class="issue-row" @click="fetchIssueDetail(selectedSessionId, issue.number)">
-                      <div class="issue-dot" :class="issue.state"></div>
-                      <div class="issue-row-content">
-                        <div class="issue-row-title" x-text="issue.title"></div>
-                        <div class="issue-row-meta" x-text="'#' + issue.number + ' · ' + issueTimeAgo(issue.updated_at)"></div>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-                <button x-show="githubIssuesHasMore && !githubIssuesLoading"
-                        class="issues-show-more"
-                        @click="loadMoreIssues()">Show more</button>
-              </div>
-            </template>
-
-            <!-- Detail view -->
-            <template x-if="selectedIssue">
-              <div class="issue-detail">
-                <div class="issue-detail-header">
-                  <div class="issue-detail-title" x-text="selectedIssue.title"></div>
-                  <button class="issue-detail-close" @click="selectedIssue = null">&#x2715;</button>
-                </div>
-                <div class="issue-detail-meta"
-                     x-text="'#' + selectedIssue.number + ' · ' + selectedIssue.state + ' · ' + issueTimeAgo(selectedIssue.updated_at)"></div>
-                <div class="issue-labels" x-show="selectedIssue.labels && selectedIssue.labels.length > 0">
-                  <template x-for="label in (selectedIssue.labels || [])" :key="label.name">
-                    <span class="issue-label" :style="issueLabelStyle(label)" x-text="label.name"></span>
-                  </template>
-                </div>
-                <div class="issue-body"
-                     x-html="typeof marked !== 'undefined' ? marked.parse(selectedIssue.body || '') : (selectedIssue.body || '(No description)')"></div>
-                <button class="generate-prompt-btn" @click="generateIssuePrompt(selectedIssue)">Generate Prompt</button>
-                <span class="generate-prompt-hint">Populates the chat input below</span>
-              </div>
-            </template>
+              </template>
+            </div>
+            <button x-show="githubIssuesHasMore && !githubIssuesLoading"
+                    class="issues-show-more"
+                    @click="loadMoreIssues()">Show more</button>
           </div>
         </div>
       </div>
