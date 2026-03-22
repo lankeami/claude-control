@@ -41,15 +41,22 @@ The server detects the GitHub repo from the managed session's CWD by running `gh
 
 All endpoints shell out to the `gh` CLI in the session's CWD directory, reusing the user's existing `gh` auth. No API tokens to manage.
 
+**Session mode guard:** These endpoints only work for managed sessions (which have a CWD). Hook-mode sessions return 400. The frontend hides the issues section for hook-mode sessions.
+
+**Safety:** All `gh` CLI arguments are passed as separate args to `exec.Command()` (never interpolated into a shell string) to prevent injection.
+
 #### `GET /api/sessions/{id}/github/issues`
 
 Query params:
 - `state` — `open` (default) or `closed`
 - `search` — search string (optional)
 - `limit` — number of issues to return (default 10)
-- `page` — page number for pagination (default 1)
 
 Implementation: Shells out to `gh issue list --state {state} --search {search} --limit {limit} --json number,title,state,createdAt,author,labels` in the session's CWD.
+
+The `gh` CLI returns `author` as an object (`{"login": "..."}`) and `labels` as an array of objects (`[{"name": "...", "color": "..."}]`). The Go handler defines structs to deserialize the raw output and reshapes it into the simplified response below, extracting `author.login` as a string and mapping labels to `[{"name": "...", "color": "..."}]`.
+
+**Pagination:** The `gh` CLI has no offset/page support. "Show more" works by incrementing the `limit` param (e.g., first load fetches 10, "Show more" fetches 20). The frontend replaces the full list on each fetch. If the number of results returned is less than the requested limit, there are no more results (used to hide the "Show more" link). No `total_count` field.
 
 Response:
 ```json
@@ -62,16 +69,16 @@ Response:
       "state": "OPEN",
       "created_at": "2026-03-22T02:42:03Z",
       "author": "lankeami",
-      "labels": ["enhancement"]
+      "labels": [{"name": "enhancement", "color": "a2eeef"}]
     }
   ],
-  "total_count": 8
+  "has_more": false
 }
 ```
 
 #### `GET /api/sessions/{id}/github/issues/{number}`
 
-Implementation: Shells out to `gh issue view {number} --json number,title,state,body,createdAt,author,labels,comments` in the session's CWD.
+Implementation: Shells out to `gh issue view {number} --json number,title,state,body,createdAt,author,labels` in the session's CWD. Same struct reshaping as the list endpoint.
 
 Response:
 ```json
@@ -82,8 +89,7 @@ Response:
   "body": "As a developer, I'm having fun playing around...",
   "created_at": "2026-03-22T02:42:03Z",
   "author": "lankeami",
-  "labels": ["enhancement"],
-  "comments": []
+  "labels": [{"name": "enhancement", "color": "a2eeef"}]
 }
 ```
 
@@ -93,9 +99,9 @@ New state properties:
 - `githubIssues: []` — cached issue list
 - `githubIssuesState: 'open'` — open/closed filter
 - `githubIssuesSearch: ''` — search query
-- `githubIssuesPage: 1` — current page
+- `githubIssuesLimit: 10` — current fetch limit (increases on "Show more")
+- `githubIssuesHasMore: false` — whether more results exist
 - `githubIssuesLoading: false`
-- `githubIssuesTotal: 0` — total count for pagination
 - `selectedIssue: null` — expanded issue detail
 - `selectedIssueLoading: false`
 
@@ -105,11 +111,13 @@ New methods:
 - `generateIssuePrompt(issue)` — constructs prompt text, sets `this.inputText`, auto-resizes textarea
 - `toggleIssueState(state)` — switches open/closed, re-fetches
 - `searchIssues()` — debounced search, re-fetches
-- `loadMoreIssues()` — increments page, appends results
+- `loadMoreIssues()` — increases limit by 10, re-fetches full list
 
 ### Frontend — HTML Structure
 
-The issues section is added to `index.html` inside the right sidebar's git info area, below the branch name and working tree status. Structure:
+The issues section is added to `index.html` inside the right sidebar (`.file-tree-sidebar`), below the git info block. The entire sidebar already has `overflow-y: auto`, so the issues section scrolls naturally with the file tree — no separate scroll container needed. When the issue detail panel is expanded, it replaces the issue list inline (not a separate panel).
+
+Structure:
 
 ```
 .git-info-section (existing)
@@ -136,8 +144,8 @@ New styles for:
 - `.issues-search` — search input matching existing file tree search style
 - `.issue-row` — clickable issue item with hover state
 - `.issue-detail` — expanded view panel
-- `.issue-labels` — label pill styling
-- `.issue-body` — scrollable markdown content area
+- `.issue-labels` — label pill styling; background color derived from the `color` field returned by `gh` (prefixed with `#`)
+- `.issue-body` — markdown content area, rendered using the existing `marked.parse()` (already loaded in index.html)
 - `.generate-prompt-btn` — green action button
 
 ### Prompt Generation
