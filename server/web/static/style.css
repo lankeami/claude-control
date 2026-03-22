@@ -101,7 +101,18 @@ body {
   flex-direction: column;
   background: var(--bg-secondary);
   flex-shrink: 0;
+  position: relative;
 }
+.sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/logo@2x.png') center center / 60% auto no-repeat;
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 0;
+}
+.sidebar > * { position: relative; z-index: 1; }
 
 .sidebar-header {
   padding: 1rem;
