@@ -246,6 +246,69 @@
             <span class="git-clean-text">Working tree clean</span>
           </div>
         </div>
+
+        <!-- GitHub Issues Section -->
+        <div x-show="gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+          <div class="issues-section">
+            <!-- List view -->
+            <template x-if="!selectedIssue">
+              <div>
+                <div class="issues-header">
+                  <span class="issues-title">Issues</span>
+                  <div class="issue-state-toggles">
+                    <button class="issue-state-toggle"
+                            :class="{ 'active-open': githubIssuesState === 'open' }"
+                            @click="toggleIssueState('open')">Open</button>
+                    <button class="issue-state-toggle"
+                            :class="{ 'active-closed': githubIssuesState === 'closed' }"
+                            @click="toggleIssueState('closed')">Closed</button>
+                  </div>
+                </div>
+                <input type="text" class="issues-search" placeholder="Search issues..."
+                       x-model="githubIssuesSearch"
+                       @input="searchIssues()">
+                <div x-show="githubIssuesLoading" class="issues-loading">Loading...</div>
+                <div x-show="!githubIssuesLoading && githubIssuesError" class="issues-error" x-text="githubIssuesError"></div>
+                <div x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length === 0" class="issues-empty">No issues found</div>
+                <div class="issue-list" x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length > 0">
+                  <template x-for="issue in githubIssues" :key="issue.number">
+                    <div class="issue-row" @click="fetchIssueDetail(selectedSessionId, issue.number)">
+                      <div class="issue-dot" :class="issue.state"></div>
+                      <div class="issue-row-content">
+                        <div class="issue-row-title" x-text="issue.title"></div>
+                        <div class="issue-row-meta" x-text="'#' + issue.number + ' · ' + issueTimeAgo(issue.updated_at)"></div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <button x-show="githubIssuesHasMore && !githubIssuesLoading"
+                        class="issues-show-more"
+                        @click="loadMoreIssues()">Show more</button>
+              </div>
+            </template>
+
+            <!-- Detail view -->
+            <template x-if="selectedIssue">
+              <div class="issue-detail">
+                <div class="issue-detail-header">
+                  <div class="issue-detail-title" x-text="selectedIssue.title"></div>
+                  <button class="issue-detail-close" @click="selectedIssue = null">&#x2715;</button>
+                </div>
+                <div class="issue-detail-meta"
+                     x-text="'#' + selectedIssue.number + ' · ' + selectedIssue.state + ' · ' + issueTimeAgo(selectedIssue.updated_at)"></div>
+                <div class="issue-labels" x-show="selectedIssue.labels && selectedIssue.labels.length > 0">
+                  <template x-for="label in (selectedIssue.labels || [])" :key="label.name">
+                    <span class="issue-label" :style="issueLabelStyle(label)" x-text="label.name"></span>
+                  </template>
+                </div>
+                <div class="issue-body"
+                     x-html="typeof marked !== 'undefined' ? marked.parse(selectedIssue.body || '') : (selectedIssue.body || '(No description)')"></div>
+                <button class="generate-prompt-btn" @click="generateIssuePrompt(selectedIssue)">Generate Prompt</button>
+                <span class="generate-prompt-hint">Populates the chat input below</span>
+              </div>
+            </template>
+          </div>
+        </div>
       </div>
     </div>
   </template>
