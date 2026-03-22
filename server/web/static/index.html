@@ -176,7 +176,7 @@
           <div class="file-viewer-column" x-show="viewerFile || selectedIssue" x-cloak>
             <!-- File viewer (existing) -->
             <template x-if="viewerFile && !selectedIssue">
-              <div>
+              <div style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">
                 <div class="file-viewer-header">
                   <span class="file-viewer-path" x-text="viewerFileName"></span>
                   <span class="file-type-badge" x-text="viewerFileType" x-show="viewerFileType"></span>
@@ -203,7 +203,7 @@
             </template>
             <!-- Issue viewer -->
             <template x-if="selectedIssue">
-              <div>
+              <div style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">
                 <div class="file-viewer-header">
                   <span class="file-viewer-path" x-text="'Issue #' + selectedIssue.number"></span>
                   <span class="file-type-badge" x-text="selectedIssue.state" :style="selectedIssue.state === 'OPEN' ? 'background:#238636;color:#fff' : 'background:#8957e5;color:#fff'"></span>
@@ -383,6 +383,23 @@
             <span x-show="entry.is_git_repo" style="font-size:10px; color:var(--green); flex-shrink:0;">git</span>
           </div>
         </template>
+      </div>
+
+      <!-- New Project -->
+      <div style="border-top:1px solid var(--border); padding-top:10px; margin-top:8px;">
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">Create new project in this folder:</div>
+        <div style="display:flex; gap:8px;">
+          <input x-model="newProjectName" type="text" placeholder="New project name..."
+                 style="flex:1; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;"
+                 @keydown.enter.prevent="createNewProject()">
+          <button class="btn btn-sm btn-primary" @click="createNewProject()"
+                  :disabled="!isValidNewProjectName || newProjectCreating"
+                  x-text="newProjectCreating ? 'Creating...' : 'Create'"></button>
+        </div>
+        <div x-show="newProjectName && !isValidNewProjectName" style="font-size:11px; color:var(--red); margin-top:4px;">
+          Use letters, numbers, hyphens, dots, or underscores. Must start/end with alphanumeric.
+        </div>
+        <div x-show="newProjectError" style="font-size:11px; color:var(--red); margin-top:4px;" x-text="newProjectError"></div>
       </div>
 
       <!-- Actions -->

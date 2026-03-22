@@ -38,6 +38,9 @@ document.addEventListener('alpine:init', () => {
     browseLoading: false,
     browseFilter: '',
     browseConfirmed: false,
+    newProjectName: '',
+    newProjectError: '',
+    newProjectCreating: false,
 
     // Resume picker state
     showResumePicker: false,
@@ -506,6 +509,9 @@ document.addEventListener('alpine:init', () => {
       this.browseEntries = [];
       this.browseFilter = '';
       this.browseConfirmed = false;
+      this.newProjectName = '';
+      this.newProjectError = '';
+      this.newProjectCreating = false;
       await this.browseTo('');
     },
 
@@ -554,6 +560,12 @@ document.addEventListener('alpine:init', () => {
       return this.browseEntries.filter(e => e.name.toLowerCase().includes(q));
     },
 
+    get isValidNewProjectName() {
+      const name = this.newProjectName.trim();
+      if (!name) return false;
+      return /^[a-zA-Z0-9]([a-zA-Z0-9._-]{0,253}[a-zA-Z0-9])?$/.test(name);
+    },
+
     handleBrowseInputKeydown(event) {
       if (event.key !== 'Enter') return;
       event.preventDefault();
@@ -589,6 +601,43 @@ document.addEventListener('alpine:init', () => {
         this.toast('Session created');
       } catch (e) {
         this.toast('Error: ' + e.message);
+      }
+    },
+
+    async createNewProject() {
+      if (!this.isValidNewProjectName || this.newProjectCreating) return;
+      this.newProjectCreating = true;
+      this.newProjectError = '';
+      try {
+        const res = await fetch('/api/sessions/create-project', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parent_path: this.browsePath, name: this.newProjectName.trim() })
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          if (res.status === 409) {
+            this.newProjectError = errText.includes('directory already exists')
+              ? 'Directory already exists. Select it from the list above.'
+              : 'A session already exists for this directory.';
+          } else if (res.status === 400) {
+            this.newProjectError = 'Invalid name. Use letters, numbers, hyphens, dots, or underscores.';
+          } else {
+            this.newProjectError = 'Failed to create project. Please try again.';
+          }
+          return;
+        }
+        const sess = await res.json();
+        this.showNewSessionModal = false;
+        this.newProjectName = '';
+        this.newProjectError = '';
+        this.toast('Project created');
+        await this.loadSessions();
+        this.selectedSessionId = sess.id;
+      } catch (e) {
+        this.newProjectError = 'Error: ' + e.message;
+      } finally {
+        this.newProjectCreating = false;
       }
     },
 
