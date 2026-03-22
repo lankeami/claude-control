@@ -229,6 +229,8 @@ func gitListFiles(cwd string) ([]string, error) {
 
 type gitSummaryInfo struct {
 	Branch    string `json:"branch"`
+	RepoName  string `json:"repo_name,omitempty"`
+	RepoURL   string `json:"repo_url,omitempty"`
 	Modified  int    `json:"modified"`
 	Added     int    `json:"added"`
 	Deleted   int    `json:"deleted"`
@@ -246,6 +248,14 @@ func gitSummary(cwd string) gitSummaryInfo {
 	cmd.Dir = cwd
 	if out, err := cmd.Output(); err == nil {
 		info.Branch = strings.TrimSpace(string(out))
+	}
+
+	// Get remote URL and derive repo name + browsable URL
+	cmdRemote := exec.Command("git", "remote", "get-url", "origin")
+	cmdRemote.Dir = cwd
+	if out, err := cmdRemote.Output(); err == nil {
+		rawURL := strings.TrimSpace(string(out))
+		info.RepoName, info.RepoURL = parseGitRemoteURL(rawURL)
 	}
 
 	// Get ahead/behind from tracking branch
@@ -302,6 +312,38 @@ func parseInt(s string) (int, error) {
 		n = n*10 + int(c-'0')
 	}
 	return n, nil
+}
+
+// parseGitRemoteURL converts a git remote URL (SSH or HTTPS) into a
+// human-readable repo name (owner/repo) and a browsable HTTPS URL.
+func parseGitRemoteURL(rawURL string) (name, browseURL string) {
+	// SSH format: git@github.com:owner/repo.git
+	if strings.HasPrefix(rawURL, "git@") {
+		// git@github.com:owner/repo.git -> github.com/owner/repo
+		trimmed := strings.TrimPrefix(rawURL, "git@")
+		trimmed = strings.TrimSuffix(trimmed, ".git")
+		trimmed = strings.Replace(trimmed, ":", "/", 1)
+		parts := strings.SplitN(trimmed, "/", 3)
+		if len(parts) == 3 {
+			name = parts[1] + "/" + parts[2]
+			browseURL = "https://" + trimmed
+		}
+		return
+	}
+
+	// HTTPS format: https://github.com/owner/repo.git
+	if strings.HasPrefix(rawURL, "https://") || strings.HasPrefix(rawURL, "http://") {
+		trimmed := strings.TrimSuffix(rawURL, ".git")
+		// Extract owner/repo from URL path
+		parts := strings.Split(trimmed, "/")
+		if len(parts) >= 5 {
+			name = parts[len(parts)-2] + "/" + parts[len(parts)-1]
+		}
+		browseURL = trimmed
+		return
+	}
+
+	return "", ""
 }
 
 // gitStatus returns a map of relative path -> status code

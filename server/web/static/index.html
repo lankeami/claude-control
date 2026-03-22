@@ -266,6 +266,12 @@
           </template>
         </div>
         <div class="git-status-bar" x-show="gitInfo">
+          <div class="git-repo-row" x-show="gitInfo?.repo_name" style="display:flex; align-items:center; gap:4px; margin-bottom:2px; font-size:11px; opacity:0.7;">
+            <a :href="gitInfo?.repo_url" target="_blank" rel="noopener" x-text="gitInfo?.repo_name"
+               style="color:var(--text-secondary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+               @mouseenter="$el.style.color='var(--accent-color)'; $el.style.textDecoration='underline'"
+               @mouseleave="$el.style.color='var(--text-secondary)'; $el.style.textDecoration='none'"></a>
+          </div>
           <div class="git-branch-row">
             <span class="git-branch-icon">⎇</span>
             <span class="git-branch-name" x-text="gitInfo?.branch || 'detached'"></span>
