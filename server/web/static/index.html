@@ -221,8 +221,13 @@
             </div>
           </div>
 
+          <!-- File viewer resize handle -->
+          <div class="resize-handle" x-show="viewerFile || selectedIssue"
+               @mousedown="startResize($event, 'viewer')" @dblclick="viewerWidth = null"></div>
+
           <!-- File Viewer Panel -->
-          <div class="file-viewer-column" x-show="viewerFile || selectedIssue" x-cloak>
+          <div class="file-viewer-column" x-show="viewerFile || selectedIssue" x-cloak
+               :style="viewerWidth ? 'flex:none;width:' + viewerWidth + 'px' : ''"
             <!-- File viewer (existing) -->
             <template x-if="viewerFile && !selectedIssue">
               <div style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">

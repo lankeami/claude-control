@@ -103,6 +103,7 @@ document.addEventListener('alpine:init', () => {
     rightCollapsed: false,
     leftWidth: null,
     rightWidth: null,
+    viewerWidth: null,
     _resizing: null,
     _resizeStartX: 0,
     _resizeStartWidth: 0,
@@ -116,9 +117,12 @@ document.addEventListener('alpine:init', () => {
       if (side === 'left') {
         const sidebar = document.querySelector('.sidebar');
         this._resizeStartWidth = sidebar.offsetWidth;
-      } else {
+      } else if (side === 'right') {
         const sidebar = document.querySelector('.file-tree-sidebar');
         this._resizeStartWidth = sidebar.offsetWidth;
+      } else if (side === 'viewer') {
+        const viewer = document.querySelector('.file-viewer-column');
+        this._resizeStartWidth = viewer.offsetWidth;
       }
       const onMove = (ev) => {
         if (!this._resizing) return;
@@ -129,11 +133,13 @@ document.addEventListener('alpine:init', () => {
         } else {
           newWidth = this._resizeStartWidth - delta;
         }
-        newWidth = Math.max(160, Math.min(600, newWidth));
+        newWidth = Math.max(200, Math.min(900, newWidth));
         if (this._resizing === 'left') {
           this.leftWidth = newWidth;
-        } else {
+        } else if (this._resizing === 'right') {
           this.rightWidth = newWidth;
+        } else if (this._resizing === 'viewer') {
+          this.viewerWidth = newWidth;
         }
       };
       const onUp = () => {
