@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -118,16 +119,15 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, _ = s.store.CreateMessage(sessionID, "user", req.Message)
-	_ = s.store.SetSessionStatus(sessionID, "running")
+	_ = s.store.UpdateActivityState(sessionID, "working")
 
 	broadcaster := s.manager.GetBroadcaster(sessionID)
 
 	go func() {
-		defer func() {
-			_ = s.store.SetSessionStatus(sessionID, "idle")
-		}()
 
-		ctx := r.Context()
+		// Use a detached context — this goroutine outlives the HTTP request,
+		// so r.Context() would be cancelled as soon as the handler returns.
+		ctx := context.Background()
 		continuationCount := 0
 		// int() truncates toward zero, same as floor() for positive numbers
 		threshold := int(sess.AutoContinueThreshold * float64(sess.MaxTurns))
@@ -138,6 +138,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-ctx.Done():
 				log.Printf("session %s: client disconnected, stopping auto-continue", sessionID)
+				_ = s.store.UpdateActivityState(sessionID, "idle")
 				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
 				broadcaster.Send(doneMsg)
 				return
@@ -157,6 +158,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				log.Printf("auto-continue spawn error for session %s: %v", sessionID, err)
 				errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to spawn process: %s"}`, err.Error())
 				broadcaster.Send(errMsg)
+				_ = s.store.UpdateActivityState(sessionID, "idle")
 				break
 			}
 
@@ -207,6 +209,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 			// Natural exit (code 0) — Claude finished on its own, no auto-continue needed.
 			if proc.ExitCode == 0 && !autoInterrupting {
+				_ = s.store.UpdateActivityState(sessionID, "waiting")
 				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
 				broadcaster.Send(doneMsg)
 				break
@@ -214,6 +217,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 			// Process exited without our threshold SIGINT — manual interrupt or error
 			if !autoInterrupting {
+				_ = s.store.UpdateActivityState(sessionID, "idle")
 				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
 				broadcaster.Send(doneMsg)
 				break
@@ -225,6 +229,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				_, _ = s.store.CreateMessage(sessionID, "system", "Auto-continue stopped: not making progress")
 				noProgressMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d,"reason":"no_progress"}`, continuationCount)
 				broadcaster.Send(noProgressMsg)
+				_ = s.store.UpdateActivityState(sessionID, "waiting")
 				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
 				broadcaster.Send(doneMsg)
 				break
@@ -238,6 +243,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				broadcaster.Send(exhaustedMsg)
 				_, _ = s.store.CreateMessage(sessionID, "system",
 					fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations))
+				_ = s.store.UpdateActivityState(sessionID, "waiting")
 				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
 				broadcaster.Send(doneMsg)
 				break
@@ -467,7 +473,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, _ = s.store.CreateMessage(sessionID, "shell", req.Command)
-	_ = s.store.SetSessionStatus(sessionID, "running")
+	_ = s.store.UpdateActivityState(sessionID, "working")
 
 	broadcaster := s.manager.GetBroadcaster(sessionID)
 
@@ -534,7 +540,11 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 			proc.ExitCode, jsonString(commandID), timedOut)
 		broadcaster.Send(exitMsg)
 
-		_ = s.store.SetSessionStatus(sessionID, "idle")
+		if proc.ExitCode == 0 {
+			_ = s.store.UpdateActivityState(sessionID, "waiting")
+		} else {
+			_ = s.store.UpdateActivityState(sessionID, "idle")
+		}
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
