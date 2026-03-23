@@ -24,9 +24,10 @@ type Session struct {
 	MaxBudgetUSD   float64   `json:"max_budget_usd"`
 	Initialized     bool   `json:"initialized"`
 	ClaudeSessionID string `json:"claude_session_id,omitempty"`
+	TurnCount       int    `json:"turn_count"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,'')`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -35,7 +36,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &sess.TranscriptPath,
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
-		&sess.ClaudeSessionID,
+		&sess.ClaudeSessionID, &sess.TurnCount,
 	)
 	if err != nil {
 		return sess, err
@@ -127,7 +128,7 @@ func (s *Store) ResumeSession(id, claudeSessionID string) error {
 		return fmt.Errorf("begin resume transaction: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 1, status = 'idle' WHERE id = ?`, claudeSessionID, id); err != nil {
+	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 1, status = 'idle', turn_count = 0 WHERE id = ?`, claudeSessionID, id); err != nil {
 		return fmt.Errorf("set claude_session_id: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
@@ -171,6 +172,22 @@ func (s *Store) SetArchived(id string, archived bool) error {
 
 func (s *Store) SetSessionStatus(id, status string) error {
 	_, err := s.db.Exec("UPDATE sessions SET status = ? WHERE id = ?", status, id)
+	return err
+}
+
+func (s *Store) IncrementTurnCount(id string) (int, error) {
+	var count int
+	err := s.db.QueryRow(
+		`UPDATE sessions SET turn_count = turn_count + 1 WHERE id = ? RETURNING turn_count`, id,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("increment turn count: %w", err)
+	}
+	return count, nil
+}
+
+func (s *Store) ResetTurnCount(id string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET turn_count = 0 WHERE id = ?`, id)
 	return err
 }
 

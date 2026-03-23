@@ -82,6 +82,11 @@ document.addEventListener('alpine:init', () => {
     showToast: false,
     toastMessage: '',
     toastTimer: null,
+    toastType: 'info',
+
+    // Usage tracking
+    lastTurnThreshold: 0,
+    lastThresholdSessionId: null,
 
     // Activity Status Pills
     stalenessTimer: null,
@@ -145,6 +150,32 @@ document.addEventListener('alpine:init', () => {
           const hadPending = this.currentPendingPrompt;
           this.sessions = data.sessions || [];
           this.prompts = data.prompts || [];
+          // Check turn count thresholds for toast warnings
+          if (this.selectedSessionId) {
+            const sess = (data.sessions || []).find(s => s.id === this.selectedSessionId);
+            if (sess && sess.mode === 'managed' && sess.max_turns > 0) {
+              const pct = (sess.turn_count / sess.max_turns) * 100;
+              // Reset threshold tracker on session change or turn reset
+              if (this.lastThresholdSessionId !== sess.id) {
+                this.lastTurnThreshold = 0;
+                this.lastThresholdSessionId = sess.id;
+              }
+              if (sess.turn_count === 0 && this.lastTurnThreshold > 0) {
+                this.lastTurnThreshold = 0;
+              }
+              // Fire toasts at threshold crossings
+              if (pct >= 100 && this.lastTurnThreshold < 100) {
+                this.toast(`Session interrupted \u2014 turn limit reached (${sess.turn_count}/${sess.max_turns})`, 8000, 'error');
+                this.lastTurnThreshold = 100;
+              } else if (pct >= 90 && this.lastTurnThreshold < 90) {
+                this.toast(`Turn limit critical (${sess.turn_count}/${sess.max_turns}) \u2014 session will be interrupted soon`, 6000, 'error');
+                this.lastTurnThreshold = 90;
+              } else if (pct >= 80 && this.lastTurnThreshold < 80) {
+                this.toast(`Turn limit warning (${sess.turn_count}/${sess.max_turns}) \u2014 approaching session limit`, 6000, 'warning');
+                this.lastTurnThreshold = 80;
+              }
+            }
+          }
           this.connected = true;
           this.sseFailCount = 0;
           if (!hadPending && this.currentPendingPrompt) {
@@ -269,8 +300,9 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    toast(msg, duration = 4000) {
+    toast(msg, duration = 4000, type = 'info') {
       this.toastMessage = msg;
+      this.toastType = type;
       this.showToast = true;
       if (this.toastTimer) clearTimeout(this.toastTimer);
       this.toastTimer = setTimeout(() => { this.showToast = false; }, duration);
@@ -288,6 +320,23 @@ document.addEventListener('alpine:init', () => {
         if (b.status === 'pending' && a.status !== 'pending') return 1;
         return new Date(b.created_at) - new Date(a.created_at);
       });
+    },
+
+    get selectedSession() {
+      return this.sessions.find(s => s.id === this.selectedSessionId);
+    },
+
+    get turnPercent() {
+      const sess = this.selectedSession;
+      if (!sess || sess.mode !== 'managed' || !sess.max_turns) return 0;
+      return Math.min(100, Math.round((sess.turn_count / sess.max_turns) * 100));
+    },
+
+    turnBarColor() {
+      const pct = this.turnPercent;
+      if (pct >= 90) return '#ef4444';
+      if (pct >= 80) return '#f59e0b';
+      return 'var(--accent)';
     },
 
     pendingCountFor(sessionId) {

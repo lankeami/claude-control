@@ -76,6 +76,17 @@
             </div>
           </template>
         </div>
+        <div class="usage-panel" x-show="selectedSession && selectedSession.mode === 'managed'" x-cloak>
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="color:var(--text-muted); font-size:12px;">Turns</span>
+            <span style="font-size:12px; font-weight:600;"
+                  :style="{ color: turnPercent >= 90 ? '#ef4444' : turnPercent >= 80 ? '#f59e0b' : 'var(--text)' }"
+                  x-text="(selectedSession.turn_count || 0) + ' / ' + selectedSession.max_turns"></span>
+          </div>
+          <div class="usage-bar">
+            <div class="usage-bar-fill" :style="{ width: turnPercent + '%', background: turnBarColor() }"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Main area -->
@@ -452,7 +463,7 @@
   </div>
 
   <!-- Toast -->
-  <div class="toast" :class="{ visible: showToast }" x-text="toastMessage"></div>
+  <div class="toast" :class="{ visible: showToast, warning: toastType === 'warning', error: toastType === 'error' }" x-text="toastMessage"></div>
 
   <style>[x-cloak] { display: none !important; }</style>
 </body>
