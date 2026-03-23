@@ -64,7 +64,8 @@
           <template x-for="session in sessions" :key="session.id">
             <div class="session-item" :class="{ active: selectedSessionId === session.id }"
                  @click="selectSession(session.id)">
-              <span class="status-dot" :class="sessionStatus(session)"></span>
+              <span class="status-dot" :class="sessionStatus(session)"
+                    :title="sessionStatus(session) === 'active' ? 'Working' : sessionStatus(session) === 'waiting' ? 'Waiting for input' : 'Idle'"></span>
               <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                     x-text="sessionName(session)"></span>
               <span x-show="session.mode === 'managed'"

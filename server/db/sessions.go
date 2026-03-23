@@ -27,9 +27,10 @@ type Session struct {
 	TurnCount             int     `json:"turn_count"`
 	AutoContinueThreshold float64 `json:"auto_continue_threshold"`
 	MaxContinuations      int     `json:"max_continuations"`
+	ActivityState         string  `json:"activity_state"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count, auto_continue_threshold, max_continuations`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count, auto_continue_threshold, max_continuations, COALESCE(activity_state,'idle')`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -38,7 +39,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &sess.TranscriptPath,
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
-		&sess.ClaudeSessionID, &sess.TurnCount, &sess.AutoContinueThreshold, &sess.MaxContinuations,
+		&sess.ClaudeSessionID, &sess.TurnCount, &sess.AutoContinueThreshold, &sess.MaxContinuations, &sess.ActivityState,
 	)
 	if err != nil {
 		return sess, err
@@ -174,6 +175,16 @@ func (s *Store) SetArchived(id string, archived bool) error {
 
 func (s *Store) SetSessionStatus(id, status string) error {
 	_, err := s.db.Exec("UPDATE sessions SET status = ? WHERE id = ?", status, id)
+	return err
+}
+
+func (s *Store) UpdateActivityState(id, state string) error {
+	_, err := s.db.Exec("UPDATE sessions SET activity_state = ? WHERE id = ?", state, id)
+	return err
+}
+
+func (s *Store) ResetStaleActivityStates() error {
+	_, err := s.db.Exec("UPDATE sessions SET activity_state = 'idle' WHERE activity_state = 'working'")
 	return err
 }
 

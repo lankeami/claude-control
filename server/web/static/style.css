@@ -181,8 +181,16 @@ body {
   flex-shrink: 0;
 }
 .status-dot.waiting { background: var(--green); }
-.status-dot.active { background: var(--yellow); }
+.status-dot.active {
+  background: var(--yellow);
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
 .status-dot.idle { background: var(--gray); }
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 
 .badge {
   background: var(--red);
