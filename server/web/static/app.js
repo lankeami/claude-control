@@ -101,6 +101,60 @@ document.addEventListener('alpine:init', () => {
     lastEventTime: null,
     currentPillStart: null,
 
+    // Sidebar collapse/resize state
+    leftCollapsed: false,
+    rightCollapsed: false,
+    leftWidth: null,
+    rightWidth: null,
+    viewerWidth: null,
+    _resizing: null,
+    _resizeStartX: 0,
+    _resizeStartWidth: 0,
+
+    startResize(e, side) {
+      e.preventDefault();
+      const handle = e.target.closest('.resize-handle');
+      if (handle) handle.classList.add('active');
+      this._resizing = side;
+      this._resizeStartX = e.clientX;
+      if (side === 'left') {
+        const sidebar = document.querySelector('.sidebar');
+        this._resizeStartWidth = sidebar.offsetWidth;
+      } else if (side === 'right') {
+        const sidebar = document.querySelector('.file-tree-sidebar');
+        this._resizeStartWidth = sidebar.offsetWidth;
+      } else if (side === 'viewer') {
+        const viewer = document.querySelector('.file-viewer-column');
+        this._resizeStartWidth = viewer.offsetWidth;
+      }
+      const onMove = (ev) => {
+        if (!this._resizing) return;
+        const delta = ev.clientX - this._resizeStartX;
+        let newWidth;
+        if (this._resizing === 'left') {
+          newWidth = this._resizeStartWidth + delta;
+        } else {
+          newWidth = this._resizeStartWidth - delta;
+        }
+        newWidth = Math.max(200, Math.min(900, newWidth));
+        if (this._resizing === 'left') {
+          this.leftWidth = newWidth;
+        } else if (this._resizing === 'right') {
+          this.rightWidth = newWidth;
+        } else if (this._resizing === 'viewer') {
+          this.viewerWidth = newWidth;
+        }
+      };
+      const onUp = () => {
+        document.querySelectorAll('.resize-handle.active').forEach(h => h.classList.remove('active'));
+        this._resizing = null;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    },
+
     async init() {
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
