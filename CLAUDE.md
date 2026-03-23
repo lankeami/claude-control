@@ -73,3 +73,5 @@ docker compose down                             # Stop
 - Managed sessions plan: `docs/superpowers/plans/2026-03-19-managed-sessions.md`
 - Resume command spec: `docs/superpowers/specs/2026-03-19-resume-command-design.md`
 - Resume command plan: `docs/superpowers/plans/2026-03-19-resume-command.md`
+- SSE interrupt / auto-continue spec: `docs/superpowers/specs/2026-03-23-sse-interrupt-turns-management-design.md`
+- SSE interrupt / auto-continue plan: `docs/superpowers/plans/2026-03-23-sse-interrupt-turns-management.md`
