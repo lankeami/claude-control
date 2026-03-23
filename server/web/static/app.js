@@ -334,8 +334,8 @@ document.addEventListener('alpine:init', () => {
 
     async sendBrowserNotification(session) {
       if (Notification.permission !== 'granted') return;
-      const title = this.sessionName(session);
-      let body = 'Claude is ready for your input';
+      const sessionName = this.sessionName(session);
+      let eventName = 'Claude is ready for your input';
       try {
         const res = await fetch(`/api/sessions/${session.id}/messages`, {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
@@ -346,11 +346,15 @@ document.addEventListener('alpine:init', () => {
           if (lastAssistant && lastAssistant.content) {
             let text = lastAssistant.content;
             if (text.length > 120) text = text.substring(0, 117) + '...';
-            body = text;
+            eventName = text;
           }
         }
       } catch (e) {}
-      const notification = new Notification(title, { body, tag: session.id });
+      const notification = new Notification('Claude Control', {
+        body: `${sessionName}\n${eventName}`,
+        icon: '/static/logo-bg.png',
+        tag: session.id
+      });
       notification.onclick = () => {
         window.focus();
         this.selectSession(session.id);
