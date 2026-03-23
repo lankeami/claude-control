@@ -55,6 +55,7 @@ docker compose down                             # Stop
 - Tool restrictions via `--allowedTools`, turn limits via server-side SIGINT, budget caps via `--max-budget-usd`
 - `/resume` command reads Claude Code's native `sessions-index.json` to let users continue previous CLI sessions in the web UI
 - `claude_session_id` field decouples the managed session's stable ID from the CLI session being resumed
+- `activity_state` field tracks session lifecycle: `working` (process running), `waiting` (process exited cleanly, awaiting input), `idle` (no process, error, or new session). Updated server-side at process start/exit. Frontend shows yellow pulsing dot (working), green dot (waiting), gray dot (idle). On server startup, stale `working` states are reset to `idle`.
 
 ### Shared
 - SQLite with WAL mode + busy_timeout for concurrent writes from multiple hook scripts
@@ -75,3 +76,5 @@ docker compose down                             # Stop
 - Resume command plan: `docs/superpowers/plans/2026-03-19-resume-command.md`
 - SSE interrupt / auto-continue spec: `docs/superpowers/specs/2026-03-23-sse-interrupt-turns-management-design.md`
 - SSE interrupt / auto-continue plan: `docs/superpowers/plans/2026-03-23-sse-interrupt-turns-management.md`
+- Session activity state spec: `docs/superpowers/specs/2026-03-23-session-activity-state-design.md`
+- Session activity state plan: `docs/superpowers/plans/2026-03-23-session-activity-state.md`
