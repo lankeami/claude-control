@@ -156,6 +156,24 @@ body {
 .session-item.active .session-delete { color: rgba(255,255,255,0.6); }
 .session-item.active .session-delete:hover { color: #fff; }
 
+/* Usage panel */
+.usage-panel {
+  padding: 12px 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.usage-bar {
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  height: 6px;
+  overflow: hidden;
+}
+.usage-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
