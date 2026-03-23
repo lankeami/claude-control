@@ -9,6 +9,12 @@ import (
 //go:embed static/*
 var staticFiles embed.FS
 
+// FrameTemplate returns the embedded frame-template.html content.
+func FrameTemplate() string {
+	data, _ := fs.ReadFile(staticFiles, "static/frame-template.html")
+	return string(data)
+}
+
 // Handler returns an http.Handler that serves the embedded static files.
 // All unmatched paths serve index.html (SPA fallback).
 func Handler() http.Handler {
