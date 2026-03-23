@@ -407,7 +407,10 @@ document.addEventListener('alpine:init', () => {
 
     sessionStatus(session) {
       if (session.mode === 'managed') {
-        return session.status; // managed sessions have accurate status (idle/running)
+        const state = session.activity_state || 'idle';
+        if (state === 'working') return 'active';
+        if (state === 'waiting') return 'waiting';
+        return 'idle';
       }
       const lastSeen = new Date(session.last_seen_at);
       const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
