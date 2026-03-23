@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
@@ -198,5 +199,55 @@ func TestShellExecuteRejectsNotFound(t *testing.T) {
 
 	if resp.StatusCode != 404 {
 		t.Errorf("status=%d, want 404", resp.StatusCode)
+	}
+}
+
+func TestShellExecutePersistsMessages(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+
+	body := `{"command": "echo hello", "timeout": 5}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Poll for shell_output message (avoids flaky time.Sleep)
+	deadline := time.Now().Add(10 * time.Second)
+	var foundShell, foundOutput bool
+	for time.Now().Before(deadline) {
+		msgs, err := store.ListMessages(sess.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		foundShell = false
+		foundOutput = false
+		for _, m := range msgs {
+			if m.Role == "shell" && m.Content == "echo hello" {
+				foundShell = true
+			}
+			if m.Role == "shell_output" {
+				foundOutput = true
+			}
+		}
+		if foundShell && foundOutput {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if !foundShell {
+		t.Error("expected shell command message to be persisted")
+	}
+	if !foundOutput {
+		t.Error("expected shell_output message to be persisted")
 	}
 }
