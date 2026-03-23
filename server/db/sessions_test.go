@@ -199,3 +199,54 @@ func TestAutoContinueDefaults(t *testing.T) {
 		t.Errorf("expected max_continuations 5, got %d", sess.MaxContinuations)
 	}
 }
+
+func TestUpdateActivityState(t *testing.T) {
+	store := newTestStore(t)
+	sess, err := store.CreateManagedSession("/tmp/test-activity", `["Bash"]`, 50, 5.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.ActivityState != "idle" {
+		t.Errorf("expected initial activity_state='idle', got %q", sess.ActivityState)
+	}
+	if err := store.UpdateActivityState(sess.ID, "working"); err != nil {
+		t.Fatalf("update to working: %v", err)
+	}
+	updated, _ := store.GetSessionByID(sess.ID)
+	if updated.ActivityState != "working" {
+		t.Errorf("expected activity_state='working', got %q", updated.ActivityState)
+	}
+	if err := store.UpdateActivityState(sess.ID, "waiting"); err != nil {
+		t.Fatalf("update to waiting: %v", err)
+	}
+	updated, _ = store.GetSessionByID(sess.ID)
+	if updated.ActivityState != "waiting" {
+		t.Errorf("expected activity_state='waiting', got %q", updated.ActivityState)
+	}
+	if err := store.UpdateActivityState(sess.ID, "idle"); err != nil {
+		t.Fatalf("update to idle: %v", err)
+	}
+	updated, _ = store.GetSessionByID(sess.ID)
+	if updated.ActivityState != "idle" {
+		t.Errorf("expected activity_state='idle', got %q", updated.ActivityState)
+	}
+}
+
+func TestResetStaleActivityStates(t *testing.T) {
+	store := newTestStore(t)
+	s1, _ := store.CreateManagedSession("/tmp/stale1", `["Bash"]`, 50, 5.0)
+	s2, _ := store.CreateManagedSession("/tmp/stale2", `["Bash"]`, 50, 5.0)
+	store.UpdateActivityState(s1.ID, "working")
+	store.UpdateActivityState(s2.ID, "waiting")
+	if err := store.ResetStaleActivityStates(); err != nil {
+		t.Fatalf("reset stale: %v", err)
+	}
+	got1, _ := store.GetSessionByID(s1.ID)
+	if got1.ActivityState != "idle" {
+		t.Errorf("s1: expected 'idle', got %q", got1.ActivityState)
+	}
+	got2, _ := store.GetSessionByID(s2.ID)
+	if got2.ActivityState != "waiting" {
+		t.Errorf("s2: expected 'waiting' (unchanged), got %q", got2.ActivityState)
+	}
+}
