@@ -185,3 +185,17 @@ func TestResumeSessionResetsTurnCount(t *testing.T) {
 		t.Errorf("expected turn_count=0 after resume, got %d", resumed.TurnCount)
 	}
 }
+
+func TestAutoContinueDefaults(t *testing.T) {
+	store := newTestStore(t)
+	sess, err := store.CreateManagedSession("/tmp/test-ac", `["Bash"]`, 50, 5.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.AutoContinueThreshold != 0.8 {
+		t.Errorf("expected threshold 0.8, got %f", sess.AutoContinueThreshold)
+	}
+	if sess.MaxContinuations != 5 {
+		t.Errorf("expected max_continuations 5, got %d", sess.MaxContinuations)
+	}
+}
