@@ -101,7 +101,18 @@ body {
   flex-direction: column;
   background: var(--bg-secondary);
   flex-shrink: 0;
+  position: relative;
 }
+.sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/logo-bg.png') center center / 80% auto no-repeat;
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 0;
+}
+.sidebar > * { position: relative; z-index: 1; }
 
 .sidebar-header {
   padding: 1rem;
@@ -123,6 +134,7 @@ body {
   cursor: pointer;
   font-size: 0.8125rem;
   transition: background 0.1s;
+  background: rgba(255, 255, 255, 0.7);
 }
 .session-item:hover { background: var(--border); }
 .session-item.active { background: var(--accent); color: #fff; }
