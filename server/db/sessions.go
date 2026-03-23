@@ -23,11 +23,13 @@ type Session struct {
 	MaxTurns       int       `json:"max_turns"`
 	MaxBudgetUSD   float64   `json:"max_budget_usd"`
 	Initialized     bool   `json:"initialized"`
-	ClaudeSessionID string `json:"claude_session_id,omitempty"`
-	TurnCount       int    `json:"turn_count"`
+	ClaudeSessionID       string  `json:"claude_session_id,omitempty"`
+	TurnCount             int     `json:"turn_count"`
+	AutoContinueThreshold float64 `json:"auto_continue_threshold"`
+	MaxContinuations      int     `json:"max_continuations"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count, auto_continue_threshold, max_continuations`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -36,7 +38,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &sess.TranscriptPath,
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
-		&sess.ClaudeSessionID, &sess.TurnCount,
+		&sess.ClaudeSessionID, &sess.TurnCount, &sess.AutoContinueThreshold, &sess.MaxContinuations,
 	)
 	if err != nil {
 		return sess, err
