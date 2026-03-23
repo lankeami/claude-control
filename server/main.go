@@ -54,6 +54,10 @@ func main() {
 	}
 	defer store.Close()
 
+	if err := store.ResetStaleActivityStates(); err != nil {
+		log.Printf("Warning: failed to reset stale activity states: %v", err)
+	}
+
 	apiKey := loadOrCreateAPIKey(*dbPath)
 
 	loadDotEnv(".env")
