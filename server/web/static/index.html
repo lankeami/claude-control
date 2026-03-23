@@ -162,7 +162,12 @@
                       </div>
                     </div>
                   </template>
-                  <template x-if="msg.role !== 'activity' && msg.role !== 'shell' && msg.role !== 'shell_output'">
+                  <template x-if="msg.isAutoContinue">
+                    <div class="chat-msg system-msg auto-continue-msg" style="text-align:center;opacity:0.7;font-style:italic;padding:8px 0;">
+                      <span x-text="msg.content"></span>
+                    </div>
+                  </template>
+                  <template x-if="!msg.isAutoContinue && msg.role !== 'activity' && msg.role !== 'shell' && msg.role !== 'shell_output'">
                     <div class="chat-bubble"
                          :class="bubbleClass(msg, idx)"
                          x-html="bubbleHTML(msg)">

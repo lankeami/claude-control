@@ -169,7 +169,7 @@ document.addEventListener('alpine:init', () => {
               }
               // Fire toasts at threshold crossings
               if (pct >= 100 && this.lastTurnThreshold < 100) {
-                this.toast(`Session interrupted \u2014 turn limit reached (${sess.turn_count}/${sess.max_turns})`, 8000, 'error');
+                this.toast(`Turn limit reached (${sess.turn_count}/${sess.max_turns}) — auto-continuing if enabled`, 8000, 'info');
                 this.lastTurnThreshold = 100;
               } else if (pct >= 90 && this.lastTurnThreshold < 90) {
                 this.toast(`Turn limit critical (${sess.turn_count}/${sess.max_turns}) \u2014 session will be interrupted soon`, 6000, 'error');
@@ -822,6 +822,32 @@ document.addEventListener('alpine:init', () => {
             return;
           }
 
+          if (data.type === 'auto_continuing') {
+            this.chatMessages.push({
+              id: 'auto-continue-' + Date.now(),
+              role: 'system',
+              content: `Auto-continuing (${data.continuation_count}/${data.max_continuations})...`,
+              isAutoContinue: true
+            });
+            // Reset turn threshold tracker since turn count will reset
+            this.lastTurnThreshold = 0;
+            this.$nextTick(() => this.scrollToBottom(true));
+            return;
+          }
+
+          if (data.type === 'auto_continue_exhausted') {
+            this.chatMessages.push({
+              id: 'auto-exhausted-' + Date.now(),
+              role: 'system',
+              content: data.reason === 'no_progress'
+                ? 'Auto-continue stopped: not making progress. Send a message to continue.'
+                : `Auto-continue limit reached (${data.continuation_count}). Send a message to continue.`,
+              isAutoContinue: true
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+            // Don't return — let the done handler below close the SSE
+          }
+
           if (data.type === 'done' || data.type === 'result') {
             // Mark the current active pill as completed (don't clear — pills persist until next message)
             const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
@@ -999,7 +1025,7 @@ document.addEventListener('alpine:init', () => {
         if (!res.ok) return;
         const msgs = await res.json();
         this.chatMessages = (msgs || [])
-          .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'activity' || m.role === 'shell' || m.role === 'shell_output' || (m.role === 'system' && m.content && m.content.includes('"error"')))
+          .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'activity' || m.role === 'shell' || m.role === 'shell_output' || (m.role === 'system' && m.content && (m.content.includes('"error"') || m.content.startsWith('Auto-continu'))))
           .map(m => {
             if (m.role === 'activity') {
               return {
@@ -1030,6 +1056,14 @@ document.addEventListener('alpine:init', () => {
               } catch (e) {
                 return { role: 'shell_output', stdout: m.content, stderr: '', exitCode: null, timedOut: false, shellId: null, complete: true, timestamp: m.created_at };
               }
+            }
+            if (m.role === 'system' && m.content && m.content.startsWith('Auto-continu')) {
+              return {
+                role: 'system',
+                content: m.content,
+                isAutoContinue: true,
+                timestamp: m.created_at
+              };
             }
             return {
               role: m.role,
