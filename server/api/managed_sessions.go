@@ -133,7 +133,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Background: stream stdout, persist inline, cleanup
 	go func() {
-		turnCount := 0
+		_ = s.store.ResetTurnCount(sessionID)
 
 		onLine := func(line string) {
 			// Don't persist heartbeat messages
@@ -154,8 +154,8 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				for _, toolName := range extractToolNames(line) {
 					_, _ = s.store.CreateMessage(sessionID, "activity", toolName)
 				}
-				turnCount++
-				if turnCount >= sess.MaxTurns {
+				count, _ := s.store.IncrementTurnCount(sessionID)
+				if count >= sess.MaxTurns {
 					log.Printf("session %s hit turn limit (%d), interrupting", sessionID, sess.MaxTurns)
 					_ = s.manager.Interrupt(sessionID)
 				}
