@@ -172,7 +172,19 @@ func (s *Server) serveSessionDefault(w http.ResponseWriter, r *http.Request, ses
 	s.serveVisualFile(w, r, newest)
 }
 
+const maxVisualFileSize = 10 << 20 // 10 MB
+
 func (s *Server) serveVisualFile(w http.ResponseWriter, r *http.Request, filePath string) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if info.Size() > maxVisualFileSize {
+		http.Error(w, "File too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		http.NotFound(w, r)
