@@ -40,9 +40,16 @@ All transitions happen in the managed session handler code (`server/api/managed_
 1. **User sends a message** (POST to send endpoint, which spawns `claude -p`) → set `activity_state = 'working'`
 2. **Process exits with code 0** (normal completion in SSE stream handler) → set `activity_state = 'waiting'`
 3. **Process exits with non-zero code** (error/interrupt) → set `activity_state = 'idle'`
-4. **Session created** → starts as `idle` (default)
+4. **Shell command starts** (`handleShellExecute`) → set `activity_state = 'working'`
+5. **Shell command exits** → set `activity_state = 'waiting'` (code 0) or `idle` (non-zero)
+6. **Session created** → starts as `idle` (default)
+7. **Server startup** → reset any `activity_state = 'working'` to `idle` (stale from prior crash/restart)
 
 A new DB method `UpdateActivityState(sessionID, state string)` handles these updates.
+
+### Relationship to Existing `status` Field
+
+The existing `status` field (`idle`/`running`/`active`) and its `SetSessionStatus()` calls in managed session handlers are **replaced** by `activity_state` and `UpdateActivityState()`. The `status` field remains in the DB and struct for backward compatibility with hook-mode sessions and the iOS app, but managed session code will no longer call `SetSessionStatus()` — it will use `UpdateActivityState()` exclusively. The frontend switches to reading `activity_state` for managed sessions.
 
 ### Hook-Mode Sessions
 
