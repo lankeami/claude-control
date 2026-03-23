@@ -53,6 +53,37 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(sess)
 }
 
+func buildClaudeArgs(sess *db.Session, message string) []string {
+	var args []string
+	args = append(args, "-p", message)
+
+	resumeID := sess.ID
+	if sess.ClaudeSessionID != "" {
+		resumeID = sess.ClaudeSessionID
+	}
+	if sess.Initialized {
+		args = append(args, "--resume", resumeID)
+	} else {
+		args = append(args, "--session-id", resumeID)
+	}
+
+	args = append(args, "--output-format", "stream-json", "--verbose")
+
+	if sess.AllowedTools != "" {
+		var tools []string
+		json.Unmarshal([]byte(sess.AllowedTools), &tools)
+		if len(tools) > 0 {
+			args = append(args, "--allowedTools", strings.Join(tools, ","))
+		}
+	}
+
+	if sess.MaxBudgetUSD > 0 {
+		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", sess.MaxBudgetUSD))
+	}
+
+	return args
+}
+
 func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
@@ -81,51 +112,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a managed session", http.StatusBadRequest)
 		return
 	}
-
-	// Build claude args
-	var args []string
-	args = append(args, "-p", req.Message)
-
-	// Use claude_session_id if set (resumed session), otherwise use managed session's own ID
-	resumeID := sessionID
-	if sess.ClaudeSessionID != "" {
-		resumeID = sess.ClaudeSessionID
-	}
-	if sess.Initialized {
-		args = append(args, "--resume", resumeID)
-	} else {
-		args = append(args, "--session-id", resumeID)
-	}
-
-	args = append(args, "--output-format", "stream-json", "--verbose")
-
-	if sess.AllowedTools != "" {
-		var tools []string
-		json.Unmarshal([]byte(sess.AllowedTools), &tools)
-		if len(tools) > 0 {
-			args = append(args, "--allowedTools", strings.Join(tools, ","))
-		}
-	}
-
-	if sess.MaxBudgetUSD > 0 {
-		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", sess.MaxBudgetUSD))
-	}
-
-	proc, err := s.manager.Spawn(sessionID, managed.SpawnOpts{
-		Args: args,
-		CWD:  sess.CWD,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "already has a running process") {
-			http.Error(w, err.Error(), http.StatusConflict)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+	if s.manager.IsRunning(sessionID) {
+		http.Error(w, "session already has a running process", http.StatusConflict)
 		return
-	}
-
-	if !sess.Initialized {
-		_ = s.store.SetInitialized(sessionID)
 	}
 
 	_, _ = s.store.CreateMessage(sessionID, "user", req.Message)
@@ -133,56 +122,136 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	broadcaster := s.manager.GetBroadcaster(sessionID)
 
-	// Background: stream stdout, persist inline, cleanup
 	go func() {
-		_ = s.store.ResetTurnCount(sessionID)
+		defer func() {
+			_ = s.store.SetSessionStatus(sessionID, "idle")
+		}()
 
-		onLine := func(line string) {
-			// Don't persist heartbeat messages
-			if parseRole(line) == "heartbeat" {
+		ctx := r.Context()
+		continuationCount := 0
+		// int() truncates toward zero, same as floor() for positive numbers
+		threshold := int(sess.AutoContinueThreshold * float64(sess.MaxTurns))
+		currentMessage := req.Message
+
+		for {
+			// Check context cancellation before each spawn (SSE client disconnect)
+			select {
+			case <-ctx.Done():
+				log.Printf("session %s: client disconnected, stopping auto-continue", sessionID)
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
+				broadcaster.Send(doneMsg)
 				return
+			default:
 			}
 
-			role := parseRole(line)
+			_ = s.store.ResetTurnCount(sessionID)
+			turnsSinceLastContinue := 0
+			autoInterrupting := false
 
-			// Only persist assistant text to the DB — skip system init,
-			// user echo, tool_use, tool_result, and result messages.
-			if role == "assistant" {
-				text := extractAssistantText(line)
-				if text != "" {
-					_, _ = s.store.CreateMessage(sessionID, role, text)
-				}
-				// Persist tool_use blocks as activity pills
-				for _, toolName := range extractToolNames(line) {
-					_, _ = s.store.CreateMessage(sessionID, "activity", toolName)
-				}
-				count, _ := s.store.IncrementTurnCount(sessionID)
-				if count >= sess.MaxTurns {
-					log.Printf("session %s hit turn limit (%d), interrupting", sessionID, sess.MaxTurns)
-					_ = s.manager.Interrupt(sessionID)
-				}
+			args := buildClaudeArgs(sess, currentMessage)
+			proc, err := s.manager.Spawn(sessionID, managed.SpawnOpts{
+				Args: args,
+				CWD:  sess.CWD,
+			})
+			if err != nil {
+				log.Printf("auto-continue spawn error for session %s: %v", sessionID, err)
+				errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to spawn process: %s"}`, err.Error())
+				broadcaster.Send(errMsg)
+				break
 			}
 
-			// Extract file paths from tool_use content blocks
-			extractSessionFiles(line, sessionID, s.store)
+			// After first spawn, ensure subsequent spawns use --resume
+			if !sess.Initialized {
+				_ = s.store.SetInitialized(sessionID)
+				sess.Initialized = true
+			}
+
+			// onLine runs synchronously inside StreamNDJSON's read loop.
+			// autoInterrupting is safe to read after StreamNDJSON returns
+			// because StreamNDJSON blocks until stdout EOF, providing a
+			// happens-before guarantee with <-proc.Done.
+			onLine := func(line string) {
+				if parseRole(line) == "heartbeat" {
+					return
+				}
+				role := parseRole(line)
+				if role == "assistant" {
+					text := extractAssistantText(line)
+					if text != "" {
+						_, _ = s.store.CreateMessage(sessionID, role, text)
+					}
+					for _, toolName := range extractToolNames(line) {
+						_, _ = s.store.CreateMessage(sessionID, "activity", toolName)
+					}
+					turnsSinceLastContinue++
+					count, _ := s.store.IncrementTurnCount(sessionID)
+					if count >= threshold && !autoInterrupting {
+						autoInterrupting = true
+						log.Printf("session %s hit auto-continue threshold (%d/%d), interrupting", sessionID, count, sess.MaxTurns)
+						_ = s.manager.Interrupt(sessionID)
+					}
+				}
+				extractSessionFiles(line, sessionID, s.store)
+			}
+
+			managed.StreamNDJSON(proc.Stdout, broadcaster, onLine)
+
+			stderrBytes, _ := io.ReadAll(proc.Stderr)
+			<-proc.Done
+
+			if proc.ExitCode != 0 && len(stderrBytes) > 0 {
+				errMsg := fmt.Sprintf(`{"type":"system","error":true,"stderr":%q,"exit_code":%d}`, string(stderrBytes), proc.ExitCode)
+				_, _ = s.store.CreateMessageWithExitCode(sessionID, "system", errMsg, proc.ExitCode)
+				broadcaster.Send(errMsg)
+			}
+
+			// Natural exit (code 0) — Claude finished on its own, no auto-continue needed.
+			if proc.ExitCode == 0 && !autoInterrupting {
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+				broadcaster.Send(doneMsg)
+				break
+			}
+
+			// Process exited without our threshold SIGINT — manual interrupt or error
+			if !autoInterrupting {
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+				broadcaster.Send(doneMsg)
+				break
+			}
+
+			// Minimum progress guard: need at least 2 turns of work
+			if turnsSinceLastContinue < 2 {
+				log.Printf("session %s not making progress (%d turns), stopping auto-continue", sessionID, turnsSinceLastContinue)
+				_, _ = s.store.CreateMessage(sessionID, "system", "Auto-continue stopped: not making progress")
+				noProgressMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d,"reason":"no_progress"}`, continuationCount)
+				broadcaster.Send(noProgressMsg)
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+				broadcaster.Send(doneMsg)
+				break
+			}
+
+			continuationCount++
+
+			if continuationCount > sess.MaxContinuations {
+				log.Printf("session %s exhausted auto-continues (%d/%d)", sessionID, continuationCount, sess.MaxContinuations)
+				exhaustedMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d}`, continuationCount)
+				broadcaster.Send(exhaustedMsg)
+				_, _ = s.store.CreateMessage(sessionID, "system",
+					fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations))
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+				broadcaster.Send(doneMsg)
+				break
+			}
+
+			// Auto-continue
+			continuingMsg := fmt.Sprintf(`{"type":"auto_continuing","continuation_count":%d,"max_continuations":%d}`,
+				continuationCount, sess.MaxContinuations)
+			broadcaster.Send(continuingMsg)
+			_, _ = s.store.CreateMessage(sessionID, "system",
+				fmt.Sprintf("Auto-continuing (%d/%d)...", continuationCount, sess.MaxContinuations))
+
+			currentMessage = "You were interrupted due to turn limits. Continue where you left off."
 		}
-
-		managed.StreamNDJSON(proc.Stdout, broadcaster, onLine)
-
-		stderrBytes, _ := io.ReadAll(proc.Stderr)
-
-		<-proc.Done
-
-		if proc.ExitCode != 0 && len(stderrBytes) > 0 {
-			errMsg := fmt.Sprintf(`{"type":"system","error":true,"stderr":%q,"exit_code":%d}`, string(stderrBytes), proc.ExitCode)
-			_, _ = s.store.CreateMessageWithExitCode(sessionID, "system", errMsg, proc.ExitCode)
-			broadcaster.Send(errMsg)
-		}
-
-		doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
-		broadcaster.Send(doneMsg)
-
-		_ = s.store.SetSessionStatus(sessionID, "idle")
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
