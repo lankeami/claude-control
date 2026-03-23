@@ -94,6 +94,7 @@ func migrate(db *sql.DB) error {
     FOREIGN KEY (session_id) REFERENCES sessions(id),
     UNIQUE(session_id, file_path, action)
 )`,
+		`ALTER TABLE sessions ADD COLUMN turn_count INTEGER NOT NULL DEFAULT 0`,
 	}
 
 	for _, m := range migrations {

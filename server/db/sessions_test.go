@@ -121,3 +121,67 @@ func TestHeartbeat(t *testing.T) {
 		t.Error("expected error for nonexistent session")
 	}
 }
+
+func TestTurnCount(t *testing.T) {
+	store := newTestStore(t)
+	sess, err := store.CreateManagedSession("/tmp/test-turns", `["Bash"]`, 50, 5.0)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Initial turn_count is 0
+	if sess.TurnCount != 0 {
+		t.Errorf("expected initial turn_count=0, got %d", sess.TurnCount)
+	}
+
+	// Increment returns new count
+	count, err := store.IncrementTurnCount(sess.ID)
+	if err != nil {
+		t.Fatalf("first increment: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected count=1, got %d", count)
+	}
+
+	count, err = store.IncrementTurnCount(sess.ID)
+	if err != nil {
+		t.Fatalf("second increment: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected count=2, got %d", count)
+	}
+
+	// Verify persisted via GetSessionByID
+	updated, _ := store.GetSessionByID(sess.ID)
+	if updated.TurnCount != 2 {
+		t.Errorf("expected persisted turn_count=2, got %d", updated.TurnCount)
+	}
+
+	// Reset
+	if err := store.ResetTurnCount(sess.ID); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	reset, _ := store.GetSessionByID(sess.ID)
+	if reset.TurnCount != 0 {
+		t.Errorf("expected turn_count=0 after reset, got %d", reset.TurnCount)
+	}
+}
+
+func TestResumeSessionResetsTurnCount(t *testing.T) {
+	store := newTestStore(t)
+	sess, _ := store.CreateManagedSession("/tmp/test-resume-turns", `["Bash"]`, 50, 5.0)
+
+	// Increment some turns
+	store.IncrementTurnCount(sess.ID)
+	store.IncrementTurnCount(sess.ID)
+
+	// Resume should reset turn_count
+	err := store.ResumeSession(sess.ID, "new-claude-session-id")
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	resumed, _ := store.GetSessionByID(sess.ID)
+	if resumed.TurnCount != 0 {
+		t.Errorf("expected turn_count=0 after resume, got %d", resumed.TurnCount)
+	}
+}
