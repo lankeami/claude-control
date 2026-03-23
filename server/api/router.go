@@ -84,6 +84,9 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handle
 	// All other /api/ routes — through auth middleware
 	root.Handle("/api/", authedAPI)
 
+	// Visual file server — no auth required
+	root.HandleFunc("/visual/", s.handleVisual)
+
 	// Static files — no auth required
 	root.Handle("/", web.Handler())
 
