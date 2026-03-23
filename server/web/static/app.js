@@ -82,6 +82,7 @@ document.addEventListener('alpine:init', () => {
     showToast: false,
     toastMessage: '',
     toastTimer: null,
+    toastType: 'info',
 
     // Activity Status Pills
     stalenessTimer: null,
@@ -269,8 +270,9 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    toast(msg, duration = 4000) {
+    toast(msg, duration = 4000, type = 'info') {
       this.toastMessage = msg;
+      this.toastType = type;
       this.showToast = true;
       if (this.toastTimer) clearTimeout(this.toastTimer);
       this.toastTimer = setTimeout(() => { this.showToast = false; }, duration);

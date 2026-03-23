@@ -452,7 +452,7 @@
   </div>
 
   <!-- Toast -->
-  <div class="toast" :class="{ visible: showToast }" x-text="toastMessage"></div>
+  <div class="toast" :class="{ visible: showToast, warning: toastType === 'warning', error: toastType === 'error' }" x-text="toastMessage"></div>
 
   <style>[x-cloak] { display: none !important; }</style>
 </body>

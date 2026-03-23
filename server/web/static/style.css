@@ -352,6 +352,16 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+.toast.warning {
+  background: #f59e0b;
+  color: #000;
+  border-color: #d97706;
+}
+.toast.error {
+  background: #ef4444;
+  color: #fff;
+  border-color: #dc2626;
+}
 
 /* Response area (textarea + send) */
 .response-area {
