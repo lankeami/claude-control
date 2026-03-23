@@ -112,3 +112,91 @@ func TestListMessagesAPI(t *testing.T) {
 		t.Errorf("got %d messages, want 2", len(msgs))
 	}
 }
+
+func TestShellExecuteAPI(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+
+	body := `{"command": "echo hello"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["id"] == nil || result["id"] == "" {
+		t.Error("expected non-empty command id in response")
+	}
+}
+
+func TestShellExecuteRejectsEmptyCommand(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+
+	body := `{"command": ""}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 400 {
+		t.Errorf("status=%d, want 400", resp.StatusCode)
+	}
+}
+
+func TestShellExecuteRejectsHookSession(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	// UpsertSession creates a hook-mode session (mode defaults to "hook")
+	hookSess, _ := store.UpsertSession("hook-sess", "/tmp", "/tmp/transcript")
+
+	body := `{"command": "echo hello"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+hookSess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 400 {
+		t.Errorf("status=%d, want 400 for hook session", resp.StatusCode)
+	}
+}
+
+func TestShellExecuteRejectsNotFound(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	body := `{"command": "echo hello"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/nonexistent/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 404 {
+		t.Errorf("status=%d, want 404", resp.StatusCode)
+	}
+}

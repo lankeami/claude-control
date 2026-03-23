@@ -1,12 +1,14 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
@@ -337,6 +339,142 @@ func extractToolNames(line string) []string {
 		}
 	}
 	return names
+}
+
+func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+
+	var req struct {
+		Command string `json:"command"`
+		Timeout int    `json:"timeout"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if req.Command == "" {
+		http.Error(w, "command is required", http.StatusBadRequest)
+		return
+	}
+	if req.Timeout <= 0 {
+		req.Timeout = 30
+	}
+	if req.Timeout > 300 {
+		req.Timeout = 300
+	}
+
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		if strings.Contains(err.Error(), "no rows") {
+			http.Error(w, "session not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
+		return
+	}
+	if sess.Mode != "managed" {
+		http.Error(w, "not a managed session", http.StatusBadRequest)
+		return
+	}
+	if s.manager.IsRunning(sessionID) {
+		http.Error(w, "session has an active process", http.StatusConflict)
+		return
+	}
+
+	commandID := fmt.Sprintf("shell-%d", time.Now().UnixNano())
+
+	proc, err := s.manager.SpawnShell(sessionID, managed.ShellOpts{
+		Command: req.Command,
+		CWD:     sess.CWD,
+		Timeout: time.Duration(req.Timeout) * time.Second,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "already has a running process") {
+			http.Error(w, err.Error(), http.StatusConflict)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	_, _ = s.store.CreateMessage(sessionID, "shell", req.Command)
+	_ = s.store.SetSessionStatus(sessionID, "running")
+
+	broadcaster := s.manager.GetBroadcaster(sessionID)
+
+	startMsg := fmt.Sprintf(`{"type":"shell_start","command":%s,"id":%s,"cwd":%s}`,
+		jsonString(req.Command), jsonString(commandID), jsonString(sess.CWD))
+	broadcaster.Send(startMsg)
+
+	go func() {
+		var stdout, stderr strings.Builder
+		const maxOutput = 1024 * 1024
+
+		stdoutDone := make(chan struct{})
+		go func() {
+			defer close(stdoutDone)
+			scanner := bufio.NewScanner(proc.Stdout)
+			scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if stdout.Len() < maxOutput {
+					stdout.WriteString(line + "\n")
+				}
+				msg := fmt.Sprintf(`{"type":"shell_output","text":%s,"stream":"stdout","id":%s}`,
+					jsonString(line+"\n"), jsonString(commandID))
+				broadcaster.Send(msg)
+			}
+		}()
+
+		stderrDone := make(chan struct{})
+		go func() {
+			defer close(stderrDone)
+			scanner := bufio.NewScanner(proc.Stderr)
+			scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if stderr.Len() < maxOutput {
+					stderr.WriteString(line + "\n")
+				}
+				msg := fmt.Sprintf(`{"type":"shell_output","text":%s,"stream":"stderr","id":%s}`,
+					jsonString(line+"\n"), jsonString(commandID))
+				broadcaster.Send(msg)
+			}
+		}()
+
+		<-stdoutDone
+		<-stderrDone
+		<-proc.Done
+
+		timedOut := proc.TimedOut
+
+		stdoutStr := stdout.String()
+		if stdout.Len() >= maxOutput {
+			stdoutStr += "\n[truncated]"
+		}
+		stderrStr := stderr.String()
+		if stderr.Len() >= maxOutput {
+			stderrStr += "\n[truncated]"
+		}
+
+		outputJSON := fmt.Sprintf(`{"stdout":%s,"stderr":%s,"exit_code":%d,"timed_out":%t}`,
+			jsonString(stdoutStr), jsonString(stderrStr), proc.ExitCode, timedOut)
+		_, _ = s.store.CreateMessage(sessionID, "shell_output", outputJSON)
+
+		exitMsg := fmt.Sprintf(`{"type":"shell_exit","code":%d,"id":%s,"timeout":%t}`,
+			proc.ExitCode, jsonString(commandID), timedOut)
+		broadcaster.Send(exitMsg)
+
+		_ = s.store.SetSessionStatus(sessionID, "idle")
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"id": commandID})
+}
+
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 // extractSessionFiles pulls file paths from tool_use content blocks in NDJSON lines.
