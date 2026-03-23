@@ -88,6 +88,10 @@ document.addEventListener('alpine:init', () => {
     lastTurnThreshold: 0,
     lastThresholdSessionId: null,
 
+    // Shell mode
+    shellMode: false,
+    activeShellId: null,
+
     // Activity Status Pills
     stalenessTimer: null,
     heartbeatTimer: null,
@@ -523,7 +527,11 @@ document.addEventListener('alpine:init', () => {
       }
 
       if (sess && sess.mode === 'managed') {
-        await this.sendManagedMessage();
+        if (this.shellMode) {
+          await this.executeShell();
+        } else {
+          await this.sendManagedMessage();
+        }
       } else {
         await this.sendInstruction();
       }
@@ -721,6 +729,50 @@ document.addEventListener('alpine:init', () => {
       this.inputSending = false;
     },
 
+    async executeShell() {
+      if (!this.inputText.trim() || !this.selectedSessionId) return;
+      const cmd = this.inputText.trim();
+      this.inputText = '';
+      this.inputSending = true;
+
+      try {
+        const res = await fetch(`/api/sessions/${this.selectedSessionId}/shell`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: cmd, timeout: 30 })
+        });
+        if (!res.ok) throw new Error(await res.text());
+
+        const data = await res.json();
+        this.activeShellId = data.id;
+
+        this.chatMessages.push({
+          role: 'shell',
+          content: cmd,
+          shellId: data.id,
+          cwd: this.currentSession?.cwd || '',
+          timestamp: new Date().toISOString()
+        });
+
+        this.chatMessages.push({
+          role: 'shell_output',
+          stdout: '',
+          stderr: '',
+          exitCode: null,
+          timedOut: false,
+          shellId: data.id,
+          complete: false,
+          timestamp: new Date().toISOString()
+        });
+
+        this.$nextTick(() => this.scrollToBottom(true));
+        this.startSessionSSE(this.selectedSessionId);
+      } catch (e) {
+        this.toast('Error: ' + e.message);
+      }
+      this.inputSending = false;
+    },
+
     startSessionSSE(sessionId) {
       this.stopSessionSSE();
       const url = `/api/sessions/${sessionId}/stream?token=${encodeURIComponent(this.apiKey)}`;
@@ -740,6 +792,35 @@ document.addEventListener('alpine:init', () => {
           // Reset both timers on any real event
           this.resetStalenessTimer();
           this.resetHeartbeatTimer();
+
+          // Shell events
+          if (data.type === 'shell_start') {
+            this.activeShellId = data.id;
+            return;
+          }
+          if (data.type === 'shell_output') {
+            const outputMsg = this.chatMessages.find(m => m.role === 'shell_output' && m.shellId === data.id);
+            if (outputMsg) {
+              if (data.stream === 'stderr') {
+                outputMsg.stderr += data.text;
+              } else {
+                outputMsg.stdout += data.text;
+              }
+              this.$nextTick(() => this.scrollToBottom(false));
+            }
+            return;
+          }
+          if (data.type === 'shell_exit') {
+            const outputMsg = this.chatMessages.find(m => m.role === 'shell_output' && m.shellId === data.id);
+            if (outputMsg) {
+              outputMsg.exitCode = data.code;
+              outputMsg.timedOut = data.timeout || false;
+              outputMsg.complete = true;
+            }
+            this.activeShellId = null;
+            this.stopSessionSSE();
+            return;
+          }
 
           if (data.type === 'done' || data.type === 'result') {
             // Mark the current active pill as completed (don't clear — pills persist until next message)
@@ -918,7 +999,7 @@ document.addEventListener('alpine:init', () => {
         if (!res.ok) return;
         const msgs = await res.json();
         this.chatMessages = (msgs || [])
-          .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'activity' || (m.role === 'system' && m.content && m.content.includes('"error"')))
+          .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'activity' || m.role === 'shell' || m.role === 'shell_output' || (m.role === 'system' && m.content && m.content.includes('"error"')))
           .map(m => {
             if (m.role === 'activity') {
               return {
@@ -929,6 +1010,26 @@ document.addEventListener('alpine:init', () => {
                 duration: null,
                 timestamp: m.created_at
               };
+            }
+            if (m.role === 'shell') {
+              return { role: 'shell', content: m.content, shellId: null, cwd: '', timestamp: m.created_at };
+            }
+            if (m.role === 'shell_output') {
+              try {
+                const parsed = JSON.parse(m.content);
+                return {
+                  role: 'shell_output',
+                  stdout: parsed.stdout || '',
+                  stderr: parsed.stderr || '',
+                  exitCode: parsed.exit_code,
+                  timedOut: parsed.timed_out || false,
+                  shellId: null,
+                  complete: true,
+                  timestamp: m.created_at
+                };
+              } catch (e) {
+                return { role: 'shell_output', stdout: m.content, stderr: '', exitCode: null, timedOut: false, shellId: null, complete: true, timestamp: m.created_at };
+              }
             }
             return {
               role: m.role,

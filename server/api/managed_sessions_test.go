@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
@@ -110,5 +111,143 @@ func TestListMessagesAPI(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&msgs)
 	if len(msgs) != 2 {
 		t.Errorf("got %d messages, want 2", len(msgs))
+	}
+}
+
+func TestShellExecuteAPI(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+
+	body := `{"command": "echo hello"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["id"] == nil || result["id"] == "" {
+		t.Error("expected non-empty command id in response")
+	}
+}
+
+func TestShellExecuteRejectsEmptyCommand(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+
+	body := `{"command": ""}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 400 {
+		t.Errorf("status=%d, want 400", resp.StatusCode)
+	}
+}
+
+func TestShellExecuteRejectsHookSession(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	// UpsertSession creates a hook-mode session (mode defaults to "hook")
+	hookSess, _ := store.UpsertSession("hook-sess", "/tmp", "/tmp/transcript")
+
+	body := `{"command": "echo hello"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+hookSess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 400 {
+		t.Errorf("status=%d, want 400 for hook session", resp.StatusCode)
+	}
+}
+
+func TestShellExecuteRejectsNotFound(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	body := `{"command": "echo hello"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/nonexistent/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 404 {
+		t.Errorf("status=%d, want 404", resp.StatusCode)
+	}
+}
+
+func TestShellExecutePersistsMessages(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+
+	body := `{"command": "echo hello", "timeout": 5}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Poll for shell_output message (avoids flaky time.Sleep)
+	deadline := time.Now().Add(10 * time.Second)
+	var foundShell, foundOutput bool
+	for time.Now().Before(deadline) {
+		msgs, err := store.ListMessages(sess.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		foundShell = false
+		foundOutput = false
+		for _, m := range msgs {
+			if m.Role == "shell" && m.Content == "echo hello" {
+				foundShell = true
+			}
+			if m.Role == "shell_output" {
+				foundOutput = true
+			}
+		}
+		if foundShell && foundOutput {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if !foundShell {
+		t.Error("expected shell command message to be persisted")
+	}
+	if !foundOutput {
+		t.Error("expected shell_output message to be persisted")
 	}
 }

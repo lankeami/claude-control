@@ -27,6 +27,7 @@ type Process struct {
 	Stderr   io.ReadCloser
 	Done     chan struct{}
 	ExitCode int
+	TimedOut bool
 }
 
 type Manager struct {
@@ -132,6 +133,86 @@ func (m *Manager) Interrupt(sessionID string) error {
 		return fmt.Errorf("no running process for session %s", sessionID)
 	}
 	return proc.Cmd.Process.Signal(syscall.SIGINT)
+}
+
+type ShellOpts struct {
+	Command string
+	CWD     string
+	Timeout time.Duration
+}
+
+func (m *Manager) SpawnShell(sessionID string, opts ShellOpts) (*Process, error) {
+	mu := m.sessionMutex(sessionID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	if _, running := m.procs[sessionID]; running {
+		return nil, fmt.Errorf("session %s already has a running process", sessionID)
+	}
+
+	cmd := exec.Command("sh", "-c", opts.Command)
+	cmd.Dir = opts.CWD
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stdout pipe: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start: %w", err)
+	}
+
+	proc := &Process{
+		Cmd:    cmd,
+		Stdout: stdout,
+		Stderr: stderr,
+		Done:   make(chan struct{}),
+	}
+
+	m.mu.Lock()
+	m.procs[sessionID] = proc
+	m.mu.Unlock()
+
+	go func() {
+		cmd.Wait()
+		if cmd.ProcessState != nil {
+			proc.ExitCode = cmd.ProcessState.ExitCode()
+		}
+		m.mu.Lock()
+		delete(m.procs, sessionID)
+		m.mu.Unlock()
+		close(proc.Done)
+	}()
+
+	if opts.Timeout > 0 {
+		go func() {
+			select {
+			case <-time.After(opts.Timeout):
+				pgid, err := syscall.Getpgid(cmd.Process.Pid)
+				if err != nil {
+					cmd.Process.Kill()
+					return
+				}
+				proc.TimedOut = true
+				syscall.Kill(-pgid, syscall.SIGINT)
+				select {
+				case <-proc.Done:
+					return
+				case <-time.After(5 * time.Second):
+					syscall.Kill(-pgid, syscall.SIGKILL)
+				}
+			case <-proc.Done:
+				return
+			}
+		}()
+	}
+
+	return proc, nil
 }
 
 func (m *Manager) Teardown(sessionID string, timeout time.Duration) error {

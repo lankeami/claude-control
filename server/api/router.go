@@ -54,6 +54,7 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handle
 	apiMux.HandleFunc("GET /api/sessions/{id}/messages", s.handleListMessages)
 	apiMux.HandleFunc("GET /api/sessions/{id}/resumable", s.handleResumableList)
 	apiMux.HandleFunc("POST /api/sessions/{id}/resume", s.handleResumeSession)
+	apiMux.HandleFunc("POST /api/sessions/{id}/shell", s.handleShellExecute)
 
 	// File browser endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/files", s.handleListSessionFiles)
