@@ -49,11 +49,14 @@
   <template x-if="authenticated">
     <div class="dashboard">
       <!-- Sidebar (desktop) -->
-      <div class="sidebar">
+      <div class="sidebar" :class="{ collapsed: leftCollapsed }" :style="!leftCollapsed && leftWidth ? 'width:' + leftWidth + 'px' : ''">
         <div class="sidebar-header">
-          <span style="font-size:0.875rem;font-weight:600;">Sessions</span>
-          <button class="btn btn-sm" @click="disconnect" style="background:transparent;color:var(--text-muted)">
+          <span x-show="!leftCollapsed" style="font-size:0.875rem;font-weight:600;">Sessions</span>
+          <button x-show="!leftCollapsed" class="btn btn-sm" @click="disconnect" style="background:transparent;color:var(--text-muted)">
             Disconnect
+          </button>
+          <button class="collapse-toggle" @click="leftCollapsed = !leftCollapsed" :title="leftCollapsed ? 'Expand sessions' : 'Collapse sessions'">
+            <span x-text="leftCollapsed ? '▶' : '◀'"></span>
           </button>
         </div>
         <div class="session-list">
@@ -89,6 +92,10 @@
           </div>
         </div>
       </div>
+
+      <!-- Left resize handle -->
+      <div class="resize-handle" x-show="!leftCollapsed"
+           @mousedown="startResize($event, 'left')" @dblclick="leftWidth = null"></div>
 
       <!-- Main area -->
       <div class="main">
@@ -279,12 +286,19 @@
         </div>
       </div>
 
+      <!-- Right resize handle -->
+      <div class="resize-handle" x-show="!rightCollapsed && authenticated && selectedSessionId"
+           @mousedown="startResize($event, 'right')" @dblclick="rightWidth = null"></div>
+
       <!-- File Tree Sidebar -->
-      <div class="file-tree-sidebar" x-show="authenticated && selectedSessionId">
+      <div class="file-tree-sidebar" :class="{ collapsed: rightCollapsed }" :style="!rightCollapsed && rightWidth ? 'width:' + rightWidth + 'px;min-width:auto' : ''" x-show="authenticated && selectedSessionId">
         <div class="file-tree-header">
-          <span>Files</span>
-          <span class="file-count-badge" x-show="sessionFiles.length > 0" x-text="sessionFiles.length"></span>
-          <button class="file-tree-refresh" @click="loadSessionFiles(selectedSessionId)" title="Refresh files">↻</button>
+          <button class="collapse-toggle" @click="rightCollapsed = !rightCollapsed" :title="rightCollapsed ? 'Expand files' : 'Collapse files'">
+            <span x-text="rightCollapsed ? '◀' : '▶'"></span>
+          </button>
+          <span x-show="!rightCollapsed">Files</span>
+          <span class="file-count-badge" x-show="!rightCollapsed && sessionFiles.length > 0" x-text="sessionFiles.length"></span>
+          <button class="file-tree-refresh" x-show="!rightCollapsed" @click="loadSessionFiles(selectedSessionId)" title="Refresh files">↻</button>
         </div>
         <div class="file-tree-list">
           <template x-if="visibleFileNodes.length === 0">

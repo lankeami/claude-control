@@ -206,6 +206,64 @@ body {
   padding: 0 5px;
 }
 
+/* Collapse toggle button */
+.collapse-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.collapse-toggle:hover { background: var(--bg-secondary); color: var(--text); }
+
+/* Collapsed sidebar states */
+.sidebar.collapsed {
+  width: 40px !important;
+  min-width: 40px;
+}
+.sidebar.collapsed .session-list,
+.sidebar.collapsed .usage-panel { display: none; }
+.sidebar.collapsed .sidebar-header {
+  justify-content: center;
+  padding: 1rem 0.5rem;
+}
+
+.file-tree-sidebar.collapsed {
+  width: 40px !important;
+  min-width: 40px !important;
+}
+.file-tree-sidebar.collapsed .file-tree-list,
+.file-tree-sidebar.collapsed .git-status-bar,
+.file-tree-sidebar.collapsed .issues-section { display: none; }
+.file-tree-sidebar.collapsed .file-tree-header {
+  justify-content: center;
+  padding: 12px 8px;
+}
+
+/* Resize handle */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 10;
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -3px; right: -3px;
+}
+.resize-handle:hover,
+.resize-handle.active { background: var(--accent); }
+
 /* Main area */
 .main {
   flex: 1;
@@ -978,6 +1036,7 @@ body {
   .dashboard { flex-direction: column; }
   .file-tree-sidebar { display: none; }
   .file-viewer-column { display: none; }
+  .resize-handle { display: none; }
 }
 
 /* ===== Smart File Viewer Styles ===== */
