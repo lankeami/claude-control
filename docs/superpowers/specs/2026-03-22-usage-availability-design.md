@@ -38,7 +38,7 @@ TurnCount int `json:"turn_count"`
 
 ### Managed Sessions (`api/managed_sessions.go`)
 
-- At start of `handleSendMessage`, call `ResetTurnCount(sessionID)` to reset for the new message
+- At start of `handleSendMessage`, call `ResetTurnCount(sessionID)` to reset for the new message. This matches the existing behavior where `turnCount` is a local variable scoped per `handleSendMessage` call — it tracks turns within a single user-message exchange, not cumulative across the session.
 - Replace local `turnCount` variable with DB-backed `IncrementTurnCount` call on each assistant message
 - The turn limit check uses the returned count from `IncrementTurnCount`
 
@@ -61,6 +61,8 @@ Layout:
 ```
 
 The panel sits between the session list and the bottom of the sidebar, separated by a border-top.
+
+**Mobile:** The left sidebar is hidden on mobile (replaced by a `<select>` dropdown). The usage panel will only be visible on desktop. Mobile usage visibility is out of scope for this iteration.
 
 ### Progress Bar Colors
 
@@ -89,7 +91,9 @@ Threshold triggers (fire once per threshold crossing):
 | 90% | error | "Turn limit critical (45/50) — session will be interrupted soon" |
 | 100% | error | "Session interrupted — turn limit reached (50/50)" |
 
-Track `lastTurnThreshold` per session in Alpine.js state to prevent duplicate toasts. Reset when selecting a different session or when turn count resets to 0.
+Track `lastTurnThreshold` per session in Alpine.js state to prevent duplicate toasts. Reset when selecting a different session or when turn count resets to 0. This state is ephemeral — on page refresh, thresholds may re-fire if the session is still above a threshold. This is acceptable since it serves as a reminder.
+
+Add `toastType` to Alpine.js state (default `'info'`). Update the toast HTML element to apply the type as a CSS class: `:class="{ visible: showToast, warning: toastType === 'warning', error: toastType === 'error' }"`.
 
 ### Toast Styling (`style.css`)
 
@@ -109,6 +113,11 @@ In the existing SSE "update" event handler that processes sessions, after updati
 3. Determine threshold bucket (0, 80, 90, 100)
 4. If threshold > lastTurnThreshold, fire appropriate toast
 5. Update `lastTurnThreshold`
+
+**Edge cases:**
+- **SSE race on reset:** When `ResetTurnCount` is called at the start of a new message, SSE may briefly deliver `0/50` before assistant messages arrive. The frontend should only update the usage display when the session status is "running" and `turn_count > 0`, or when status transitions to "idle".
+- **100% toast reliability:** The 3-second SSE polling interval means the frontend may not observe the exact 100% value if the session completes between polls. The 100% toast is best-effort. The session transitioning to "idle" after SIGINT is the definitive signal.
+- **Resume sessions:** `ResumeSession` in `db/sessions.go` should also reset `turn_count` to 0, consistent with how it resets `initialized` and deletes messages.
 
 ## Data Flow
 
