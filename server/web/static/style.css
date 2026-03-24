@@ -1239,10 +1239,9 @@ body {
     min-height: 44px;
   }
 
-  /* Hide the duplicate desktop h3 in modals on mobile */
-  .mobile-modal-header + h3,
-  .mobile-modal-header + div > h3:first-child {
-    display: none;
+  /* Hide the desktop title row in modals on mobile */
+  .desktop-modal-title {
+    display: none !important;
   }
 
   /* Full-screen modal adjustments */
