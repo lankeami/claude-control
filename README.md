@@ -222,6 +222,60 @@ After this, `make xcode` will open the project directly.
 
 The app polls the server every 3 seconds when sessions are active, slowing to 15 seconds when idle.
 
+## Scheduled Tasks
+
+Run shell commands or Claude prompts on a cron schedule, with output logging and a web UI for management.
+
+### Creating a Task
+
+In the web UI sidebar, click **+** next to "Scheduled Tasks" to open the create modal:
+
+- **Name** — descriptive label (e.g., "Daily Backup")
+- **Type** — `Shell Command` (runs `bash -c`) or `Claude Command` (runs `claude -p`)
+- **Command** — the shell command or Claude prompt to execute
+- **Working Directory** — absolute path where the task runs
+- **Cron Expression** — standard 5-field cron (`minute hour dom month dow`). Presets available: hourly, daily 9am, weekdays, every 5min.
+
+### Task Types
+
+| Type | Execution | Example |
+|------|-----------|---------|
+| Shell | `bash -c "<command>"` in working directory | `tar -czf backup.tar.gz ./data` |
+| Claude | `claude -p "<prompt>"` in working directory | `Summarize recent git commits` |
+
+### Viewing Runs
+
+Click a task in the sidebar to see its recent runs (last 20). Each run shows:
+- Status (success/failed/running)
+- Exit code
+- Truncated stdout+stderr output (last 10KB)
+- Relative timestamp and duration
+
+### Manual Trigger
+
+Click the **▶** button on any task to run it immediately, bypassing the cron schedule.
+
+### API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/tasks` | Create a task |
+| GET | `/api/tasks` | List all tasks (optional `?session_id=` filter) |
+| GET | `/api/tasks/:taskId` | Get a task |
+| PUT | `/api/tasks/:taskId` | Update a task |
+| DELETE | `/api/tasks/:taskId` | Delete a task and its runs |
+| GET | `/api/tasks/:taskId/runs` | List recent runs (last 20) |
+| POST | `/api/tasks/:taskId/trigger` | Run a task immediately |
+
+### Scheduler Details
+
+- Tasks are checked every 30 seconds
+- Each task runs with a 1-hour timeout
+- The same task won't run concurrently (skipped if previous run is still going)
+- On server restart: missed tasks within 5 minutes are executed; older missed tasks are rescheduled
+- Stale runs (server crashed mid-execution) are marked as failed on startup
+- Cron expressions use the server's local timezone
+
 ## Port Configuration
 
 The default port is 8080. To use a custom port, set it in each component:

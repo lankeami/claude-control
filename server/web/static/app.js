@@ -81,6 +81,18 @@ document.addEventListener('alpine:init', () => {
     viewerFileType: '',
     renderedContentCache: {},
 
+    // Scheduled tasks state
+    scheduledTasks: [],
+    selectedTask: null,
+    taskRuns: [],
+    taskModalOpen: false,
+    editingTask: null,
+    taskForm: { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '' },
+    taskFormErrors: '',
+    taskLoading: false,
+    taskRunsLoading: false,
+    tasksExpanded: false,
+
     // Toast
     showToast: false,
     toastMessage: '',
@@ -158,6 +170,7 @@ document.addEventListener('alpine:init', () => {
     async init() {
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
+        await this.loadScheduledTasks();
       }
     },
 
@@ -304,6 +317,7 @@ document.addEventListener('alpine:init', () => {
         this.sessions = sessions;
         this.prompts = await promptResp.json();
         this.connected = true;
+        this.loadScheduledTasks();
         this.checkActivityStateNotifications(sessions);
       } catch (e) {
         this.connected = false;
@@ -1987,6 +2001,154 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
         '<img src="' + src + '" alt="' + this.escapeHtml(fileName) + '">' +
         '<div class="image-filename">' + this.escapeHtml(fileName) + '</div>' +
         '</div>';
+    },
+
+    async loadScheduledTasks() {
+        try {
+            const res = await fetch('/api/tasks', {
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (res.ok) this.scheduledTasks = await res.json();
+        } catch (err) {
+            console.error('Failed to load tasks:', err);
+        }
+    },
+
+    openTaskModal(task) {
+        if (task) {
+            this.editingTask = task;
+            this.taskForm = {
+                name: task.name, task_type: task.task_type, command: task.command,
+                working_directory: task.working_directory, cron_expression: task.cron_expression,
+                session_id: task.session_id || ''
+            };
+            this.loadTaskRuns(task.id);
+        } else {
+            this.editingTask = null;
+            this.taskRuns = [];
+            this.taskForm = { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '' };
+        }
+        this.taskFormErrors = '';
+        this.taskModalOpen = true;
+    },
+
+    async saveTask() {
+        this.taskLoading = true;
+        this.taskFormErrors = '';
+        try {
+            const method = this.editingTask ? 'PUT' : 'POST';
+            const url = this.editingTask ? '/api/tasks/' + this.editingTask.id : '/api/tasks';
+            const body = { ...this.taskForm };
+            if (this.editingTask) body.enabled = this.editingTask.enabled;
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.apiKey },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                this.taskFormErrors = data.error || 'Failed to save';
+                return;
+            }
+            this.taskModalOpen = false;
+            await this.loadScheduledTasks();
+        } catch (err) {
+            this.taskFormErrors = err.message;
+        } finally {
+            this.taskLoading = false;
+        }
+    },
+
+    async deleteTask(taskId) {
+        if (!confirm('Delete this scheduled task?')) return;
+        try {
+            await fetch('/api/tasks/' + taskId, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (this.selectedTask && this.selectedTask.id === taskId) {
+                this.selectedTask = null;
+                this.taskRuns = [];
+            }
+            await this.loadScheduledTasks();
+        } catch (err) {
+            console.error('Failed to delete task:', err);
+        }
+    },
+
+    async toggleTaskEnabled(task) {
+        try {
+            await fetch('/api/tasks/' + task.id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.apiKey },
+                body: JSON.stringify({
+                    name: task.name, task_type: task.task_type, command: task.command,
+                    working_directory: task.working_directory, cron_expression: task.cron_expression,
+                    enabled: !task.enabled
+                })
+            });
+            await this.loadScheduledTasks();
+        } catch (err) {
+            console.error('Failed to toggle task:', err);
+        }
+    },
+
+    async selectTask(task) {
+        this.openTaskModal(task);
+    },
+
+    async loadTaskRuns(taskId) {
+        this.taskRunsLoading = true;
+        try {
+            const res = await fetch('/api/tasks/' + taskId + '/runs', {
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (res.ok) this.taskRuns = await res.json();
+        } catch (err) {
+            console.error('Failed to load runs:', err);
+        } finally {
+            this.taskRunsLoading = false;
+        }
+    },
+
+    async triggerTask(taskId) {
+        try {
+            await fetch('/api/tasks/' + taskId + '/trigger', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            this.toast('Task queued for execution');
+            setTimeout(() => {
+                this.loadScheduledTasks();
+                if (this.selectedTask && this.selectedTask.id === taskId) this.loadTaskRuns(taskId);
+            }, 2000);
+        } catch (err) {
+            console.error('Failed to trigger task:', err);
+        }
+    },
+
+    formatCron(expr) {
+        const presets = {
+            '* * * * *': 'Every minute', '*/5 * * * *': 'Every 5 min',
+            '*/15 * * * *': 'Every 15 min', '0 * * * *': 'Hourly',
+            '0 */2 * * *': 'Every 2 hours', '0 0 * * *': 'Daily midnight',
+            '0 9 * * *': 'Daily 9 AM', '0 9 * * 1-5': 'Weekdays 9 AM',
+            '0 0 * * 0': 'Weekly Sunday', '0 0 1 * *': 'Monthly 1st',
+        };
+        return presets[expr] || expr;
+    },
+
+    formatRelativeTime(dateStr) {
+        if (!dateStr) return 'never';
+        const date = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
+        const now = new Date();
+        const diff = now - date;
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + 'm ago';
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return hrs + 'h ago';
+        return Math.floor(hrs / 24) + 'd ago';
     },
 
     renderHTMLPreview(content) {

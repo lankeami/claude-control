@@ -80,15 +80,29 @@
             </div>
           </template>
         </div>
-        <div class="usage-panel" x-show="selectedSession && selectedSession.mode === 'managed'" x-cloak>
-          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-            <span style="color:var(--text-muted); font-size:12px;">Turns</span>
-            <span style="font-size:12px; font-weight:600;"
-                  :style="{ color: turnPercent >= 90 ? '#ef4444' : turnPercent >= 80 ? '#f59e0b' : 'var(--text)' }"
-                  x-text="(selectedSession.turn_count || 0) + ' / ' + selectedSession.max_turns"></span>
+        <!-- Scheduled Tasks Section -->
+        <div x-show="authenticated && !leftCollapsed" style="border-top:1px solid var(--border); padding:8px;" x-cloak>
+          <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; padding:4px 0;" @click="tasksExpanded = !tasksExpanded">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">
+              <span x-text="tasksExpanded ? '▼' : '▶'" style="font-size:0.65rem;"></span>
+              Scheduled Tasks
+            </span>
+            <button class="btn btn-sm" @click.stop="openTaskModal()" style="font-size:0.7rem; padding:2px 6px;" title="New Task">+</button>
           </div>
-          <div class="usage-bar">
-            <div class="usage-bar-fill" :style="{ width: turnPercent + '%', background: turnBarColor() }"></div>
+          <div x-show="tasksExpanded" style="max-height:300px; overflow-y:auto;">
+            <template x-if="scheduledTasks.length === 0">
+              <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 4px;">No scheduled tasks</div>
+            </template>
+            <template x-for="task in scheduledTasks" :key="task.id">
+              <div class="session-item" @click="openTaskModal(task)"
+                   :style="!task.enabled && 'opacity:0.5'">
+                <span class="status-dot" :class="task.enabled ? 'waiting' : 'idle'"></span>
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                      x-text="task.name"></span>
+                <span style="font-size:10px; color:var(--text-muted); flex-shrink:0;"
+                      x-text="formatCron(task.cron_expression)"></span>
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -507,6 +521,90 @@
 
       <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-shrink:0;">
         <button class="btn btn-sm" @click="showResumePicker = false">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Create/Edit Modal -->
+  <div x-show="taskModalOpen" x-cloak
+       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:200; display:flex; align-items:center; justify-content:center;"
+       @click.self="taskModalOpen = false" @keydown.escape.window="taskModalOpen && (taskModalOpen = false)">
+    <div @click.stop style="background:var(--bg); border-radius:12px; padding:24px; border:1px solid var(--border); max-height:85vh; overflow-y:auto; width:500px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <h3 style="margin:0; font-size:1rem;" x-text="editingTask ? editingTask.name : 'New Scheduled Task'"></h3>
+        <div x-show="editingTask" style="display:flex; gap:6px;">
+          <button type="button" class="btn btn-sm" @click="triggerTask(editingTask.id)" style="font-size:0.75rem;">▶ Run Now</button>
+          <button type="button" class="btn btn-sm" @click="toggleTaskEnabled(editingTask); editingTask.enabled = !editingTask.enabled" style="font-size:0.75rem;"
+                  x-text="editingTask?.enabled ? 'Disable' : 'Enable'"></button>
+          <button type="button" class="btn btn-sm" @click="taskModalOpen = false; deleteTask(editingTask.id)" style="font-size:0.75rem; color:#ef4444;">Delete</button>
+        </div>
+      </div>
+      <form @submit.prevent="saveTask()">
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);">Name</label>
+          <input type="text" x-model="taskForm.name" required
+                 style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; box-sizing:border-box;"
+                 placeholder="e.g., Daily Backup">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);">Type</label>
+          <select x-model="taskForm.task_type"
+                  style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px;">
+            <option value="shell">Shell Command</option>
+            <option value="claude">Claude Command</option>
+          </select>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);"
+                 x-text="taskForm.task_type === 'claude' ? 'Prompt' : 'Command'"></label>
+          <textarea x-model="taskForm.command" required rows="3"
+                    style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; font-family:monospace; font-size:0.85rem; resize:vertical; box-sizing:border-box;"
+                    :placeholder="taskForm.task_type === 'claude' ? 'e.g., Summarize the latest changes' : 'e.g., tar -czf backup.tar.gz ./data'"></textarea>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);">Working Directory</label>
+          <input type="text" x-model="taskForm.working_directory" required
+                 style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; font-family:monospace; font-size:0.85rem; box-sizing:border-box;"
+                 placeholder="/absolute/path/to/project">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);">Cron Expression</label>
+          <input type="text" x-model="taskForm.cron_expression" required
+                 style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; font-family:monospace; font-size:0.85rem; box-sizing:border-box;"
+                 placeholder="0 9 * * *">
+          <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
+            min hour day month weekday |
+            <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 * * * *'">hourly</span>
+            <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 9 * * *'">daily 9am</span>
+            <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 9 * * 1-5'">weekdays</span>
+            <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '*/5 * * * *'">every 5min</span>
+          </div>
+        </div>
+        <div x-show="taskFormErrors" style="color:#ef4444; font-size:0.8rem; margin-bottom:8px;" x-text="taskFormErrors"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button type="button" class="btn btn-sm" @click="taskModalOpen = false">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary" :disabled="taskLoading" x-text="editingTask ? 'Update' : 'Create'"></button>
+        </div>
+      </form>
+
+      <!-- Recent Runs (only when editing) -->
+      <div x-show="editingTask && taskRuns.length > 0" style="margin-top:16px; border-top:1px solid var(--border); padding-top:16px;">
+        <h4 style="margin:0 0 10px 0; font-size:0.85rem; color:var(--text-muted);">Recent Runs</h4>
+        <template x-for="run in taskRuns.slice(0, 5)" :key="run.id">
+          <div style="border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin-bottom:6px; font-size:0.8rem;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="width:7px; height:7px; border-radius:50%;"
+                      :style="'background:' + (run.status === 'success' ? '#22c55e' : run.status === 'failed' ? '#ef4444' : '#eab308')"></span>
+                <span style="font-weight:500;" x-text="run.status"></span>
+                <span style="font-size:0.75rem; color:var(--text-muted);" x-text="formatRelativeTime(run.started_at)"></span>
+              </div>
+              <span style="font-size:0.7rem; color:var(--text-muted);" x-show="run.exit_code != null" x-text="'exit ' + run.exit_code"></span>
+            </div>
+            <div x-show="run.output" style="background:var(--input-bg); border-radius:4px; padding:6px; font-family:monospace; font-size:0.7rem; white-space:pre-wrap; word-break:break-all; max-height:120px; overflow-y:auto; color:var(--text-muted);"
+                 x-text="(run.output || '').substring(0, 300) + ((run.output || '').length > 300 ? '\n...' : '')"></div>
+          </div>
+        </template>
       </div>
     </div>
   </div>

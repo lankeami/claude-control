@@ -21,6 +21,7 @@ import (
 	"github.com/jaychinthrajah/claude-controller/server/api"
 	"github.com/jaychinthrajah/claude-controller/server/db"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
+	"github.com/jaychinthrajah/claude-controller/server/scheduler"
 	"github.com/jaychinthrajah/claude-controller/server/tunnel"
 )
 
@@ -57,6 +58,11 @@ func main() {
 	if err := store.ResetStaleActivityStates(); err != nil {
 		log.Printf("Warning: failed to reset stale activity states: %v", err)
 	}
+
+	sched := scheduler.New(store)
+	sched.Reconcile()
+	sched.Start()
+	defer sched.Stop()
 
 	apiKey := loadOrCreateAPIKey(*dbPath)
 
