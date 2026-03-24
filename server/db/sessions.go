@@ -214,6 +214,7 @@ func (s *Store) DeleteSession(id string) error {
 		"DELETE FROM messages WHERE session_id = ?",
 		"DELETE FROM prompts WHERE session_id = ?",
 		"DELETE FROM instructions WHERE session_id = ?",
+		"DELETE FROM session_files WHERE session_id = ?",
 	} {
 		if _, err := tx.Exec(q, id); err != nil {
 			return fmt.Errorf("cascade delete: %w", err)
