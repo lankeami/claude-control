@@ -10,11 +10,10 @@ Add a cron-style scheduled task system that runs shell commands or Claude prompt
 
 ## Task Types
 
-1. **Shell command** — runs `bash -c "<command>"` in the specified working directory
-2. **Shell script** — runs `bash <script_path>` in the specified working directory
-3. **Claude command** — runs `claude -p "<prompt>"` in the specified working directory
+1. **Shell** — runs `bash -c "<command>"` in the specified working directory. The command field can contain any valid shell expression (single commands, pipelines, script invocations like `bash myscript.sh`, etc.)
+2. **Claude** — runs `claude -p "<prompt>"` in the specified working directory
 
-The UI distinguishes these via a `task_type` field: `"shell"` (covers commands and scripts) or `"claude"`.
+The `task_type` field is `"shell"` or `"claude"`.
 
 ## Data Model
 
@@ -23,7 +22,7 @@ The UI distinguishes these via a `task_type` field: `"shell"` (covers commands a
 ```sql
 CREATE TABLE IF NOT EXISTS scheduled_tasks (
     id TEXT PRIMARY KEY,
-    session_id TEXT REFERENCES sessions(id),
+    session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     task_type TEXT NOT NULL CHECK(task_type IN ('shell', 'claude')),
     command TEXT NOT NULL,
@@ -37,10 +36,11 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
 );
 ```
 
-- `session_id` is nullable — shell tasks may not belong to a session
-- `command` holds either the shell command/script path or the Claude prompt
+- `session_id` is nullable — shell tasks may not belong to a session. When set, it serves as organizational grouping in the UI (filter tasks by session). `ON DELETE CASCADE` ensures tasks are cleaned up when their session is deleted.
+- `command` holds the shell command or the Claude prompt
 - `working_directory` is an absolute path where the task executes
 - `cron_expression` is standard 5-field cron: `minute hour dom month dow`
+- **Timezone:** Cron expressions are evaluated in the server's local timezone (Go `time.Local`). The UI displays `next_run_at` in the browser's local timezone via JavaScript `Date`.
 
 ### `task_runs` table
 
@@ -60,11 +60,12 @@ CREATE INDEX IF NOT EXISTS idx_task_runs_started_at ON task_runs(started_at);
 ```
 
 - `output` stores truncated stdout+stderr (last ~10KB)
-- `status` transitions: `running` → `success` (exit 0) or `failed` (non-zero exit)
+- `status` transitions: `running` → `success` (exit 0) or `failed` (non-zero exit or process-start failure)
+- If the process fails to start (e.g., working directory deleted, bash not found), `exit_code` is null and `output` contains the Go error string
 
 ### Cascade behavior
 
-When a scheduled task is deleted, its runs are cascade-deleted via the FK constraint. When a session is deleted, its associated tasks should be deleted in the `DeleteSession` transaction.
+Both FK relationships use `ON DELETE CASCADE`: deleting a session cascades to its tasks, deleting a task cascades to its runs. No application-level cascade logic needed.
 
 ## Go Structs
 
@@ -102,7 +103,7 @@ type TaskRun struct {
 CreateScheduledTask(task ScheduledTask) (*ScheduledTask, error)
 GetScheduledTaskByID(id string) (*ScheduledTask, error)
 ListScheduledTasks(sessionID *string) ([]ScheduledTask, error)  // nil = all tasks
-UpdateScheduledTask(id string, updates ScheduledTask) error
+UpdateScheduledTask(id string, updates ScheduledTask) error  // PUT sends all fields; zero values are intentional
 DeleteScheduledTask(id string) error
 GetTasksDueForExecution(now time.Time) ([]ScheduledTask, error)
 UpdateTaskNextRun(id string, nextRunAt time.Time) error
@@ -185,9 +186,10 @@ New package `server/scheduler/` with a `Scheduler` struct that runs a background
 
 ```go
 type Scheduler struct {
-    store  *db.Store
-    done   chan struct{}
-    wg     sync.WaitGroup
+    store    *db.Store
+    done     chan struct{}
+    wg       sync.WaitGroup
+    running  sync.Map  // map[taskID]bool — prevents concurrent execution of the same task
 }
 ```
 
@@ -195,21 +197,31 @@ type Scheduler struct {
 
 - Ticks every 30 seconds
 - Queries `GetTasksDueForExecution(now)` — returns tasks where `next_run_at <= now AND enabled = 1`
-- For each due task, spawns a goroutine to execute it
-- After spawning, immediately computes and persists the next `next_run_at`
+- For each due task:
+  1. Check `running` map — if task is already executing, skip it
+  2. **Synchronously** compute and persist the next `next_run_at` (prevents duplicate pickup on next tick)
+  3. Mark task as running in `running` map
+  4. Spawn a goroutine to execute it
+
+### Execution timeout
+
+All tasks run with a 1-hour default timeout via `exec.CommandContext`. The context is derived from `context.WithTimeout`. If the timeout fires, the process is killed and the run is marked `failed` with output indicating a timeout. This prevents goroutine leaks from hung processes.
 
 ### Task execution
 
 ```
 1. Create a TaskRun record (status: "running")
-2. Build exec.Cmd:
+2. Build exec.CommandContext with 1-hour timeout:
    - shell: bash -c "<command>" with Dir set to working_directory
    - claude: claude -p "<prompt>" with Dir set to working_directory
-3. Capture combined stdout+stderr via CombinedOutput()
-4. Truncate output to last 10KB if larger
-5. Complete the TaskRun (exit code, output, status)
-6. Update task's last_run_at
-7. Clean up old runs (keep last 50 per task)
+3. Capture combined stdout+stderr via a bounded writer (ring buffer, last 10KB)
+   — avoids unbounded memory for tasks with large output
+4. On completion or timeout:
+   a. Complete the TaskRun (exit code, output, status)
+   b. If process failed to start, set exit_code=nil, output=error string, status="failed"
+5. Update task's last_run_at
+6. Clean up old runs (keep last 50 per task)
+7. Remove task from `running` map
 ```
 
 ### Startup reconciliation
@@ -218,7 +230,7 @@ On server startup, the scheduler:
 
 1. Queries all enabled tasks
 2. Recomputes `next_run_at` from each task's `cron_expression` relative to `time.Now()`
-3. For tasks whose `next_run_at` was in the past and within a 5-minute missed window: executes them immediately
+3. For tasks whose `next_run_at` was in the past and within a 5-minute missed window: executes them immediately. Tasks missed by more than 5 minutes are skipped and rescheduled — this avoids firing a flood of stale tasks after a long outage (e.g., a daily backup missed by 3 hours just gets rescheduled for tomorrow). Skipped tasks are logged at WARN level.
 4. Persists updated `next_run_at` values
 
 ### Stale run cleanup
@@ -316,4 +328,5 @@ server/
 - Task output streaming (runs are fire-and-forget)
 - Email/webhook notifications on failure
 - Per-task environment variables
-- Concurrent execution limits (same task won't run if previous run is still going — can add later)
+- Per-task custom timeout (uses global 1-hour default)
+- Pagination on task list endpoint (low volume expected)
