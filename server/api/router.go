@@ -66,6 +66,16 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handle
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues", s.handleListGithubIssues)
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues/{number}", s.handleGetGithubIssue)
 
+	// Scheduled task endpoints
+	apiMux.HandleFunc("POST /api/tasks", s.handleCreateTask)
+	apiMux.HandleFunc("GET /api/tasks", s.handleListTasks)
+	apiMux.HandleFunc("GET /api/tasks/{taskId}", s.handleGetTask)
+	apiMux.HandleFunc("PUT /api/tasks/{taskId}", s.handleUpdateTask)
+	apiMux.HandleFunc("DELETE /api/tasks/{taskId}", s.handleDeleteTask)
+	apiMux.HandleFunc("GET /api/tasks/{taskId}/runs", s.handleListTaskRuns)
+	apiMux.HandleFunc("GET /api/tasks/{taskId}/runs/{runId}", s.handleGetTaskRun)
+	apiMux.HandleFunc("POST /api/tasks/{taskId}/trigger", s.handleTriggerTask)
+
 	rl := NewRateLimiter(60, 10)
 	authedAPI := rl.Middleware(AuthMiddleware(apiKey, rl, apiMux))
 
