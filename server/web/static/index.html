@@ -94,12 +94,13 @@
               <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 4px;">No scheduled tasks</div>
             </template>
             <template x-for="task in scheduledTasks" :key="task.id">
-              <div @click="openTaskModal(task)"
-                   style="padding:4px 10px; margin:2px 0; font-size:0.78rem; border-radius:999px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; background:rgba(96,165,250,0.12); color:rgb(130,180,250); transition:background 0.15s;"
-                   :style="!task.enabled && 'opacity:0.5'"
-                   onmouseenter="this.style.background='rgba(96,165,250,0.22)'"
-                   onmouseleave="this.style.background='rgba(96,165,250,0.12)'">
-                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="task.name"></span>
+              <div class="session-item" @click="openTaskModal(task)"
+                   :style="!task.enabled && 'opacity:0.5'">
+                <span class="status-dot" :class="task.enabled ? 'waiting' : 'idle'"></span>
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                      x-text="task.name"></span>
+                <span style="font-size:10px; color:var(--text-muted); flex-shrink:0;"
+                      x-text="formatCron(task.cron_expression)"></span>
               </div>
             </template>
           </div>
