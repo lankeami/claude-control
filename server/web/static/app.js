@@ -88,7 +88,7 @@ document.addEventListener('alpine:init', () => {
     taskFormErrors: '',
     taskLoading: false,
     taskRunsLoading: false,
-    tasksExpanded: true,
+    tasksExpanded: false,
 
     // Toast
     showToast: false,
