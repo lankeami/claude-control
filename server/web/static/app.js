@@ -46,6 +46,7 @@ document.addEventListener('alpine:init', () => {
     newProjectName: '',
     newProjectError: '',
     newProjectCreating: false,
+    recentDirs: [],
 
     // Resume picker state
     showResumePicker: false,
@@ -748,6 +749,18 @@ document.addEventListener('alpine:init', () => {
       this.newProjectName = '';
       this.newProjectError = '';
       this.newProjectCreating = false;
+      // Fetch recent directories
+      try {
+        const res = await fetch('/api/sessions/recent-dirs', {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          this.recentDirs = data.directories || [];
+        }
+      } catch (e) {
+        this.recentDirs = [];
+      }
       await this.browseTo('');
     },
 
@@ -769,6 +782,20 @@ document.addEventListener('alpine:init', () => {
         this.toast('Error browsing: ' + e.message);
       }
       this.browseLoading = false;
+    },
+
+    abbreviatePath(fullPath) {
+      const parts = fullPath.split('/');
+      // Assume home dir is first 3 parts: /Users/username or /home/username
+      const home = parts.slice(0, 3).join('/');
+      if (fullPath.startsWith(home + '/')) {
+        const rest = fullPath.slice(home.length);
+        // Get parent dir, not the dir itself
+        const lastSlash = rest.lastIndexOf('/');
+        return lastSlash > 0 ? '~' + rest.slice(0, lastSlash) : '~';
+      }
+      const lastSlash = fullPath.lastIndexOf('/');
+      return lastSlash > 0 ? fullPath.slice(0, lastSlash) : fullPath;
     },
 
     get breadcrumbs() {
@@ -834,6 +861,34 @@ document.addEventListener('alpine:init', () => {
         if (!res.ok) throw new Error(await res.text());
         this.showNewSessionModal = false;
         this.newSessionCWD = '';
+        this.toast('Session created');
+      } catch (e) {
+        this.toast('Error: ' + e.message);
+      }
+    },
+
+    async selectRecentDir(path) {
+      this.newSessionCWD = path;
+      try {
+        const res = await fetch('/api/sessions/create', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cwd: path })
+        });
+        if (res.status === 409) {
+          // Session already exists — find and select it
+          const match = this.sessions.find(s => s.cwd === path);
+          if (match) {
+            this.showNewSessionModal = false;
+            this.selectSession(match.id);
+            this.toast('Switched to existing session');
+            return;
+          }
+        }
+        if (!res.ok) throw new Error(await res.text());
+        const sess = await res.json();
+        this.showNewSessionModal = false;
+        this.selectSession(sess.id);
         this.toast('Session created');
       } catch (e) {
         this.toast('Error: ' + e.message);

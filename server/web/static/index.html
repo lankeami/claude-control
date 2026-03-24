@@ -711,6 +711,20 @@
         Filtering: <span x-text="browseFilter"></span>
       </div>
 
+      <!-- Recent directories -->
+      <template x-if="recentDirs.length > 0">
+        <div style="margin-bottom:8px;">
+          <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px; font-weight:600;">Recent Projects</div>
+          <template x-for="dir in recentDirs" :key="dir.path">
+            <div class="browse-item" @click="selectRecentDir(dir.path)" style="cursor:pointer;">
+              <span class="browse-icon" style="color:var(--accent);">&#9733;</span>
+              <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500;" x-text="dir.name"></span>
+              <span style="font-size:10px; color:var(--text-muted); flex-shrink:0;" x-text="abbreviatePath(dir.path)"></span>
+            </div>
+          </template>
+        </div>
+      </template>
+
       <!-- Breadcrumb navigation -->
       <div class="browse-breadcrumbs">
         <template x-for="(crumb, i) in breadcrumbs" :key="crumb.path">
