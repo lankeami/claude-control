@@ -1033,6 +1033,7 @@ body {
 /* ===== Mobile Menu (hidden on desktop) ===== */
 .mobile-hamburger { display: none; }
 .mobile-menu-overlay { display: none; }
+.mobile-modal-back { display: none; }
 
 @media (max-width: 768px) {
   /* Hide desktop elements */
@@ -1226,6 +1227,26 @@ body {
   .browse-item {
     min-height: 44px;
     padding: 10px 12px;
+  }
+
+  /* Mobile modal back button */
+  .mobile-modal-back {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 4px 0;
+    margin-bottom: 8px;
+    border: none;
+    background: none;
+  }
+
+  /* Full-screen modal adjustments */
+  .modal-inner {
+    padding-top: env(safe-area-inset-top, 16px) !important;
   }
 }
 
