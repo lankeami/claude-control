@@ -660,11 +660,13 @@
        style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
        @click.self="showNewSessionModal = false">
     <div class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:70vh;">
-      <div class="mobile-modal-back" @click="showNewSessionModal = false">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
-        </svg>
-        <span>Back</span>
+      <div class="mobile-detail-header mobile-modal-header">
+        <button @click="showNewSessionModal = false" class="mobile-back-btn" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
+          </svg>
+        </button>
+        <span class="mobile-detail-title">New Managed Session</span>
       </div>
       <h3 style="margin-top:0; margin-bottom:12px;">New Managed Session</h3>
 
@@ -744,11 +746,13 @@
        style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
        @click.self="showResumePicker = false">
     <div class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:70vh;">
-      <div class="mobile-modal-back" @click="showResumePicker = false">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
-        </svg>
-        <span>Back</span>
+      <div class="mobile-detail-header mobile-modal-header">
+        <button @click="showResumePicker = false" class="mobile-back-btn" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
+          </svg>
+        </button>
+        <span class="mobile-detail-title">Resume a Session</span>
       </div>
       <h3 style="margin-top:0; margin-bottom:12px;">Resume a Session</h3>
 
@@ -788,16 +792,18 @@
        style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:200; display:flex; align-items:center; justify-content:center;"
        @click.self="taskModalOpen = false" @keydown.escape.window="taskModalOpen && (taskModalOpen = false)">
     <div @click.stop class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; border:1px solid var(--border); max-height:85vh; overflow-y:auto; width:500px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-      <div class="mobile-modal-back" @click="taskModalOpen = false">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
-        </svg>
-        <span>Back</span>
+      <div class="mobile-detail-header mobile-modal-header">
+        <button @click="taskModalOpen = false" class="mobile-back-btn" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
+          </svg>
+        </button>
+        <span class="mobile-detail-title" x-text="editingTask ? editingTask.name : 'New Scheduled Task'"></span>
       </div>
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
         <h3 style="margin:0; font-size:1rem;" x-text="editingTask ? editingTask.name : 'New Scheduled Task'"></h3>
         <div x-show="editingTask" style="display:flex; gap:6px;">
-          <button type="button" class="btn btn-sm" @click="triggerTask(editingTask.id)" style="font-size:0.75rem;">▶ Run Now</button>
+          <button type="button" class="btn btn-sm" @click="triggerTask(editingTask.id)" style="font-size:0.75rem;">&#9654; Run Now</button>
           <button type="button" class="btn btn-sm" @click="toggleTaskEnabled(editingTask); editingTask.enabled = !editingTask.enabled" style="font-size:0.75rem;"
                   x-text="editingTask?.enabled ? 'Disable' : 'Enable'"></button>
           <button type="button" class="btn btn-sm" @click="taskModalOpen = false; deleteTask(editingTask.id)" style="font-size:0.75rem; color:#ef4444;">Delete</button>

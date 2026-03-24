@@ -1034,6 +1034,7 @@ body {
 .mobile-hamburger { display: none; }
 .mobile-menu-overlay { display: none; }
 .mobile-modal-back { display: none; }
+.mobile-modal-header { display: none; }
 
 @media (max-width: 768px) {
   /* Hide desktop elements */
@@ -1229,19 +1230,19 @@ body {
     padding: 10px 12px;
   }
 
-  /* Mobile modal back button */
-  .mobile-modal-back {
+  /* Mobile modal header bar — matches detail overlay pattern */
+  .mobile-modal-header {
     display: flex;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
-    color: var(--accent);
-    font-size: 14px;
-    font-weight: 500;
-    padding: 4px 0;
-    margin-bottom: 8px;
-    border: none;
-    background: none;
+    margin: -24px -24px 16px -24px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    min-height: 44px;
+  }
+
+  /* Hide the duplicate desktop h3 in modals on mobile */
+  .mobile-modal-header + h3,
+  .mobile-modal-header + div > h3:first-child {
+    display: none;
   }
 
   /* Full-screen modal adjustments */
