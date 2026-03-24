@@ -550,10 +550,12 @@ document.addEventListener('alpine:init', () => {
       const session = this.sessions.find(s => s.id === sessionId);
       this.editingSessionName = sessionId;
       this.editingNameValue = session?.name || '';
+      this._renameStartedAt = Date.now();
     },
 
     async saveSessionName(sessionId) {
       if (this.editingSessionName !== sessionId) return;
+      if (this._renameStartedAt && Date.now() - this._renameStartedAt < 300) return;
       const name = this.editingNameValue.trim();
       try {
         const resp = await fetch(`/api/sessions/${sessionId}/name`, {

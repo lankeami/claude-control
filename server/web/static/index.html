@@ -73,7 +73,7 @@
                 <input type="text" x-model="editingNameValue"
                        @keydown.enter="saveSessionName(session.id)"
                        @keydown.escape="cancelRenameSession()"
-                       @blur="saveSessionName(session.id)"
+                       @blur="setTimeout(() => saveSessionName(session.id), 150)"
                        x-init="$nextTick(() => $el.focus())"
                        @click.stop
                        style="flex:1;font-size:inherit;background:var(--bg);color:var(--text);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;outline:none;">
@@ -139,7 +139,7 @@
             <input type="text" x-model="editingNameValue"
                    @keydown.enter="saveSessionName(selectedSessionId)"
                    @keydown.escape="cancelRenameSession()"
-                   @blur="saveSessionName(selectedSessionId)"
+                   @blur="setTimeout(() => saveSessionName(selectedSessionId), 150)"
                    x-init="$nextTick(() => $el.focus())"
                    style="font-size:1rem;font-weight:600;background:var(--bg);color:var(--text);border:1px solid var(--accent);border-radius:3px;padding:2px 6px;outline:none;">
           </template>
