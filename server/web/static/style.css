@@ -1230,13 +1230,18 @@ body {
     padding: 10px 12px;
   }
 
-  /* Mobile modal header bar — matches detail overlay pattern */
+  /* On mobile, remove top padding from modal so header sits flush */
+  .modal-inner {
+    padding-top: 0 !important;
+  }
+
+  /* Mobile modal header: sticky at top of scrollable modal */
   .mobile-modal-header {
     display: flex;
     position: sticky;
-    top: -24px;
-    margin: -24px -24px 16px -24px;
-    padding: 10px 12px;
+    top: 0;
+    margin: 0 -24px 16px -24px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--bg);
     min-height: 44px;
@@ -1246,11 +1251,6 @@ body {
   /* Hide the desktop title row in modals on mobile */
   .desktop-modal-title {
     display: none !important;
-  }
-
-  /* Full-screen modal adjustments */
-  .modal-inner {
-    padding-top: env(safe-area-inset-top, 16px) !important;
   }
 }
 
