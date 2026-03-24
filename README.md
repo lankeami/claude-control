@@ -101,6 +101,7 @@ Open the Claude Controller app on your iPhone and scan the QR code displayed in 
 - **Turn limiting** — server counts assistant turns and sends SIGINT when the limit is hit
 - **Budget caps** — `--max-budget-usd` passed to the CLI for cost control
 - **Session resumption** — type `/resume` in the chat to pick up a previous Claude Code CLI session (see below)
+- **Session names** — assign custom names to sessions for easier identification (see below)
 
 ### Resuming Previous Sessions
 
@@ -111,6 +112,25 @@ The `/resume` command in the web UI lets you continue any previous Claude Code C
 3. A picker shows recent sessions with their summary, first prompt, branch, and message count
 4. Select a session — the managed session switches to use `--resume <chosen-uuid>` for subsequent messages
 5. Continue the conversation where the CLI session left off
+
+### Session Names
+
+Sessions can be given custom names for easier identification — especially useful when you have multiple sessions in the same project or want to quickly find one to `/resume`.
+
+**Renaming in the web UI:**
+- Double-click a session name in the sidebar or the header to edit it inline
+- Press **Enter** to save, **Escape** to cancel
+- Clear the name (empty string) to revert to the default computed name
+
+**Renaming via API:**
+```bash
+curl -X PUT http://localhost:8080/api/sessions/<id>/name \
+  -H "Authorization: Bearer <api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my session name"}'
+```
+
+When no custom name is set, sessions display a computed fallback: `computer_name / project` for hook-mode sessions, or the working directory name for managed sessions.
 
 ## Server
 
@@ -149,6 +169,7 @@ cd server && go run . --port 9090              # Custom port
 
 | Method | Path | Caller | Purpose |
 |--------|------|--------|---------|
+| PUT | `/api/sessions/:id/name` | Web UI / iOS | Rename a session |
 | GET | `/api/sessions` | Web UI / iOS | List active sessions |
 | GET | `/api/prompts?status=pending` | Web UI / iOS | Get pending prompts |
 | POST | `/api/prompts/:id/respond` | Web UI / iOS | Send a response |

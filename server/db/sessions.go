@@ -28,9 +28,10 @@ type Session struct {
 	AutoContinueThreshold float64 `json:"auto_continue_threshold"`
 	MaxContinuations      int     `json:"max_continuations"`
 	ActivityState         string  `json:"activity_state"`
+	Name                  string  `json:"name"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count, auto_continue_threshold, max_continuations, COALESCE(activity_state,'idle')`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count, auto_continue_threshold, max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,'')`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -40,6 +41,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
 		&sess.ClaudeSessionID, &sess.TurnCount, &sess.AutoContinueThreshold, &sess.MaxContinuations, &sess.ActivityState,
+		&sess.Name,
 	)
 	if err != nil {
 		return sess, err
@@ -181,6 +183,18 @@ func (s *Store) SetSessionStatus(id, status string) error {
 func (s *Store) UpdateActivityState(id, state string) error {
 	_, err := s.db.Exec("UPDATE sessions SET activity_state = ? WHERE id = ?", state, id)
 	return err
+}
+
+func (s *Store) UpdateSessionName(id, name string) error {
+	res, err := s.db.Exec("UPDATE sessions SET name = ? WHERE id = ?", name, id)
+	if err != nil {
+		return fmt.Errorf("update session name: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("session %s not found", id)
+	}
+	return nil
 }
 
 func (s *Store) ResetStaleActivityStates() error {

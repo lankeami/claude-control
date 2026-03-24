@@ -13,6 +13,8 @@ document.addEventListener('alpine:init', () => {
     selectedSessionId: null,
     chatMessages: [],
     chatLoading: false,
+    editingSessionName: null,
+    editingNameValue: '',
     responseText: '',
     responseSending: false,
     connected: true,
@@ -534,6 +536,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     sessionName(session) {
+      if (session.name) return session.name;
       if (session.mode === 'managed' && session.cwd) {
         const parts = session.cwd.split('/');
         return parts[parts.length - 1] || parts[parts.length - 2] || session.cwd;
@@ -541,6 +544,38 @@ document.addEventListener('alpine:init', () => {
       const parts = session.project_path.split('/');
       const proj = parts[parts.length - 1] || parts[parts.length - 2] || session.project_path;
       return `${session.computer_name} / ${proj}`;
+    },
+
+    startRenameSession(sessionId) {
+      const session = this.sessions.find(s => s.id === sessionId);
+      this.editingSessionName = sessionId;
+      this.editingNameValue = session?.name || '';
+      this._renameStartedAt = Date.now();
+    },
+
+    async saveSessionName(sessionId) {
+      if (this.editingSessionName !== sessionId) return;
+      if (this._renameStartedAt && Date.now() - this._renameStartedAt < 300) return;
+      const name = this.editingNameValue.trim();
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/name`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        if (resp.ok) {
+          const updated = await resp.json();
+          const idx = this.sessions.findIndex(s => s.id === sessionId);
+          if (idx >= 0) this.sessions[idx] = updated;
+        }
+      } catch (e) {
+        console.error('rename failed:', e);
+      }
+      this.editingSessionName = null;
+    },
+
+    cancelRenameSession() {
+      this.editingSessionName = null;
     },
 
     sessionStatus(session) {
