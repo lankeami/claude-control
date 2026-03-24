@@ -69,8 +69,21 @@
                  @click="selectSession(session.id)">
               <span class="status-dot" :class="sessionStatus(session)"
                     :title="sessionStatus(session) === 'active' ? 'Working' : sessionStatus(session) === 'waiting' ? 'Waiting for input' : 'Idle'"></span>
-              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                    x-text="sessionName(session)"></span>
+              <template x-if="editingSessionName === session.id">
+                <input type="text" x-model="editingNameValue"
+                       @keydown.enter="saveSessionName(session.id)"
+                       @keydown.escape="cancelRenameSession()"
+                       @blur="saveSessionName(session.id)"
+                       x-init="$nextTick(() => $el.focus())"
+                       @click.stop
+                       style="flex:1;font-size:inherit;background:var(--bg);color:var(--text);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;outline:none;">
+              </template>
+              <template x-if="editingSessionName !== session.id">
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer"
+                      x-text="sessionName(session)"
+                      @dblclick.stop="startRenameSession(session.id)"
+                      title="Double-click to rename"></span>
+              </template>
               <span x-show="session.mode === 'managed'"
                     style="font-size:10px; background:var(--accent); color:white; padding:1px 4px; border-radius:3px; margin-left:4px; flex-shrink:0;">managed</span>
               <span class="badge" x-show="pendingCountFor(session.id) > 0"
@@ -122,9 +135,22 @@
               <rect x="2" y="14" width="16" height="2" rx="1"/>
             </svg>
           </button>
-          <h2 x-text="selectedSessionId
-            ? sessionName(sessions.find(s => s.id === selectedSessionId) || {computer_name:'',project_path:''})
-            : 'Select a Session'"></h2>
+          <template x-if="selectedSessionId && editingSessionName === selectedSessionId">
+            <input type="text" x-model="editingNameValue"
+                   @keydown.enter="saveSessionName(selectedSessionId)"
+                   @keydown.escape="cancelRenameSession()"
+                   @blur="saveSessionName(selectedSessionId)"
+                   x-init="$nextTick(() => $el.focus())"
+                   style="font-size:1rem;font-weight:600;background:var(--bg);color:var(--text);border:1px solid var(--accent);border-radius:3px;padding:2px 6px;outline:none;">
+          </template>
+          <template x-if="!selectedSessionId || editingSessionName !== selectedSessionId">
+            <h2 x-text="selectedSessionId
+              ? sessionName(sessions.find(s => s.id === selectedSessionId) || {computer_name:'',project_path:''})
+              : 'Select a Session'"
+                @dblclick="selectedSessionId && startRenameSession(selectedSessionId)"
+                :title="selectedSessionId ? 'Double-click to rename' : ''"
+                :style="selectedSessionId ? 'cursor:pointer' : ''"></h2>
+          </template>
           <button class="btn btn-sm" x-show="currentSession?.mode === 'managed' && currentSession?.status === 'running'"
                   @click="interruptSession()"
                   style="background:#e74c3c; color:white; margin-left:8px;">

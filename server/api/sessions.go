@@ -59,6 +59,30 @@ type archiveRequest struct {
 	Archived bool `json:"archived"`
 }
 
+type renameRequest struct {
+	Name string `json:"name"`
+}
+
+func (s *Server) handleUpdateSessionName(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req renameRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		return
+	}
+	if err := s.store.UpdateSessionName(id, req.Name); err != nil {
+		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
+		return
+	}
+	session, err := s.store.GetSessionByID(id)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(session)
+}
+
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	// Teardown managed process if running
