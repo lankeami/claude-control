@@ -1233,10 +1233,14 @@ body {
   /* Mobile modal header bar — matches detail overlay pattern */
   .mobile-modal-header {
     display: flex;
+    position: sticky;
+    top: -24px;
     margin: -24px -24px 16px -24px;
     padding: 10px 12px;
     border-bottom: 1px solid var(--border);
+    background: var(--bg);
     min-height: 44px;
+    z-index: 1;
   }
 
   /* Hide the desktop title row in modals on mobile */
