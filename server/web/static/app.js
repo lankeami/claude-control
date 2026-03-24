@@ -27,6 +27,9 @@ document.addEventListener('alpine:init', () => {
     inputSending: false,
     inputSuccess: false,
 
+    // Browser notifications
+    prevActivityStates: {},
+
     // Managed session state
     showNewSessionModal: false,
     newSessionCWD: '',
@@ -249,6 +252,7 @@ document.addEventListener('alpine:init', () => {
           }
           this.connected = true;
           this.sseFailCount = 0;
+          this.checkActivityStateNotifications(data.sessions || []);
           if (!hadPending && this.currentPendingPrompt) {
             this.toast('Respond here or in the CLI \u2014 one per turn, not both.');
           }
@@ -309,10 +313,12 @@ document.addEventListener('alpine:init', () => {
           this.disconnect();
           return;
         }
-        this.sessions = await sessResp.json();
+        const sessions = await sessResp.json();
+        this.sessions = sessions;
         this.prompts = await promptResp.json();
         this.connected = true;
         this.loadScheduledTasks();
+        this.checkActivityStateNotifications(sessions);
       } catch (e) {
         this.connected = false;
       }
@@ -378,6 +384,58 @@ document.addEventListener('alpine:init', () => {
       this.showToast = true;
       if (this.toastTimer) clearTimeout(this.toastTimer);
       this.toastTimer = setTimeout(() => { this.showToast = false; }, duration);
+    },
+
+    // Browser notifications
+    checkActivityStateNotifications(sessions) {
+      if (!('Notification' in window)) return;
+      for (const session of sessions) {
+        if (session.mode !== 'managed') continue;
+        const prev = this.prevActivityStates[session.id];
+        const curr = session.activity_state;
+        if (prev === 'working' && curr === 'waiting' && session.id !== this.selectedSessionId) {
+          this.sendBrowserNotification(session);
+        }
+        this.prevActivityStates[session.id] = curr;
+      }
+    },
+
+    async sendBrowserNotification(session) {
+      if (Notification.permission !== 'granted') return;
+      const sessionName = this.sessionName(session);
+      let eventName = 'Claude is ready for your input';
+      try {
+        const res = await fetch(`/api/sessions/${session.id}/messages`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (res.ok) {
+          const msgs = await res.json();
+          const lastAssistant = [...(msgs || [])].reverse().find(m => m.role === 'assistant');
+          if (lastAssistant && lastAssistant.content) {
+            let text = lastAssistant.content;
+            if (text.length > 120) text = text.substring(0, 117) + '...';
+            eventName = text;
+          }
+        }
+      } catch (e) {}
+      const notification = new Notification('Claude Control', {
+        body: `${sessionName}\n${eventName}`,
+        icon: '/static/logo-bg.png',
+        tag: session.id
+      });
+      notification.onclick = () => {
+        window.focus();
+        this.selectSession(session.id);
+        notification.close();
+      };
+      setTimeout(() => notification.close(), 10000);
+    },
+
+    requestNotificationPermission() {
+      if (!('Notification' in window)) return;
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
     },
 
     // Computed
@@ -487,6 +545,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     async selectSession(id) {
+      this.requestNotificationPermission();
       if (this.selectedSessionId === id) return;
       this.selectedSessionId = id;
       this.stopSessionSSE();
