@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -238,4 +239,37 @@ func (s *Store) DeleteSession(id string) error {
 		return fmt.Errorf("delete session: %w", err)
 	}
 	return tx.Commit()
+}
+
+type RecentDir struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+func (s *Store) RecentDirectories(limit int) ([]RecentDir, error) {
+	rows, err := s.db.Query(`
+		SELECT cwd, MAX(rowid) as last_rowid
+		FROM sessions
+		WHERE mode = 'managed' AND cwd != ''
+		GROUP BY cwd
+		ORDER BY last_rowid DESC
+		LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("recent directories: %w", err)
+	}
+	defer rows.Close()
+
+	var dirs []RecentDir
+	for rows.Next() {
+		var path string
+		var lastUsed string
+		if err := rows.Scan(&path, &lastUsed); err != nil {
+			return nil, fmt.Errorf("scan recent dir: %w", err)
+		}
+		dirs = append(dirs, RecentDir{
+			Path: path,
+			Name: filepath.Base(path),
+		})
+	}
+	return dirs, rows.Err()
 }

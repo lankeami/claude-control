@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -229,6 +230,92 @@ func TestUpdateActivityState(t *testing.T) {
 	updated, _ = store.GetSessionByID(sess.ID)
 	if updated.ActivityState != "idle" {
 		t.Errorf("expected activity_state='idle', got %q", updated.ActivityState)
+	}
+}
+
+func TestRecentDirectories(t *testing.T) {
+	store := newTestStore(t)
+
+	// Empty store returns empty slice
+	dirs, err := store.RecentDirectories(5)
+	if err != nil {
+		t.Fatalf("RecentDirectories: %v", err)
+	}
+	if len(dirs) != 0 {
+		t.Errorf("expected 0 dirs, got %d", len(dirs))
+	}
+
+	// Create some managed sessions
+	store.CreateManagedSession("/projects/alpha", `["Bash"]`, 50, 5.0)
+	store.CreateManagedSession("/projects/beta", `["Bash"]`, 50, 5.0)
+
+	dirs, err = store.RecentDirectories(5)
+	if err != nil {
+		t.Fatalf("RecentDirectories: %v", err)
+	}
+	if len(dirs) != 2 {
+		t.Fatalf("expected 2 dirs, got %d", len(dirs))
+	}
+	// Most recent first
+	if dirs[0].Path != "/projects/beta" {
+		t.Errorf("dirs[0].Path = %s, want /projects/beta", dirs[0].Path)
+	}
+	if dirs[0].Name != "beta" {
+		t.Errorf("dirs[0].Name = %s, want beta", dirs[0].Name)
+	}
+	if dirs[1].Path != "/projects/alpha" {
+		t.Errorf("dirs[1].Path = %s, want /projects/alpha", dirs[1].Path)
+	}
+}
+
+func TestRecentDirectories_Limit(t *testing.T) {
+	store := newTestStore(t)
+
+	for i := 0; i < 7; i++ {
+		store.CreateManagedSession(fmt.Sprintf("/projects/p%d", i), `["Bash"]`, 50, 5.0)
+	}
+
+	dirs, err := store.RecentDirectories(5)
+	if err != nil {
+		t.Fatalf("RecentDirectories: %v", err)
+	}
+	if len(dirs) != 5 {
+		t.Errorf("expected 5 dirs, got %d", len(dirs))
+	}
+}
+
+func TestRecentDirectories_IncludesArchived(t *testing.T) {
+	store := newTestStore(t)
+
+	sess, _ := store.CreateManagedSession("/projects/archived-proj", `["Bash"]`, 50, 5.0)
+	store.SetArchived(sess.ID, true)
+
+	dirs, err := store.RecentDirectories(5)
+	if err != nil {
+		t.Fatalf("RecentDirectories: %v", err)
+	}
+	if len(dirs) != 1 {
+		t.Fatalf("expected 1 dir (archived included), got %d", len(dirs))
+	}
+	if dirs[0].Path != "/projects/archived-proj" {
+		t.Errorf("path = %s, want /projects/archived-proj", dirs[0].Path)
+	}
+}
+
+func TestRecentDirectories_DeduplicatesCWD(t *testing.T) {
+	store := newTestStore(t)
+
+	// Create first session, then delete it so the unique constraint allows a second
+	sess1, _ := store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0)
+	store.DeleteSession(sess1.ID)
+	store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0)
+
+	dirs, err := store.RecentDirectories(5)
+	if err != nil {
+		t.Fatalf("RecentDirectories: %v", err)
+	}
+	if len(dirs) != 1 {
+		t.Errorf("expected 1 deduplicated dir, got %d", len(dirs))
 	}
 }
 
