@@ -123,6 +123,15 @@ document.addEventListener('alpine:init', () => {
     _resizeStartX: 0,
     _resizeStartWidth: 0,
 
+    // Mobile menu state
+    mobileMenuOpen: false,
+    mobileTab: 'sessions',
+    mobileOverlay: null, // null | 'file' | 'issue'
+
+    isMobile() {
+      return window.innerWidth <= 768;
+    },
+
     startResize(e, side) {
       e.preventDefault();
       const handle = e.target.closest('.resize-handle');
@@ -172,6 +181,9 @@ document.addEventListener('alpine:init', () => {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
       }
+      this.$watch('mobileMenuOpen', (open) => {
+        document.body.style.overflow = open ? 'hidden' : '';
+      });
     },
 
     // Auth
@@ -546,6 +558,8 @@ document.addEventListener('alpine:init', () => {
 
     async selectSession(id) {
       this.requestNotificationPermission();
+      this.mobileMenuOpen = false;
+      this.mobileOverlay = null;
       if (this.selectedSessionId === id) return;
       this.selectedSessionId = id;
       this.stopSessionSSE();
@@ -1247,6 +1261,7 @@ document.addEventListener('alpine:init', () => {
       this.selectedIssueLoading = true;
       // Close any open file viewer and open issue in viewer panel
       this.closeFileViewer();
+      if (this.isMobile()) { this.mobileOverlay = 'issue'; }
       try {
         const resp = await fetch(`/api/sessions/${sessionId}/github/issues/${number}`, {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
@@ -1417,6 +1432,7 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       if (this.viewerFile === filePath) { this.closeFileViewer(); return; }
       this.selectedIssue = null; // Close issue viewer if open
       this.viewerFile = filePath;
+      if (this.isMobile()) { this.mobileOverlay = 'file'; }
       this.viewerMode = 'full';
       this.viewerContent = '';
       this.viewerLoading = false;

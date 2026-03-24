@@ -1030,13 +1030,232 @@ body {
   border: 1px solid var(--border); padding: 0.25em 0.5em;
 }
 
+/* ===== Mobile Menu (hidden on desktop) ===== */
+.mobile-hamburger { display: none; }
+.mobile-menu-overlay { display: none; }
+.mobile-modal-back { display: none; }
+.mobile-modal-header { display: none; }
+
 @media (max-width: 768px) {
+  /* Hide desktop elements */
   .sidebar { display: none; }
-  .mobile-session-select { display: block; }
-  .dashboard { flex-direction: column; }
+  .mobile-session-select { display: none; }
   .file-tree-sidebar { display: none; }
   .file-viewer-column { display: none; }
   .resize-handle { display: none; }
+
+  .dashboard { flex-direction: column; }
+
+  /* Hamburger button */
+  .mobile-hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    padding: 4px;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Main header mobile layout — sticky so hamburger is always accessible */
+  .main-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+  .main-header h2 {
+    font-size: 0.9rem;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Chat area mobile sizing */
+  .chat-bubble.user,
+  .chat-bubble.assistant,
+  .chat-bubble.tool {
+    max-width: 90%;
+  }
+
+  /* Input bar sticky */
+  .instruction-bar {
+    position: sticky;
+    bottom: 0;
+  }
+
+  /* Mobile Menu Overlay */
+  .mobile-menu-overlay {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100vh; /* fallback */
+    height: 100dvh;
+    background: var(--bg);
+    z-index: 1000;
+    transition: transform 250ms ease-out;
+  }
+
+  .mobile-menu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .mobile-menu-close {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .mobile-menu-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Bottom Tab Bar */
+  .mobile-tab-bar {
+    display: flex;
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .mobile-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 10px;
+    min-height: 44px;
+    transition: color 0.15s;
+  }
+
+  .mobile-tab.active {
+    color: var(--accent);
+  }
+
+  /* Session items in mobile menu — larger tap targets */
+  .mobile-menu-content .session-item {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  /* Detail Overlays (file viewer, issue detail) */
+  .mobile-detail-overlay {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg);
+    z-index: 1001;
+    transition: transform 250ms ease-out;
+  }
+
+  .mobile-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+
+  .mobile-back-btn {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    padding: 4px;
+    flex-shrink: 0;
+  }
+
+  .mobile-detail-title {
+    font-weight: 600;
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-detail-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  /* Full-screen modals on mobile */
+  .mobile-menu-overlay ~ div[x-show="showNewSessionModal"] > div,
+  .mobile-menu-overlay ~ div[x-show="showResumePicker"] > div,
+  .mobile-menu-overlay ~ div[x-show="taskModalOpen"] > div {
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Larger tap targets in modals */
+  .browse-item {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  /* On mobile, remove top padding from modal so header sits flush */
+  .modal-inner {
+    padding-top: 0 !important;
+  }
+
+  /* Mobile modal header: sticky at top of scrollable modal */
+  .mobile-modal-header {
+    display: flex;
+    position: sticky;
+    top: 0;
+    margin: 0 -24px 16px -24px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    min-height: 44px;
+    z-index: 1;
+  }
+
+  /* Hide the desktop title row in modals on mobile */
+  .desktop-modal-title {
+    display: none !important;
+  }
 }
 
 /* ===== Smart File Viewer Styles ===== */
