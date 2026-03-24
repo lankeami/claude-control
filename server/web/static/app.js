@@ -1963,8 +1963,10 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
                 working_directory: task.working_directory, cron_expression: task.cron_expression,
                 session_id: task.session_id || ''
             };
+            this.loadTaskRuns(task.id);
         } else {
             this.editingTask = null;
+            this.taskRuns = [];
             this.taskForm = { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '' };
         }
         this.taskFormErrors = '';
@@ -2033,9 +2035,7 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
     },
 
     async selectTask(task) {
-        this.selectedTask = task;
-        this.selectedSessionId = null;
-        await this.loadTaskRuns(task.id);
+        this.openTaskModal(task);
     },
 
     async loadTaskRuns(taskId) {
