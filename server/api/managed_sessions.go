@@ -600,3 +600,18 @@ func extractSessionFiles(line, sessionID string, store *db.Store) {
 		}
 	}
 }
+
+func (s *Server) handleRecentDirs(w http.ResponseWriter, r *http.Request) {
+	dirs, err := s.store.RecentDirectories(5)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if dirs == nil {
+		dirs = []db.RecentDir{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"directories": dirs,
+	})
+}

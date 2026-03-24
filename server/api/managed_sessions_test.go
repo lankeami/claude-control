@@ -274,3 +274,56 @@ func TestAutoContinueThresholdCalculation(t *testing.T) {
 		t.Errorf("expected 0, got %d", threshold)
 	}
 }
+
+func TestRecentDirsAPI(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	// Empty response
+	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/recent-dirs", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+
+	var result struct {
+		Directories []struct {
+			Path string `json:"path"`
+			Name string `json:"name"`
+		} `json:"directories"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if len(result.Directories) != 0 {
+		t.Errorf("expected 0 dirs, got %d", len(result.Directories))
+	}
+
+	// Create sessions, then check
+	store.CreateManagedSession("/tmp/project-a", `["Bash"]`, 50, 5.0)
+	store.CreateManagedSession("/tmp/project-b", `["Bash"]`, 50, 5.0)
+
+	req2, _ := http.NewRequest("GET", ts.URL+"/api/sessions/recent-dirs", nil)
+	req2.Header.Set("Authorization", "Bearer test-api-key")
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+
+	json.NewDecoder(resp2.Body).Decode(&result)
+	if len(result.Directories) != 2 {
+		t.Fatalf("expected 2 dirs, got %d", len(result.Directories))
+	}
+	if result.Directories[0].Path != "/tmp/project-b" {
+		t.Errorf("first dir = %s, want /tmp/project-b", result.Directories[0].Path)
+	}
+	if result.Directories[0].Name != "project-b" {
+		t.Errorf("first name = %s, want project-b", result.Directories[0].Name)
+	}
+}
