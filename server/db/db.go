@@ -98,6 +98,31 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE sessions ADD COLUMN auto_continue_threshold REAL NOT NULL DEFAULT 0.8`,
 		`ALTER TABLE sessions ADD COLUMN max_continuations INTEGER NOT NULL DEFAULT 5`,
 		`ALTER TABLE sessions ADD COLUMN activity_state TEXT NOT NULL DEFAULT 'idle'`,
+		`CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id TEXT PRIMARY KEY,
+    session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    task_type TEXT NOT NULL CHECK(task_type IN ('shell', 'claude')),
+    command TEXT NOT NULL,
+    working_directory TEXT NOT NULL,
+    cron_expression TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run_at DATETIME,
+    next_run_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS task_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+    started_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    finished_at DATETIME,
+    exit_code INTEGER,
+    output TEXT,
+    status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'success', 'failed'))
+)`,
+		`CREATE INDEX IF NOT EXISTS idx_task_runs_task_id ON task_runs(task_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_task_runs_started_at ON task_runs(started_at)`,
 	}
 
 	for _, m := range migrations {
