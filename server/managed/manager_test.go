@@ -152,3 +152,21 @@ func TestManagerSpawnShellTimeout(t *testing.T) {
 		t.Error("session should not be running after timeout")
 	}
 }
+
+func TestUpdateConfig(t *testing.T) {
+	mgr := NewManager(Config{ClaudeBin: "old-bin", ClaudeArgs: []string{"--old"}, ClaudeEnv: []string{"OLD=1"}})
+
+	mgr.UpdateConfig(Config{ClaudeBin: "new-bin", ClaudeArgs: []string{"--new"}, ClaudeEnv: []string{"NEW=1"}})
+
+	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
+	if mgr.cfg.ClaudeBin != "new-bin" {
+		t.Errorf("expected new-bin, got %s", mgr.cfg.ClaudeBin)
+	}
+	if len(mgr.cfg.ClaudeArgs) != 1 || mgr.cfg.ClaudeArgs[0] != "--new" {
+		t.Errorf("expected [--new], got %v", mgr.cfg.ClaudeArgs)
+	}
+	if len(mgr.cfg.ClaudeEnv) != 1 || mgr.cfg.ClaudeEnv[0] != "NEW=1" {
+		t.Errorf("expected [NEW=1], got %v", mgr.cfg.ClaudeEnv)
+	}
+}
