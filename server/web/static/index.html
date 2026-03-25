@@ -20,6 +20,11 @@
     Reconnecting...
   </div>
 
+  <!-- Restart required banner -->
+  <div class="restart-banner" x-show="settingsRestartRequired" x-cloak>
+    Server restart required for PORT/NGROK changes to take effect.
+  </div>
+
   <!-- Login screen -->
   <template x-if="!authenticated">
     <div class="login-container">
@@ -51,6 +56,12 @@
       <!-- Sidebar (desktop) -->
       <div class="sidebar" :class="{ collapsed: leftCollapsed }" :style="!leftCollapsed && leftWidth ? 'width:' + leftWidth + 'px' : ''">
         <div class="sidebar-header">
+          <button x-show="!leftCollapsed" class="settings-gear-btn" @click="openSettingsModal()" title="Settings">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 4.754a3.246 3.246 0 100 6.492 3.246 3.246 0 000-6.492zM5.754 8a2.246 2.246 0 114.492 0 2.246 2.246 0 01-4.492 0z"/>
+              <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 01-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 01-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 01.52 1.255l-.16.292c-.892 1.64.902 3.434 2.541 2.54l.292-.159a.873.873 0 011.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 011.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 01.52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 01-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 01-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 002.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 001.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 00-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 00-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 00-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291a1.873 1.873 0 00-1.116-2.693l-.318-.094c-.835-.246-.835-1.428 0-1.674l.319-.094a1.873 1.873 0 001.115-2.692l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 002.692-1.116l.094-.318z"/>
+            </svg>
+          </button>
           <span x-show="!leftCollapsed" style="font-size:0.875rem;font-weight:600;">Sessions</span>
           <button x-show="!leftCollapsed" class="btn btn-sm" @click="disconnect" style="background:transparent;color:var(--text-muted)">
             Disconnect
@@ -901,6 +912,70 @@
                  x-text="(run.output || '').substring(0, 300) + ((run.output || '').length > 300 ? '\n...' : '')"></div>
           </div>
         </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div x-show="showSettingsModal" x-cloak
+       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
+       @click.self="showSettingsModal = false">
+    <div class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:80vh; overflow-y:auto;">
+      <div class="mobile-detail-header mobile-modal-header">
+        <button @click="showSettingsModal = false" class="mobile-back-btn" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
+          </svg>
+        </button>
+        <span class="mobile-detail-title" x-text="settingsFirstRun ? 'Welcome \u2014 Configure Claude Controller' : 'Settings'"></span>
+      </div>
+      <h3 class="desktop-modal-title" style="margin-top:0; margin-bottom:16px;" x-text="settingsFirstRun ? 'Welcome \u2014 Configure Claude Controller' : 'Settings'"></h3>
+
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">PORT</label>
+          <input x-model="settingsForm.port" type="text" placeholder="8080"
+                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Server port (requires restart)</div>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">NGROK_AUTHTOKEN</label>
+          <input x-model="settingsForm.ngrok_authtoken" type="password" placeholder="ngrok auth token"
+                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">For remote access via ngrok tunnel (requires restart)</div>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_BIN</label>
+          <input x-model="settingsForm.claude_bin" type="text" placeholder="claude"
+                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Path to Claude CLI binary</div>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_ARGS</label>
+          <input x-model="settingsForm.claude_args" type="text" placeholder="--dangerously-skip-permissions"
+                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Space-separated CLI flags for managed sessions</div>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_ENV</label>
+          <input x-model="settingsForm.claude_env" type="text" placeholder="CLAUDE_CONFIG_DIR=/path"
+                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Comma-separated KEY=VALUE pairs for managed session environment</div>
+        </div>
+      </div>
+
+      <p class="error-msg" x-show="settingsError" x-text="settingsError" style="margin-top:8px;"></p>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+        <button class="btn btn-sm" @click="showSettingsModal = false; settingsFirstRun = false;" x-text="settingsFirstRun ? 'Skip' : 'Cancel'"></button>
+        <button class="btn btn-sm btn-primary" @click="saveSettings()" :disabled="settingsSaving">
+          <span x-show="!settingsSaving" x-text="settingsFirstRun ? 'Save & Continue' : 'Save'"></span>
+          <span x-show="settingsSaving">Saving...</span>
+        </button>
       </div>
     </div>
   </div>
