@@ -124,6 +124,11 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_task_runs_task_id ON task_runs(task_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_task_runs_started_at ON task_runs(started_at)`,
 		`ALTER TABLE sessions ADD COLUMN name TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS recent_directories (
+			path TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			last_used_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		)`,
 	}
 
 	for _, m := range migrations {

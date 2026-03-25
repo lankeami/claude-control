@@ -120,6 +120,11 @@ func (s *Store) CreateManagedSession(cwd, allowedTools string, maxTurns int, max
 	if err != nil {
 		return nil, fmt.Errorf("create managed session: %w", err)
 	}
+	// Track directory in recent_directories (persists after session deletion)
+	_, _ = s.db.Exec(`INSERT INTO recent_directories (path, name, last_used_at)
+		VALUES (?, ?, datetime('now'))
+		ON CONFLICT(path) DO UPDATE SET last_used_at = datetime('now')`,
+		cwd, filepath.Base(cwd))
 	return s.GetSessionByID(id)
 }
 
@@ -248,11 +253,9 @@ type RecentDir struct {
 
 func (s *Store) RecentDirectories(limit int) ([]RecentDir, error) {
 	rows, err := s.db.Query(`
-		SELECT cwd, MAX(rowid) as last_rowid
-		FROM sessions
-		WHERE mode = 'managed' AND cwd != ''
-		GROUP BY cwd
-		ORDER BY last_rowid DESC
+		SELECT path, name
+		FROM recent_directories
+		ORDER BY last_used_at DESC, rowid DESC
 		LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("recent directories: %w", err)
@@ -261,15 +264,11 @@ func (s *Store) RecentDirectories(limit int) ([]RecentDir, error) {
 
 	var dirs []RecentDir
 	for rows.Next() {
-		var path string
-		var lastUsed string
-		if err := rows.Scan(&path, &lastUsed); err != nil {
+		var d RecentDir
+		if err := rows.Scan(&d.Path, &d.Name); err != nil {
 			return nil, fmt.Errorf("scan recent dir: %w", err)
 		}
-		dirs = append(dirs, RecentDir{
-			Path: path,
-			Name: filepath.Base(path),
-		})
+		dirs = append(dirs, d)
 	}
 	return dirs, rows.Err()
 }
