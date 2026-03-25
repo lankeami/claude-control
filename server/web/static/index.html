@@ -249,17 +249,33 @@
             </div>
 
             <!-- Input bar (managed mode messages OR hook-mode instructions) -->
-            <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt">
+            <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt" style="position:relative">
               <button class="shell-toggle-btn"
                       x-show="currentSession?.mode === 'managed'"
                       :class="{ active: shellMode }"
                       @click="shellMode = !shellMode"
                       :title="shellMode ? 'Switch to chat mode' : 'Switch to shell mode'">$</button>
+
+              <!-- Slash command autocomplete -->
+              <div class="slash-menu" x-show="showSlashMenu && filteredSlashCommands.length > 0" x-cloak
+                   @mousedown.prevent>
+                <template x-for="(cmd, idx) in filteredSlashCommands" :key="cmd.name">
+                  <div class="slash-menu-item" :class="{ selected: idx === slashSelectedIndex }"
+                       @click="selectSlashCommand(cmd)" @mouseenter="slashSelectedIndex = idx">
+                    <span class="slash-cmd-name" x-text="cmd.name"></span>
+                    <span class="slash-cmd-hint" x-show="cmd.argHint" x-text="cmd.argHint"></span>
+                    <span class="slash-cmd-desc" x-text="cmd.description"></span>
+                    <span class="slash-cmd-source" x-show="cmd.source !== 'builtin'" x-text="cmd.source"></span>
+                  </div>
+                </template>
+              </div>
+
               <textarea x-model="inputText" rows="1"
-                     :placeholder="shellMode ? 'Run a command...' : (currentSession?.mode === 'managed' ? 'Send a message... (type /resume to continue a previous session)' : 'Send instruction (delivered on next stop)...')"
+                     :placeholder="shellMode ? 'Run a command...' : (currentSession?.mode === 'managed' ? 'Send a message... (/ for commands)' : 'Send instruction (delivered on next stop)...')"
                      :class="{ 'shell-input': shellMode }"
-                     @keydown="if(($event.metaKey || $event.ctrlKey) && $event.key === 'Enter') { $event.preventDefault(); handleInput(); }"
-                     @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 150) + 'px'"
+                     @keydown="handleSlashKeydown($event)"
+                     @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 150) + 'px'; onSlashInput()"
+                     @blur="setTimeout(() => showSlashMenu = false, 150)"
                      :disabled="inputSending"></textarea>
               <button class="btn btn-primary btn-sm" :disabled="!inputText.trim() || inputSending"
                       @click="handleInput()" style="width:auto">

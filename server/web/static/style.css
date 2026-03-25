@@ -1756,3 +1756,61 @@ body {
   background: #7f1d1d;
   color: #f87171;
 }
+
+/* Slash command autocomplete */
+.slash-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 4px;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+  z-index: 100;
+}
+.slash-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+.slash-menu-item:hover, .slash-menu-item.selected {
+  background: var(--accent);
+  color: #fff;
+}
+.slash-menu-item.selected .slash-cmd-desc,
+.slash-menu-item.selected .slash-cmd-hint,
+.slash-menu-item.selected .slash-cmd-source {
+  color: rgba(255,255,255,0.8);
+}
+.slash-cmd-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.slash-cmd-hint {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.slash-cmd-desc {
+  color: var(--text-muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slash-cmd-source {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}

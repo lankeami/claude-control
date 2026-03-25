@@ -118,6 +118,13 @@ document.addEventListener('alpine:init', () => {
     shellMode: false,
     activeShellId: null,
 
+    // Slash commands
+    slashCommands: [],
+    slashCommandsLoaded: false,
+    showSlashMenu: false,
+    slashFilter: '',
+    slashSelectedIndex: 0,
+
     // Activity Status Pills
     stalenessTimer: null,
     heartbeatTimer: null,
@@ -674,6 +681,9 @@ document.addEventListener('alpine:init', () => {
       this.stopSessionSSE();
       this.clearActivityPills();
       this.closeFileViewer();
+      this.slashCommands = [];
+      this.slashCommandsLoaded = false;
+      this.showSlashMenu = false;
       this.sessionFiles = [];
       this.fileTreeData = [];
       this.fileContentCache = {};
@@ -766,16 +776,133 @@ document.addEventListener('alpine:init', () => {
       } catch (e) { return false; }
     },
 
+    // --- Slash commands ---
+
+    get filteredSlashCommands() {
+      if (!this.showSlashMenu) return [];
+      const filter = this.slashFilter.toLowerCase();
+      return this.slashCommands.filter(cmd => cmd.name.toLowerCase().startsWith('/' + filter));
+    },
+
+    async loadSlashCommands() {
+      if (this.slashCommandsLoaded || !this.selectedSessionId) return;
+      try {
+        const resp = await fetch(`/api/sessions/${this.selectedSessionId}/commands`, {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        if (resp.ok) this.slashCommands = await resp.json();
+      } catch (e) {}
+      this.slashCommandsLoaded = true;
+    },
+
+    onSlashInput() {
+      const text = this.inputText;
+      if (text.startsWith('/') && !this.shellMode && this.currentSession?.mode === 'managed') {
+        this.slashFilter = text.slice(1).split(' ')[0];
+        if (!text.includes(' ')) {
+          this.showSlashMenu = true;
+          this.slashSelectedIndex = 0;
+          this.loadSlashCommands();
+        } else {
+          this.showSlashMenu = false;
+        }
+      } else {
+        this.showSlashMenu = false;
+      }
+    },
+
+    handleSlashKeydown(e) {
+      if (this.showSlashMenu && this.filteredSlashCommands.length > 0) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.slashSelectedIndex = Math.min(this.slashSelectedIndex + 1, this.filteredSlashCommands.length - 1); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); this.slashSelectedIndex = Math.max(this.slashSelectedIndex - 1, 0); return; }
+        if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this.selectSlashCommand(this.filteredSlashCommands[this.slashSelectedIndex]); return; }
+        if (e.key === 'Escape') { e.preventDefault(); this.showSlashMenu = false; return; }
+        if (e.key === 'Tab') { e.preventDefault(); this.selectSlashCommand(this.filteredSlashCommands[this.slashSelectedIndex]); return; }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); this.handleInput(); }
+    },
+
+    selectSlashCommand(cmd) {
+      if (!cmd) return;
+      this.showSlashMenu = false;
+      this.inputText = cmd.hasArg ? cmd.name + ' ' : cmd.name;
+    },
+
+    async executeSlashCommand(input) {
+      const spaceIdx = input.indexOf(' ');
+      const cmdName = (spaceIdx > 0 ? input.substring(0, spaceIdx) : input).toLowerCase();
+      const cmdArg = spaceIdx > 0 ? input.substring(spaceIdx + 1).trim() : '';
+
+      this.chatMessages.push({ role: 'user', content: input, msg_type: 'text', timestamp: new Date().toISOString() });
+      this.$nextTick(() => this.scrollToBottom(true));
+      this.inputText = '';
+
+      switch (cmdName) {
+        case '/resume':
+          await this.openResumePicker();
+          break;
+        case '/clear':
+          this.chatMessages = [];
+          break;
+        case '/compact':
+          this.inputText = 'Please compact the conversation context and summarize what we\'ve been working on.';
+          await this.sendManagedMessage();
+          break;
+        case '/cost': {
+          const sess = this.currentSession;
+          const cost = sess?.total_cost != null ? `$${sess.total_cost.toFixed(4)}` : 'unknown';
+          this.chatMessages.push({ role: 'system', content: `Session cost: ${cost}`, msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        case '/help': {
+          await this.loadSlashCommands();
+          const lines = this.slashCommands.map(c => {
+            const hint = c.argHint ? ' ' + c.argHint : '';
+            const src = c.source !== 'builtin' ? ` [${c.source}]` : '';
+            return `**${c.name}**${hint}${src} — ${c.description || ''}`;
+          });
+          this.chatMessages.push({ role: 'system', content: 'Available commands:\n\n' + lines.join('\n'), msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        default:
+          await this.executeCustomCommand(input.substring(0, spaceIdx > 0 ? spaceIdx : input.length), cmdArg);
+          break;
+      }
+    },
+
+    async executeCustomCommand(cmdName, cmdArg) {
+      try {
+        const resp = await fetch(`/api/sessions/${this.selectedSessionId}/commands/content?name=${encodeURIComponent(cmdName)}`, {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        if (!resp.ok) {
+          this.chatMessages.push({ role: 'system', content: `Unknown command: ${cmdName}`, msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          return;
+        }
+        const data = await resp.json();
+        let prompt = data.content;
+        if (cmdArg) {
+          prompt = prompt.includes('$ARGUMENTS') ? prompt.replace(/\$ARGUMENTS/g, cmdArg) : prompt + '\n\n' + cmdArg;
+        }
+        this.inputText = prompt;
+        await this.sendManagedMessage();
+      } catch (e) {
+        this.chatMessages.push({ role: 'system', content: `Failed to execute ${cmdName}: ${e.message}`, msg_type: 'text', timestamp: new Date().toISOString() });
+      }
+    },
+
+    // --- End slash commands ---
+
     async handleInput() {
       if (!this.selectedSessionId || !this.inputText.trim()) return;
+      this.showSlashMenu = false;
       const sess = this.currentSession;
 
-      // Intercept /resume command for managed sessions
-      if (sess && sess.mode === 'managed' && this.inputText.trim().toLowerCase() === '/resume') {
-        this.chatMessages.push({ role: 'user', content: '/resume', msg_type: 'text', timestamp: new Date().toISOString() });
-        this.$nextTick(() => this.scrollToBottom(true));
-        this.inputText = '';
-        await this.openResumePicker();
+      if (sess && sess.mode === 'managed' && this.inputText.trim().startsWith('/')) {
+        await this.executeSlashCommand(this.inputText.trim());
         return;
       }
 
