@@ -11,10 +11,11 @@ import (
 type Server struct {
 	store   *db.Store
 	manager *managed.Manager
+	envPath string
 }
 
-func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handler {
-	s := &Server{store: store, manager: mgr}
+func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string) http.Handler {
+	s := &Server{store: store, manager: mgr, envPath: envPath}
 
 	// API mux — all existing endpoints, behind auth middleware
 	apiMux := http.NewServeMux()

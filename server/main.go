@@ -67,6 +67,7 @@ func main() {
 	apiKey := loadOrCreateAPIKey(*dbPath)
 
 	loadDotEnv(".env")
+	envPath, _ := filepath.Abs(".env")
 	managedCfg := managed.Config{
 		ClaudeBin:  envOrDefault("CLAUDE_BIN", "claude"),
 		ClaudeArgs: strings.Fields(os.Getenv("CLAUDE_ARGS")),
@@ -74,7 +75,7 @@ func main() {
 	}
 	mgr := managed.NewManager(managedCfg)
 
-	router := api.NewRouter(store, apiKey, mgr)
+	router := api.NewRouter(store, apiKey, mgr, envPath)
 
 	// Start local server
 	bindHost := "localhost"

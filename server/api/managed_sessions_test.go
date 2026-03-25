@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *db.Store) {
 		ClaudeEnv:  []string{},
 	}
 	mgr := managed.NewManager(cfg)
-	router := NewRouter(store, "test-api-key", mgr)
+	router := NewRouter(store, "test-api-key", mgr, filepath.Join(dir, ".env"))
 	ts := httptest.NewServer(router)
 	return ts, store
 }
