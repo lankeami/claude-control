@@ -124,6 +124,7 @@ document.addEventListener('alpine:init', () => {
     showSlashMenu: false,
     slashFilter: '',
     slashSelectedIndex: 0,
+    sessionCost: null,
 
     // Activity Status Pills
     stalenessTimer: null,
@@ -684,6 +685,7 @@ document.addEventListener('alpine:init', () => {
       this.slashCommands = [];
       this.slashCommandsLoaded = false;
       this.showSlashMenu = false;
+      this.sessionCost = null;
       this.sessionFiles = [];
       this.fileTreeData = [];
       this.fileContentCache = {};
@@ -850,8 +852,9 @@ document.addEventListener('alpine:init', () => {
           break;
         case '/cost': {
           const sess = this.currentSession;
-          const cost = sess?.total_cost != null ? `$${sess.total_cost.toFixed(4)}` : 'unknown';
-          this.chatMessages.push({ role: 'system', content: `Session cost: ${cost}`, msg_type: 'text', timestamp: new Date().toISOString() });
+          const cost = this.sessionCost != null ? `$${this.sessionCost.toFixed(4)}` : 'no usage yet';
+          const budget = sess?.max_budget_usd ? `$${sess.max_budget_usd.toFixed(2)}` : 'unlimited';
+          this.chatMessages.push({ role: 'system', content: `Session cost: ${cost} | Budget: ${budget}`, msg_type: 'text', timestamp: new Date().toISOString() });
           this.$nextTick(() => this.scrollToBottom(true));
           break;
         }
@@ -1283,6 +1286,10 @@ document.addEventListener('alpine:init', () => {
           }
 
           if (data.type === 'done' || data.type === 'result') {
+            // Track cost from result events
+            if (data.type === 'result' && data.cost != null) {
+              this.sessionCost = (this.sessionCost || 0) + data.cost;
+            }
             // Mark the current active pill as completed (don't clear — pills persist until next message)
             const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
             if (activePill) {
