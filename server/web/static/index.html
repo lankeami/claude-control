@@ -162,7 +162,7 @@
                 :title="selectedSessionId ? 'Double-click to rename' : ''"
                 :style="selectedSessionId ? 'cursor:pointer' : ''"></h2>
           </template>
-          <button class="btn btn-sm" x-show="currentSession?.mode === 'managed' && currentSession?.status === 'running'"
+          <button class="btn btn-sm" x-show="currentSession?.mode === 'managed' && currentSession?.activity_state === 'working'"
                   @click="interruptSession()"
                   style="background:#e74c3c; color:white; margin-left:8px;">
             Stop
