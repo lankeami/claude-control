@@ -44,7 +44,7 @@ allowed-tools:
 ---
 ```
 
-The file body (after frontmatter) is a prompt template. When executed, the body is sent as the message via `sendManagedMessage()`. If the command accepts an argument, it's appended to the prompt body.
+The file body (after frontmatter) is a prompt template. When executed, the body is sent as the message via `sendManagedMessage()`. If the template contains `$ARGUMENTS`, the user's argument replaces that placeholder. If no placeholder is present, the argument is appended to the end of the prompt body. This matches Claude Code's native behavior.
 
 ## Server API
 
@@ -65,7 +65,7 @@ Returns all available slash commands for a session.
   {
     "name": "/gsd:help",
     "description": "Show available GSD commands",
-    "source": "custom",
+    "source": "project",
     "hasArg": true,
     "argHint": "[topic]"
   }
@@ -80,15 +80,14 @@ Returns all available slash commands for a session.
 5. Merge all commands, deduplicating by name (project commands override user commands)
 6. Return sorted by name
 
-### `GET /api/sessions/{id}/commands/{name}/content`
+### `GET /api/sessions/{id}/commands/content?name=gsd:help`
 
-Returns the body content of a custom command (frontmatter stripped).
+Returns the body content of a custom command (frontmatter stripped). Command name is passed as a query parameter to avoid URL encoding issues with colons and slashes in command names.
 
 **Response:**
 ```json
 {
-  "content": "The prompt template body...",
-  "allowedTools": ["Read", "Bash"]
+  "content": "The prompt template body..."
 }
 ```
 
@@ -116,7 +115,7 @@ This endpoint is needed because the command list endpoint only returns metadata.
 - Custom commands with argument: populate textarea with command name + space, cursor at end for user to type argument
 
 ### Caching
-- Commands are fetched once when a managed session is selected
+- Commands are fetched lazily — only when the user first types `/` in a given session
 - Cache is invalidated when switching sessions
 - A refresh can be triggered manually if needed
 
@@ -128,8 +127,8 @@ User selects command → textarea populated
 User presses Send (or auto-submit) → handleInput()
   ├─ Built-in command? → execute client-side handler
   └─ Custom command?
-       ├─ Fetch content from /api/sessions/{id}/commands/{name}/content
-       ├─ Append user argument if provided
+       ├─ Fetch content from /api/sessions/{id}/commands/content?name=X
+       ├─ Substitute $ARGUMENTS in template (or append if no placeholder)
        └─ Send as regular message via sendManagedMessage()
 ```
 
@@ -150,6 +149,17 @@ The autocomplete dropdown:
 - Highlighted item has a subtle background color
 - Max height with scroll for long lists
 - Source badge (e.g., "custom") shown subtly next to custom commands
+
+## Error Handling
+
+- If session CWD no longer exists on disk, the commands endpoint returns 200 with only built-in commands (no error)
+- Malformed `.md` files (no frontmatter, invalid YAML) are silently skipped
+- Filename (minus `.md` extension) is the canonical command name; frontmatter `name` field is an optional override
+- Source is `"project"` for CWD-local commands, `"user"` for `~/.claude/commands/`, `"builtin"` for hardcoded
+
+## Refactoring Note
+
+The existing `/resume` interception in `handleInput()` (app.js line 774) should be refactored into the new command dispatch system rather than remaining as a separate special case.
 
 ## Out of Scope
 
