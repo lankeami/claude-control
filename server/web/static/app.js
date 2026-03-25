@@ -682,7 +682,7 @@ document.addEventListener('alpine:init', () => {
       const sess = this.sessions.find(s => s.id === this.selectedSessionId);
       if (sess && sess.mode === 'managed') {
         await this.fetchManagedMessages(this.selectedSessionId);
-        if (sess.status === 'running') {
+        if (sess.activity_state === 'working') {
           this.startSessionSSE(this.selectedSessionId);
         }
       } else {
