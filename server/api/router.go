@@ -11,10 +11,11 @@ import (
 type Server struct {
 	store   *db.Store
 	manager *managed.Manager
+	envPath string
 }
 
-func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handler {
-	s := &Server{store: store, manager: mgr}
+func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string) http.Handler {
+	s := &Server{store: store, manager: mgr, envPath: envPath}
 
 	// API mux — all existing endpoints, behind auth middleware
 	apiMux := http.NewServeMux()
@@ -67,6 +68,11 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager) http.Handle
 	// GitHub endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues", s.handleListGithubIssues)
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues/{number}", s.handleGetGithubIssue)
+
+	// Settings endpoints
+	apiMux.HandleFunc("GET /api/settings/exists", s.handleSettingsExists)
+	apiMux.HandleFunc("GET /api/settings", s.handleGetSettings)
+	apiMux.HandleFunc("PUT /api/settings", s.handlePutSettings)
 
 	// Scheduled task endpoints
 	apiMux.HandleFunc("POST /api/tasks", s.handleCreateTask)

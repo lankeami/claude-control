@@ -102,6 +102,14 @@ document.addEventListener('alpine:init', () => {
     toastTimer: null,
     toastType: 'info',
 
+    // Settings state
+    showSettingsModal: false,
+    settingsFirstRun: false,
+    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '' },
+    settingsError: '',
+    settingsSaving: false,
+    settingsRestartRequired: false,
+
     // Usage tracking
     lastTurnThreshold: 0,
     lastThresholdSessionId: null,
@@ -183,6 +191,7 @@ document.addEventListener('alpine:init', () => {
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
+        await this.checkSettingsFirstRun();
       }
       this.$watch('mobileMenuOpen', (open) => {
         document.body.style.overflow = open ? 'hidden' : '';
@@ -399,6 +408,70 @@ document.addEventListener('alpine:init', () => {
       this.showToast = true;
       if (this.toastTimer) clearTimeout(this.toastTimer);
       this.toastTimer = setTimeout(() => { this.showToast = false; }, duration);
+    },
+
+    async checkSettingsFirstRun() {
+      try {
+        const res = await fetch('/api/settings/exists', {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.exists) {
+          this.settingsFirstRun = true;
+          this.showSettingsModal = true;
+        }
+      } catch (e) {}
+    },
+
+    async openSettingsModal() {
+      this.settingsError = '';
+      this.settingsFirstRun = false;
+      try {
+        const res = await fetch('/api/settings', {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        this.settingsForm = {
+          port: data.port || '',
+          ngrok_authtoken: data.ngrok_authtoken || '',
+          claude_bin: data.claude_bin || '',
+          claude_args: data.claude_args || '',
+          claude_env: data.claude_env || '',
+        };
+      } catch (e) {
+        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '' };
+      }
+      this.showSettingsModal = true;
+    },
+
+    async saveSettings() {
+      this.settingsError = '';
+      this.settingsSaving = true;
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.settingsForm)
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          this.settingsError = errText;
+          this.settingsSaving = false;
+          return;
+        }
+        const data = await res.json();
+        if (data.restart_required) {
+          this.settingsRestartRequired = true;
+        }
+        this.showSettingsModal = false;
+        this.settingsFirstRun = false;
+        this.toast('Settings saved');
+      } catch (e) {
+        this.settingsError = 'Error: ' + e.message;
+      }
+      this.settingsSaving = false;
     },
 
     // Browser notifications

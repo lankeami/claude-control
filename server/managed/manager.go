@@ -65,6 +65,12 @@ func (m *Manager) GetBroadcaster(sessionID string) *Broadcaster {
 	return m.broadcasters[sessionID]
 }
 
+func (m *Manager) UpdateConfig(cfg Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg = cfg
+}
+
 func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	mu := m.sessionMutex(sessionID)
 	mu.Lock()
@@ -74,10 +80,15 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 		return nil, fmt.Errorf("session %s already has a running process", sessionID)
 	}
 
-	args := append(m.cfg.ClaudeArgs, opts.Args...)
-	cmd := exec.Command(m.cfg.ClaudeBin, args...)
+	// Copy config under lock to prevent race with UpdateConfig
+	m.mu.Lock()
+	cfg := m.cfg
+	m.mu.Unlock()
+
+	args := append(cfg.ClaudeArgs, opts.Args...)
+	cmd := exec.Command(cfg.ClaudeBin, args...)
 	cmd.Dir = opts.CWD
-	cmd.Env = append(os.Environ(), m.cfg.ClaudeEnv...)
+	cmd.Env = append(os.Environ(), cfg.ClaudeEnv...)
 	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1")
 
 	stdout, err := cmd.StdoutPipe()
