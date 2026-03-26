@@ -14,6 +14,8 @@ type Config struct {
 	ClaudeBin  string
 	ClaudeArgs []string
 	ClaudeEnv  []string
+	ServerPort int
+	BinaryPath string
 }
 
 type SpawnOpts struct {
@@ -69,6 +71,12 @@ func (m *Manager) UpdateConfig(cfg Config) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cfg = cfg
+}
+
+func (m *Manager) Config() Config {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg
 }
 
 func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {

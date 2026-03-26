@@ -21,11 +21,26 @@ import (
 	"github.com/jaychinthrajah/claude-controller/server/api"
 	"github.com/jaychinthrajah/claude-controller/server/db"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
+	"github.com/jaychinthrajah/claude-controller/server/mcp"
 	"github.com/jaychinthrajah/claude-controller/server/scheduler"
 	"github.com/jaychinthrajah/claude-controller/server/tunnel"
 )
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == "mcp-bridge" {
+		bridgeFlags := flag.NewFlagSet("mcp-bridge", flag.ExitOnError)
+		sessionID := bridgeFlags.String("session-id", "", "session ID")
+		port := bridgeFlags.Int("port", 8080, "server port")
+		bridgeFlags.Parse(os.Args[2:])
+		if *sessionID == "" {
+			log.Fatal("--session-id is required")
+		}
+		if err := mcp.Run(*sessionID, *port); err != nil {
+			log.Fatalf("mcp-bridge error: %v", err)
+		}
+		return
+	}
+
 	port := flag.Int("port", 0, "port to listen on (default: 8080, auto-detect if occupied)")
 	dbPath := flag.String("db", "", "path to SQLite database (default: ~/.claude-controller/data.db)")
 	flag.Parse()
@@ -68,10 +83,13 @@ func main() {
 
 	loadDotEnv(".env")
 	envPath, _ := filepath.Abs(".env")
+	binaryPath, _ := os.Executable()
 	managedCfg := managed.Config{
 		ClaudeBin:  envOrDefault("CLAUDE_BIN", "claude"),
 		ClaudeArgs: strings.Fields(os.Getenv("CLAUDE_ARGS")),
 		ClaudeEnv:  splitEnv(os.Getenv("CLAUDE_ENV")),
+		ServerPort: *port,
+		BinaryPath: binaryPath,
 	}
 	mgr := managed.NewManager(managedCfg)
 
