@@ -369,6 +369,16 @@ body {
   margin-bottom: 0.25rem;
 }
 
+.command-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+  margin-bottom: 0.25rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
 .tool-filepath {
   font-family: monospace;
   font-size: 0.75rem;

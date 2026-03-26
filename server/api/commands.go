@@ -18,11 +18,23 @@ type slashCommand struct {
 }
 
 var builtinCommands = []slashCommand{
+	{Name: "/add-dir", Description: "Add a working directory for this session", Source: "builtin", HasArg: true, ArgHint: "<path>"},
 	{Name: "/clear", Description: "Clear chat display", Source: "builtin"},
-	{Name: "/compact", Description: "Compact conversation context", Source: "builtin"},
+	{Name: "/compact", Description: "Compact conversation context", Source: "builtin", HasArg: true, ArgHint: "[instructions]"},
+	{Name: "/config", Description: "Show session configuration", Source: "builtin"},
+	{Name: "/context", Description: "Show active context files (CLAUDE.md etc)", Source: "builtin"},
 	{Name: "/cost", Description: "Show session cost info", Source: "builtin"},
+	{Name: "/diff", Description: "Show uncommitted changes in working directory", Source: "builtin"},
+	{Name: "/doctor", Description: "Check Claude Code health", Source: "builtin"},
+	{Name: "/effort", Description: "Set reasoning effort level", Source: "builtin", HasArg: true, ArgHint: "<low|medium|high|max>"},
+	{Name: "/export", Description: "Export conversation as markdown", Source: "builtin"},
 	{Name: "/help", Description: "Show available commands", Source: "builtin"},
+	{Name: "/init", Description: "Initialize CLAUDE.md for this project", Source: "builtin"},
+	{Name: "/model", Description: "Switch model for this session", Source: "builtin", HasArg: true, ArgHint: "<model>"},
+	{Name: "/pr-comments", Description: "View pull request comments for current branch", Source: "builtin"},
 	{Name: "/resume", Description: "Continue a previous CLI session", Source: "builtin"},
+	{Name: "/review", Description: "Review recent code changes", Source: "builtin"},
+	{Name: "/status", Description: "Show session status and details", Source: "builtin"},
 }
 
 type commandMeta struct {
