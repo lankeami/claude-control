@@ -34,6 +34,7 @@ document.addEventListener('alpine:init', () => {
 
     // Managed session state
     showNewSessionModal: false,
+    pendingPermission: null,
     newSessionCWD: '',
     sessionSSE: null,
 
@@ -666,6 +667,7 @@ document.addEventListener('alpine:init', () => {
         const state = session.activity_state || 'idle';
         if (state === 'working') return 'active';
         if (state === 'waiting') return 'waiting';
+        if (state === 'input_needed') return 'input_needed';
         return 'idle';
       }
       const lastSeen = new Date(session.last_seen_at);
@@ -1318,6 +1320,15 @@ document.addEventListener('alpine:init', () => {
       this.sessionSSE = new EventSource(url);
       this.resetHeartbeatTimer();
 
+      // Check for pending permission on reconnect
+      fetch(`/api/sessions/${sessionId}/pending-permission`, {
+        headers: { 'Authorization': `Bearer ${this.apiKey}` }
+      }).then(r => r.json()).then(data => {
+        if (data.pending) {
+          this.pendingPermission = data;
+        }
+      }).catch(() => {});
+
       this.sessionSSE.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -1388,6 +1399,11 @@ document.addEventListener('alpine:init', () => {
             // Don't return — let the done handler below close the SSE
           }
 
+          if (data.type === 'input_request') {
+            this.pendingPermission = data;
+            return;
+          }
+
           if (data.type === 'done' || data.type === 'result') {
             // Track cost from result events
             if (data.type === 'result' && data.cost != null) {
@@ -1403,6 +1419,7 @@ document.addEventListener('alpine:init', () => {
             this.clearStalenessTimer();
           }
           if (data.type === 'done') {
+            this.pendingPermission = null;
             this.stopSessionSSE();
             return;
           }
@@ -1495,6 +1512,23 @@ document.addEventListener('alpine:init', () => {
         this.sessionSSE = null;
       }
       this.clearHeartbeatTimer();
+    },
+
+    async respondToPermission(decision) {
+      if (!this.pendingPermission || !this.selectedSessionId) return;
+      try {
+        await fetch(`/api/sessions/${this.selectedSessionId}/permission-respond`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ decision })
+        });
+      } catch (e) {
+        console.error('Failed to respond to permission:', e);
+      }
+      this.pendingPermission = null;
     },
 
     async interruptSession() {

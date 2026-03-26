@@ -200,6 +200,10 @@ body {
   animation: status-pulse 1.5s ease-in-out infinite;
 }
 .status-dot.idle { background: var(--gray); }
+.status-dot.input_needed {
+  background: var(--yellow);
+  animation: status-pulse 0.8s ease-in-out infinite;
+}
 
 @keyframes status-pulse {
   0%, 100% { opacity: 1; }
