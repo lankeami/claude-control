@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -54,7 +55,7 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(sess)
 }
 
-func buildClaudeArgs(sess *db.Session, message string) []string {
+func buildClaudeArgs(sess *db.Session, message string, cfg managed.Config) []string {
 	var args []string
 	args = append(args, "-p", message)
 
@@ -80,6 +81,26 @@ func buildClaudeArgs(sess *db.Session, message string) []string {
 
 	if sess.MaxBudgetUSD > 0 {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", sess.MaxBudgetUSD))
+	}
+
+	// Add MCP permission prompt config if binary path is available
+	if cfg.BinaryPath != "" && cfg.ServerPort > 0 {
+		mcpConfig := map[string]interface{}{
+			"mcpServers": map[string]interface{}{
+				"controller": map[string]interface{}{
+					"command": cfg.BinaryPath,
+					"args":   []string{"mcp-bridge", "--session-id", sess.ID, "--port", fmt.Sprintf("%d", cfg.ServerPort)},
+				},
+			},
+		}
+		mcpJSON, err := json.Marshal(mcpConfig)
+		if err == nil {
+			tmpFile := fmt.Sprintf("/tmp/claude-mcp-%s.json", sess.ID)
+			if os.WriteFile(tmpFile, mcpJSON, 0644) == nil {
+				args = append(args, "--permission-prompt-tool", "mcp__controller__permission_prompt")
+				args = append(args, "--mcp-config", tmpFile)
+			}
+		}
 	}
 
 	return args
@@ -149,7 +170,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			turnsSinceLastContinue := 0
 			autoInterrupting := false
 
-			args := buildClaudeArgs(sess, currentMessage)
+			args := buildClaudeArgs(sess, currentMessage, s.manager.Config())
 			proc, err := s.manager.Spawn(sessionID, managed.SpawnOpts{
 				Args: args,
 				CWD:  sess.CWD,
@@ -200,6 +221,12 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 			stderrBytes, _ := io.ReadAll(proc.Stderr)
 			<-proc.Done
+
+			// Clean up temp MCP config file
+			os.Remove(fmt.Sprintf("/tmp/claude-mcp-%s.json", sessionID))
+
+			// Clean up any pending permission request
+			s.permissions.Delete(sessionID)
 
 			if proc.ExitCode != 0 && len(stderrBytes) > 0 {
 				errMsg := fmt.Sprintf(`{"type":"system","error":true,"stderr":%q,"exit_code":%d}`, string(stderrBytes), proc.ExitCode)

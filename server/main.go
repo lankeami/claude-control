@@ -83,10 +83,13 @@ func main() {
 
 	loadDotEnv(".env")
 	envPath, _ := filepath.Abs(".env")
+	binaryPath, _ := os.Executable()
 	managedCfg := managed.Config{
 		ClaudeBin:  envOrDefault("CLAUDE_BIN", "claude"),
 		ClaudeArgs: strings.Fields(os.Getenv("CLAUDE_ARGS")),
 		ClaudeEnv:  splitEnv(os.Getenv("CLAUDE_ENV")),
+		ServerPort: *port,
+		BinaryPath: binaryPath,
 	}
 	mgr := managed.NewManager(managedCfg)
 
