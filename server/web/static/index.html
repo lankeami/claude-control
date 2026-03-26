@@ -162,11 +162,27 @@
                 :title="selectedSessionId ? 'Double-click to rename' : ''"
                 :style="selectedSessionId ? 'cursor:pointer' : ''"></h2>
           </template>
-          <button class="btn btn-sm" x-show="currentSession?.mode === 'managed' && currentSession?.activity_state === 'working'"
-                  @click="interruptSession()"
-                  style="background:#e74c3c; color:white; margin-left:8px;">
-            Stop
-          </button>
+          <div :class="currentSession?.mode === 'managed' ? 'turns-monitor' : 'turns-monitor hidden'">
+            <span x-show="currentSession?.max_turns > 0" style="opacity:0.7;">Turns</span>
+            <span x-show="currentSession?.max_turns > 0"
+                  x-text="(currentSession?.turn_count || 0) + '/' + (currentSession?.max_turns || 0)"
+                  :style="'font-weight:600; color:' + turnBarColor()"></span>
+            <div x-show="currentSession?.max_turns > 0" style="width:60px; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
+              <div :style="'width:' + turnPercent + '%; height:100%; background:' + turnBarColor() + '; border-radius:2px; transition:width 0.3s ease'"></div>
+            </div>
+            <div x-show="continuationCount > 0" style="display:flex; align-items:center; gap:4px; padding-left:4px; border-left:1px solid var(--border);">
+              <span style="opacity:0.7;">Continues</span>
+              <span x-text="continuationCount + '/' + (currentSession?.max_continuations || 0)" style="font-weight:600;"></span>
+            </div>
+            <button class="btn btn-sm"
+                    @click="interruptSession()"
+                    :disabled="currentSession?.activity_state !== 'working'"
+                    :style="currentSession?.activity_state === 'working'
+                      ? 'background:#e74c3c; color:white; cursor:pointer;'
+                      : 'background:var(--border); color:var(--text-muted); cursor:default; opacity:0.5;'">
+              Stop
+            </button>
+          </div>
         </div>
 
         <div class="main-content-split">

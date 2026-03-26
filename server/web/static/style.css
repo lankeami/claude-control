@@ -291,9 +291,12 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: nowrap;
 }
-.main-header h2 { font-size: 1rem; }
+.main-header h2 { font-size: 1rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turns-monitor { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 0.8rem; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
+.turns-monitor.hidden { display: none; }
 
 /* Chat area */
 .chat-area {

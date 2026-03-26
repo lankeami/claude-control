@@ -113,6 +113,7 @@ document.addEventListener('alpine:init', () => {
     // Usage tracking
     lastTurnThreshold: 0,
     lastThresholdSessionId: null,
+    continuationCount: 0,
 
     // Shell mode
     shellMode: false,
@@ -686,6 +687,7 @@ document.addEventListener('alpine:init', () => {
       this.slashCommandsLoaded = false;
       this.showSlashMenu = false;
       this.sessionCost = null;
+      this.continuationCount = 0;
       this.sessionFiles = [];
       this.fileTreeData = [];
       this.fileContentCache = {};
@@ -1360,6 +1362,7 @@ document.addEventListener('alpine:init', () => {
           }
 
           if (data.type === 'auto_continuing') {
+            this.continuationCount = data.continuation_count || 0;
             this.chatMessages.push({
               id: 'auto-continue-' + Date.now(),
               role: 'system',
