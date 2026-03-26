@@ -118,6 +118,14 @@ document.addEventListener('alpine:init', () => {
     shellMode: false,
     activeShellId: null,
 
+    // Slash commands
+    slashCommands: [],
+    slashCommandsLoaded: false,
+    showSlashMenu: false,
+    slashFilter: '',
+    slashSelectedIndex: 0,
+    sessionCost: null,
+
     // Activity Status Pills
     stalenessTimer: null,
     heartbeatTimer: null,
@@ -674,6 +682,10 @@ document.addEventListener('alpine:init', () => {
       this.stopSessionSSE();
       this.clearActivityPills();
       this.closeFileViewer();
+      this.slashCommands = [];
+      this.slashCommandsLoaded = false;
+      this.showSlashMenu = false;
+      this.sessionCost = null;
       this.sessionFiles = [];
       this.fileTreeData = [];
       this.fileContentCache = {};
@@ -766,16 +778,234 @@ document.addEventListener('alpine:init', () => {
       } catch (e) { return false; }
     },
 
+    // --- Slash commands ---
+
+    get filteredSlashCommands() {
+      if (!this.showSlashMenu) return [];
+      const filter = this.slashFilter.toLowerCase();
+      return this.slashCommands.filter(cmd => cmd.name.toLowerCase().startsWith('/' + filter));
+    },
+
+    async loadSlashCommands() {
+      if (this.slashCommandsLoaded || !this.selectedSessionId) return;
+      try {
+        const resp = await fetch(`/api/sessions/${this.selectedSessionId}/commands`, {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        if (resp.ok) this.slashCommands = await resp.json();
+      } catch (e) {}
+      this.slashCommandsLoaded = true;
+    },
+
+    onSlashInput() {
+      const text = this.inputText;
+      if (text.startsWith('/') && !this.shellMode && this.currentSession?.mode === 'managed') {
+        this.slashFilter = text.slice(1).split(' ')[0];
+        if (!text.includes(' ')) {
+          this.showSlashMenu = true;
+          this.slashSelectedIndex = 0;
+          this.loadSlashCommands();
+        } else {
+          this.showSlashMenu = false;
+        }
+      } else {
+        this.showSlashMenu = false;
+      }
+    },
+
+    handleSlashKeydown(e) {
+      if (this.showSlashMenu && this.filteredSlashCommands.length > 0) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.slashSelectedIndex = Math.min(this.slashSelectedIndex + 1, this.filteredSlashCommands.length - 1); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); this.slashSelectedIndex = Math.max(this.slashSelectedIndex - 1, 0); return; }
+        if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this.selectSlashCommand(this.filteredSlashCommands[this.slashSelectedIndex]); return; }
+        if (e.key === 'Escape') { e.preventDefault(); this.showSlashMenu = false; return; }
+        if (e.key === 'Tab') { e.preventDefault(); this.selectSlashCommand(this.filteredSlashCommands[this.slashSelectedIndex]); return; }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); this.handleInput(); }
+    },
+
+    selectSlashCommand(cmd) {
+      if (!cmd) return;
+      this.showSlashMenu = false;
+      this.inputText = cmd.hasArg ? cmd.name + ' ' : cmd.name;
+    },
+
+    async executeSlashCommand(input) {
+      const spaceIdx = input.indexOf(' ');
+      const cmdName = (spaceIdx > 0 ? input.substring(0, spaceIdx) : input).toLowerCase();
+      const cmdArg = spaceIdx > 0 ? input.substring(spaceIdx + 1).trim() : '';
+
+      this.chatMessages.push({ role: 'user', content: input, msg_type: 'text', timestamp: new Date().toISOString() });
+      this.$nextTick(() => this.scrollToBottom(true));
+      this.inputText = '';
+
+      switch (cmdName) {
+        case '/resume':
+          await this.openResumePicker();
+          break;
+        case '/clear':
+          this.chatMessages = [];
+          break;
+        case '/compact': {
+          const compactInstr = cmdArg || 'Please compact the conversation context and summarize what we\'ve been working on.';
+          this.inputText = compactInstr;
+          await this.sendManagedMessage();
+          break;
+        }
+        case '/config': {
+          const sess = this.currentSession;
+          const lines = [
+            `**Session ID:** ${sess?.id || 'unknown'}`,
+            `**Mode:** ${sess?.mode || 'unknown'}`,
+            `**CWD:** ${sess?.cwd || 'not set'}`,
+            `**Allowed Tools:** ${sess?.allowed_tools || 'default'}`,
+            `**Max Turns:** ${sess?.max_turns || 'unlimited'}`,
+            `**Max Budget:** ${sess?.max_budget_usd ? '$' + sess.max_budget_usd.toFixed(2) : 'unlimited'}`,
+            `**Auto-continue:** ${sess?.auto_continue_threshold || 'off'}`,
+            `**Activity:** ${sess?.activity_state || 'unknown'}`,
+          ];
+          this.chatMessages.push({ role: 'system', command: '/config', content: lines.join('\n'), msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        case '/context':
+          this.inputText = 'List all context files currently loaded (CLAUDE.md files, .claude/settings.json, etc). Show their paths and a brief summary of what each contains.';
+          await this.sendManagedMessage();
+          break;
+        case '/cost': {
+          const sess = this.currentSession;
+          const cost = this.sessionCost != null ? `$${this.sessionCost.toFixed(4)}` : 'no usage yet';
+          const budget = sess?.max_budget_usd ? `$${sess.max_budget_usd.toFixed(2)}` : 'unlimited';
+          this.chatMessages.push({ role: 'system', command: '/cost', content: `Session cost: ${cost} | Budget: ${budget}`, msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        case '/diff':
+          this.inputText = 'Run `git diff` and `git diff --staged` in the working directory and show me the uncommitted changes. Be concise.';
+          await this.sendManagedMessage();
+          break;
+        case '/doctor':
+          this.inputText = 'Check the health of the current environment: verify git is available, check the working directory exists, confirm Claude Code version, and report any issues.';
+          await this.sendManagedMessage();
+          break;
+        case '/effort': {
+          const validLevels = ['low', 'medium', 'high', 'max'];
+          if (!cmdArg || !validLevels.includes(cmdArg.toLowerCase())) {
+            this.chatMessages.push({ role: 'system', command: '/effort', content: `Usage: /effort <${validLevels.join('|')}>\nSets reasoning effort level for subsequent messages.`, msg_type: 'text', timestamp: new Date().toISOString() });
+          } else {
+            this.inputText = `Set your reasoning effort to "${cmdArg.toLowerCase()}" for the rest of this session. Acknowledge briefly.`;
+            await this.sendManagedMessage();
+          }
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        case '/export': {
+          const exportLines = this.chatMessages
+            .filter(m => m.role !== 'system')
+            .map(m => `## ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content}`);
+          const markdown = exportLines.join('\n\n---\n\n');
+          const blob = new Blob([markdown], { type: 'text/markdown' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `conversation-${this.selectedSessionId?.substring(0, 8) || 'export'}-${new Date().toISOString().split('T')[0]}.md`;
+          a.click();
+          URL.revokeObjectURL(url);
+          this.chatMessages.push({ role: 'system', command: '/export', content: 'Conversation exported as markdown.', msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        case '/help': {
+          await this.loadSlashCommands();
+          const helpLines = this.slashCommands.map(c => {
+            const hint = c.argHint ? ' ' + c.argHint : '';
+            const src = c.source !== 'builtin' ? ` [${c.source}]` : '';
+            return `**${c.name}**${hint}${src} — ${c.description || ''}`;
+          });
+          this.chatMessages.push({ role: 'system', command: '/help', content: 'Available commands:\n\n' + helpLines.join('\n'), msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        case '/init':
+          this.inputText = 'Initialize a CLAUDE.md file for this project. Analyze the codebase structure, build system, test commands, and key patterns, then create a comprehensive CLAUDE.md.';
+          await this.sendManagedMessage();
+          break;
+        case '/model': {
+          if (!cmdArg) {
+            this.chatMessages.push({ role: 'system', command: '/model', content: 'Usage: /model <model>\nExamples: /model sonnet, /model opus, /model haiku', msg_type: 'text', timestamp: new Date().toISOString() });
+          } else {
+            this.chatMessages.push({ role: 'system', command: '/model', content: `Model switching requires restarting the session with --model ${cmdArg}. This is not yet supported mid-session.`, msg_type: 'text', timestamp: new Date().toISOString() });
+          }
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        case '/add-dir': {
+          if (!cmdArg) {
+            this.chatMessages.push({ role: 'system', command: '/add-dir', content: 'Usage: /add-dir <path>\nAdds a directory to the session\'s allowed tool access paths.', msg_type: 'text', timestamp: new Date().toISOString() });
+          } else {
+            this.chatMessages.push({ role: 'system', command: '/add-dir', content: `Adding directories mid-session requires --add-dir at startup. This is not yet supported mid-session.`, msg_type: 'text', timestamp: new Date().toISOString() });
+          }
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        case '/pr-comments':
+          this.inputText = 'Check for pull request comments on the current branch. Use `gh pr view` and `gh pr comments` to show any review feedback.';
+          await this.sendManagedMessage();
+          break;
+        case '/review':
+          this.inputText = 'Review the recent code changes. Run `git diff HEAD~1` (or uncommitted changes if any) and provide a code review with suggestions for improvement.';
+          await this.sendManagedMessage();
+          break;
+        case '/status': {
+          const statusSess = this.currentSession;
+          const lines = [
+            `**Session:** ${statusSess?.name || statusSess?.id?.substring(0, 8) || 'unknown'}`,
+            `**Activity:** ${statusSess?.activity_state || 'unknown'}`,
+            `**Turns:** ${statusSess?.turn_count || 0}`,
+            `**Cost:** ${this.sessionCost != null ? '$' + this.sessionCost.toFixed(4) : 'no usage yet'}`,
+            `**CWD:** ${statusSess?.cwd || 'not set'}`,
+          ];
+          this.chatMessages.push({ role: 'system', command: '/status', content: lines.join('\n'), msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          break;
+        }
+        default:
+          await this.executeCustomCommand(input.substring(0, spaceIdx > 0 ? spaceIdx : input.length), cmdArg);
+          break;
+      }
+    },
+
+    async executeCustomCommand(cmdName, cmdArg) {
+      try {
+        const resp = await fetch(`/api/sessions/${this.selectedSessionId}/commands/content?name=${encodeURIComponent(cmdName)}`, {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        if (!resp.ok) {
+          this.chatMessages.push({ role: 'system', content: `Unknown command: ${cmdName}`, msg_type: 'text', timestamp: new Date().toISOString() });
+          this.$nextTick(() => this.scrollToBottom(true));
+          return;
+        }
+        const data = await resp.json();
+        let prompt = data.content;
+        if (cmdArg) {
+          prompt = prompt.includes('$ARGUMENTS') ? prompt.replace(/\$ARGUMENTS/g, cmdArg) : prompt + '\n\n' + cmdArg;
+        }
+        this.inputText = prompt;
+        await this.sendManagedMessage();
+      } catch (e) {
+        this.chatMessages.push({ role: 'system', content: `Failed to execute ${cmdName}: ${e.message}`, msg_type: 'text', timestamp: new Date().toISOString() });
+      }
+    },
+
+    // --- End slash commands ---
+
     async handleInput() {
       if (!this.selectedSessionId || !this.inputText.trim()) return;
+      this.showSlashMenu = false;
       const sess = this.currentSession;
 
-      // Intercept /resume command for managed sessions
-      if (sess && sess.mode === 'managed' && this.inputText.trim().toLowerCase() === '/resume') {
-        this.chatMessages.push({ role: 'user', content: '/resume', msg_type: 'text', timestamp: new Date().toISOString() });
-        this.$nextTick(() => this.scrollToBottom(true));
-        this.inputText = '';
-        await this.openResumePicker();
+      if (sess && sess.mode === 'managed' && this.inputText.trim().startsWith('/')) {
+        await this.executeSlashCommand(this.inputText.trim());
         return;
       }
 
@@ -1156,6 +1386,10 @@ document.addEventListener('alpine:init', () => {
           }
 
           if (data.type === 'done' || data.type === 'result') {
+            // Track cost from result events
+            if (data.type === 'result' && data.cost != null) {
+              this.sessionCost = (this.sessionCost || 0) + data.cost;
+            }
             // Mark the current active pill as completed (don't clear — pills persist until next message)
             const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
             if (activePill) {
@@ -1819,7 +2053,11 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
     bubbleClass(msg, idx) {
       const classes = [];
       if (msg.msg_type === 'text') {
-        classes.push(msg.role);
+        if (msg.command) {
+          classes.push('assistant', 'command-response');
+        } else {
+          classes.push(msg.role);
+        }
         if (idx === this.chatMessages.length - 1 && msg.role === 'assistant' && this.currentPendingPrompt) {
           classes.push('waiting');
         }
@@ -1834,7 +2072,7 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       const time = `<span class="bubble-time">${esc(this.timeAgo(msg.timestamp))}</span>`;
 
       if (msg.msg_type === 'text') {
-        if (msg.role === 'assistant' && typeof marked !== 'undefined') {
+        if ((msg.role === 'assistant' || msg.command) && typeof marked !== 'undefined') {
           const r = new marked.Renderer();
           r.link = function(href, title, text) {
             const h = typeof href === 'object' ? href.href : href;
@@ -1844,7 +2082,8 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
             return `<a href="${h}" target="_blank" rel="noopener noreferrer"${titleAttr}>${tx}</a>`;
           };
           const html = marked.parse(msg.content || '', { renderer: r, breaks: true });
-          return `<div class="markdown-content">${html}</div>${time}`;
+          const eyebrow = msg.command ? `<div class="command-label">${esc(msg.command)}</div>` : '';
+          return `${eyebrow}<div class="markdown-content">${html}</div>${time}`;
         }
         return `${esc(msg.content)}${time}`;
       }
