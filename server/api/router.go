@@ -9,13 +9,14 @@ import (
 )
 
 type Server struct {
-	store   *db.Store
-	manager *managed.Manager
-	envPath string
+	store       *db.Store
+	manager     *managed.Manager
+	envPath     string
+	permissions *PermissionManager
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string) http.Handler {
-	s := &Server{store: store, manager: mgr, envPath: envPath}
+	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager()}
 
 	// API mux — all existing endpoints, behind auth middleware
 	apiMux := http.NewServeMux()
@@ -58,6 +59,9 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath str
 	apiMux.HandleFunc("GET /api/sessions/{id}/resumable", s.handleResumableList)
 	apiMux.HandleFunc("POST /api/sessions/{id}/resume", s.handleResumeSession)
 	apiMux.HandleFunc("POST /api/sessions/{id}/shell", s.handleShellExecute)
+	apiMux.HandleFunc("POST /api/sessions/{id}/permission-request", s.handlePermissionRequest)
+	apiMux.HandleFunc("POST /api/sessions/{id}/permission-respond", s.handlePermissionRespond)
+	apiMux.HandleFunc("GET /api/sessions/{id}/pending-permission", s.handlePendingPermission)
 	apiMux.HandleFunc("GET /api/sessions/{id}/commands", s.handleListCommands)
 	apiMux.HandleFunc("GET /api/sessions/{id}/commands/content", s.handleCommandContent)
 
