@@ -162,8 +162,7 @@
                 :title="selectedSessionId ? 'Double-click to rename' : ''"
                 :style="selectedSessionId ? 'cursor:pointer' : ''"></h2>
           </template>
-          <div class="turns-monitor" x-show="currentSession?.mode === 'managed'"
-               x-cloak style="display:flex; align-items:center; gap:8px; margin-left:auto; font-size:0.8rem; color:var(--text-muted); flex-shrink:0; white-space:nowrap;">
+          <div :class="currentSession?.mode === 'managed' ? 'turns-monitor' : 'turns-monitor hidden'">
             <span x-show="currentSession?.max_turns > 0" style="opacity:0.7;">Turns</span>
             <span x-show="currentSession?.max_turns > 0"
                   x-text="(currentSession?.turn_count || 0) + '/' + (currentSession?.max_turns || 0)"
