@@ -85,6 +85,79 @@ func TestPermissionRespondNoRequest(t *testing.T) {
 	}
 }
 
+func TestPermissionRequestBroadcastsAndLifecycle(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0)
+
+	// Verify activity state starts as idle
+	s, _ := store.GetSessionByID(sess.ID)
+	if s.ActivityState != "idle" {
+		t.Errorf("initial activity_state=%s, want idle", s.ActivityState)
+	}
+
+	// Start permission request in background
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		body := `{"tool_name":"Edit","description":"Edit file","input":{"file_path":"/tmp/test.go"}}`
+		req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/permission-request", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-api-key")
+		req.Header.Set("Content-Type", "application/json")
+		http.DefaultClient.Do(req)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify pending-permission endpoint shows the request
+	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID+"/pending-permission", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+
+	var pending map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&pending)
+	if pending["pending"] != true {
+		t.Errorf("expected pending=true, got %v", pending["pending"])
+	}
+	if pending["tool_name"] != "Edit" {
+		t.Errorf("tool_name=%v, want Edit", pending["tool_name"])
+	}
+
+	// Verify activity state changed to input_needed
+	s, _ = store.GetSessionByID(sess.ID)
+	if s.ActivityState != "input_needed" {
+		t.Errorf("activity_state=%s, want input_needed", s.ActivityState)
+	}
+
+	// Respond
+	respondBody := `{"decision":"deny"}`
+	req2, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/permission-respond", strings.NewReader(respondBody))
+	req2.Header.Set("Authorization", "Bearer test-api-key")
+	req2.Header.Set("Content-Type", "application/json")
+	http.DefaultClient.Do(req2)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("permission-request goroutine did not finish")
+	}
+
+	// Verify pending cleared
+	req3, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID+"/pending-permission", nil)
+	req3.Header.Set("Authorization", "Bearer test-api-key")
+	resp3, _ := http.DefaultClient.Do(req3)
+	defer resp3.Body.Close()
+
+	var cleared map[string]interface{}
+	json.NewDecoder(resp3.Body).Decode(&cleared)
+	if cleared["pending"] != false {
+		t.Errorf("expected pending=false after respond, got %v", cleared["pending"])
+	}
+}
+
 func TestPermissionPendingEndpoint(t *testing.T) {
 	ts, store := setupTestServer(t)
 	defer ts.Close()
