@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +41,11 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 	}
 	if req.MaxBudgetUSD == 0 {
 		req.MaxBudgetUSD = 5.0
+	}
+	if req.CompactEveryNContinues == 0 {
+		if v, err := strconv.Atoi(readEnvFile(s.envPath)["COMPACT_EVERY_N_CONTINUES"]); err == nil && v > 0 {
+			req.CompactEveryNContinues = v
+		}
 	}
 
 	sess, err := s.store.CreateManagedSession(req.CWD, req.AllowedTools, req.MaxTurns, req.MaxBudgetUSD, req.CompactEveryNContinues)
