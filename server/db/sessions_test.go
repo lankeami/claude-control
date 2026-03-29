@@ -87,7 +87,7 @@ func TestArchiveSession(t *testing.T) {
 func TestCreateManagedSession(t *testing.T) {
 	store := newTestStore(t)
 
-	sess, err := store.CreateManagedSession("/tmp/project", `["Bash","Read"]`, 50, 5.0)
+	sess, err := store.CreateManagedSession("/tmp/project", `["Bash","Read"]`, 50, 5.0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestCreateManagedSession(t *testing.T) {
 		t.Error("new session should not be initialized")
 	}
 
-	_, err = store.CreateManagedSession("/tmp/project", `["Bash"]`, 50, 5.0)
+	_, err = store.CreateManagedSession("/tmp/project", `["Bash"]`, 50, 5.0, 0)
 	if err == nil {
 		t.Error("expected error for duplicate cwd, got nil")
 	}
@@ -125,7 +125,7 @@ func TestHeartbeat(t *testing.T) {
 
 func TestTurnCount(t *testing.T) {
 	store := newTestStore(t)
-	sess, err := store.CreateManagedSession("/tmp/test-turns", `["Bash"]`, 50, 5.0)
+	sess, err := store.CreateManagedSession("/tmp/test-turns", `["Bash"]`, 50, 5.0, 0)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestTurnCount(t *testing.T) {
 
 func TestResumeSessionResetsTurnCount(t *testing.T) {
 	store := newTestStore(t)
-	sess, _ := store.CreateManagedSession("/tmp/test-resume-turns", `["Bash"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp/test-resume-turns", `["Bash"]`, 50, 5.0, 0)
 
 	// Increment some turns
 	store.IncrementTurnCount(sess.ID)
@@ -189,7 +189,7 @@ func TestResumeSessionResetsTurnCount(t *testing.T) {
 
 func TestAutoContinueDefaults(t *testing.T) {
 	store := newTestStore(t)
-	sess, err := store.CreateManagedSession("/tmp/test-ac", `["Bash"]`, 50, 5.0)
+	sess, err := store.CreateManagedSession("/tmp/test-ac", `["Bash"]`, 50, 5.0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestAutoContinueDefaults(t *testing.T) {
 
 func TestUpdateActivityState(t *testing.T) {
 	store := newTestStore(t)
-	sess, err := store.CreateManagedSession("/tmp/test-activity", `["Bash"]`, 50, 5.0)
+	sess, err := store.CreateManagedSession("/tmp/test-activity", `["Bash"]`, 50, 5.0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,8 +246,8 @@ func TestRecentDirectories(t *testing.T) {
 	}
 
 	// Create some managed sessions
-	store.CreateManagedSession("/projects/alpha", `["Bash"]`, 50, 5.0)
-	store.CreateManagedSession("/projects/beta", `["Bash"]`, 50, 5.0)
+	store.CreateManagedSession("/projects/alpha", `["Bash"]`, 50, 5.0, 0)
+	store.CreateManagedSession("/projects/beta", `["Bash"]`, 50, 5.0, 0)
 
 	dirs, err = store.RecentDirectories(5)
 	if err != nil {
@@ -272,7 +272,7 @@ func TestRecentDirectories_Limit(t *testing.T) {
 	store := newTestStore(t)
 
 	for i := 0; i < 7; i++ {
-		store.CreateManagedSession(fmt.Sprintf("/projects/p%d", i), `["Bash"]`, 50, 5.0)
+		store.CreateManagedSession(fmt.Sprintf("/projects/p%d", i), `["Bash"]`, 50, 5.0, 0)
 	}
 
 	dirs, err := store.RecentDirectories(5)
@@ -287,7 +287,7 @@ func TestRecentDirectories_Limit(t *testing.T) {
 func TestRecentDirectories_IncludesArchived(t *testing.T) {
 	store := newTestStore(t)
 
-	sess, _ := store.CreateManagedSession("/projects/archived-proj", `["Bash"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/projects/archived-proj", `["Bash"]`, 50, 5.0, 0)
 	store.SetArchived(sess.ID, true)
 
 	dirs, err := store.RecentDirectories(5)
@@ -306,9 +306,9 @@ func TestRecentDirectories_DeduplicatesCWD(t *testing.T) {
 	store := newTestStore(t)
 
 	// Create first session, then delete it so the unique constraint allows a second
-	sess1, _ := store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0)
+	sess1, _ := store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0, 0)
 	store.DeleteSession(sess1.ID)
-	store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0)
+	store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0, 0)
 
 	dirs, err := store.RecentDirectories(5)
 	if err != nil {
@@ -321,8 +321,8 @@ func TestRecentDirectories_DeduplicatesCWD(t *testing.T) {
 
 func TestResetStaleActivityStates(t *testing.T) {
 	store := newTestStore(t)
-	s1, _ := store.CreateManagedSession("/tmp/stale1", `["Bash"]`, 50, 5.0)
-	s2, _ := store.CreateManagedSession("/tmp/stale2", `["Bash"]`, 50, 5.0)
+	s1, _ := store.CreateManagedSession("/tmp/stale1", `["Bash"]`, 50, 5.0, 0)
+	s2, _ := store.CreateManagedSession("/tmp/stale2", `["Bash"]`, 50, 5.0, 0)
 	store.UpdateActivityState(s1.ID, "working")
 	store.UpdateActivityState(s2.ID, "waiting")
 	if err := store.ResetStaleActivityStates(); err != nil {

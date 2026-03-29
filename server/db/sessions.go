@@ -30,9 +30,10 @@ type Session struct {
 	MaxContinuations      int     `json:"max_continuations"`
 	ActivityState         string  `json:"activity_state"`
 	Name                  string  `json:"name"`
+	CompactEveryNContinues int    `json:"compact_every_n_continues"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count, auto_continue_threshold, max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,'')`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count, auto_continue_threshold, max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,''), compact_every_n_continues`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -42,7 +43,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
 		&sess.ClaudeSessionID, &sess.TurnCount, &sess.AutoContinueThreshold, &sess.MaxContinuations, &sess.ActivityState,
-		&sess.Name,
+		&sess.Name, &sess.CompactEveryNContinues,
 	)
 	if err != nil {
 		return sess, err
@@ -110,13 +111,13 @@ func (s *Store) GetSessionByID(id string) (*Session, error) {
 	return &sess, nil
 }
 
-func (s *Store) CreateManagedSession(cwd, allowedTools string, maxTurns int, maxBudgetUSD float64) (*Session, error) {
+func (s *Store) CreateManagedSession(cwd, allowedTools string, maxTurns int, maxBudgetUSD float64, compactEveryNContinues int) (*Session, error) {
 	id := uuid.New().String()
 	// Use "__managed__" as computer_name and cwd as project_path to avoid
 	// colliding with the existing UNIQUE(computer_name, project_path) constraint.
-	_, err := s.db.Exec(`INSERT INTO sessions (id, computer_name, project_path, mode, cwd, allowed_tools, max_turns, max_budget_usd, status)
-		VALUES (?, '__managed__', ?, 'managed', ?, ?, ?, ?, 'idle')`,
-		id, cwd, cwd, allowedTools, maxTurns, maxBudgetUSD)
+	_, err := s.db.Exec(`INSERT INTO sessions (id, computer_name, project_path, mode, cwd, allowed_tools, max_turns, max_budget_usd, compact_every_n_continues, status)
+		VALUES (?, '__managed__', ?, 'managed', ?, ?, ?, ?, ?, 'idle')`,
+		id, cwd, cwd, allowedTools, maxTurns, maxBudgetUSD, compactEveryNContinues)
 	if err != nil {
 		return nil, fmt.Errorf("create managed session: %w", err)
 	}

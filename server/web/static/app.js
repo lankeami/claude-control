@@ -115,6 +115,7 @@ document.addEventListener('alpine:init', () => {
     lastTurnThreshold: 0,
     lastThresholdSessionId: null,
     continuationCount: 0,
+    isCompacting: false,
 
     // Shell mode
     shellMode: false,
@@ -690,6 +691,7 @@ document.addEventListener('alpine:init', () => {
       this.showSlashMenu = false;
       this.sessionCost = null;
       this.continuationCount = 0;
+      this.isCompacting = false;
       this.sessionFiles = [];
       this.fileTreeData = [];
       this.fileContentCache = {};
@@ -1382,6 +1384,30 @@ document.addEventListener('alpine:init', () => {
             });
             // Reset turn threshold tracker since turn count will reset
             this.lastTurnThreshold = 0;
+            this.$nextTick(() => this.scrollToBottom(true));
+            return;
+          }
+
+          if (data.type === 'compacting') {
+            this.isCompacting = true;
+            this.chatMessages.push({
+              id: 'compact-' + Date.now(),
+              role: 'system',
+              content: 'Running /compact to reduce context size...',
+              isAutoContinue: true
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+            return;
+          }
+
+          if (data.type === 'compact_complete') {
+            this.isCompacting = false;
+            this.chatMessages.push({
+              id: 'compact-done-' + Date.now(),
+              role: 'system',
+              content: 'Compact complete.',
+              isAutoContinue: true
+            });
             this.$nextTick(() => this.scrollToBottom(true));
             return;
           }

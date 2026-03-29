@@ -18,10 +18,11 @@ import (
 
 func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CWD          string  `json:"cwd"`
-		AllowedTools string  `json:"allowed_tools"`
-		MaxTurns     int     `json:"max_turns"`
-		MaxBudgetUSD float64 `json:"max_budget_usd"`
+		CWD                    string  `json:"cwd"`
+		AllowedTools           string  `json:"allowed_tools"`
+		MaxTurns               int     `json:"max_turns"`
+		MaxBudgetUSD           float64 `json:"max_budget_usd"`
+		CompactEveryNContinues int     `json:"compact_every_n_continues"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -41,7 +42,7 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 		req.MaxBudgetUSD = 5.0
 	}
 
-	sess, err := s.store.CreateManagedSession(req.CWD, req.AllowedTools, req.MaxTurns, req.MaxBudgetUSD)
+	sess, err := s.store.CreateManagedSession(req.CWD, req.AllowedTools, req.MaxTurns, req.MaxBudgetUSD, req.CompactEveryNContinues)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			http.Error(w, "session already exists for this directory", http.StatusConflict)
@@ -282,6 +283,39 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			broadcaster.Send(continuingMsg)
 			_, _ = s.store.CreateMessage(sessionID, "system",
 				fmt.Sprintf("Auto-continuing (%d/%d)...", continuationCount, sess.MaxContinuations))
+
+			// Compact step: run /compact before resuming if configured
+			if sess.CompactEveryNContinues > 0 && continuationCount%sess.CompactEveryNContinues == 0 {
+				compactingMsg := fmt.Sprintf(`{"type":"compacting","continuation_count":%d}`, continuationCount)
+				broadcaster.Send(compactingMsg)
+				_, _ = s.store.CreateMessage(sessionID, "system", "Running /compact to reduce context size...")
+
+				compactArgs := buildClaudeArgs(sess, "/compact", s.manager.Config())
+				compactProc, compactErr := s.manager.Spawn(sessionID, managed.SpawnOpts{
+					Args: compactArgs,
+					CWD:  sess.CWD,
+				})
+				if compactErr != nil {
+					log.Printf("session %s: compact spawn failed: %v", sessionID, compactErr)
+					_, _ = s.store.CreateMessage(sessionID, "system", "Compact failed, continuing without it.")
+				} else {
+					// Drain stdout to avoid blocking, but don't process lines as regular output
+					go io.Copy(io.Discard, compactProc.Stdout)
+					go io.Copy(io.Discard, compactProc.Stderr)
+					<-compactProc.Done
+					os.Remove(fmt.Sprintf("/tmp/claude-mcp-%s.json", sessionID))
+
+					if compactProc.ExitCode == 0 {
+						log.Printf("session %s: compact completed successfully", sessionID)
+						_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.")
+					} else {
+						log.Printf("session %s: compact exited with code %d", sessionID, compactProc.ExitCode)
+						_, _ = s.store.CreateMessage(sessionID, "system", "Compact failed, continuing without it.")
+					}
+					compactCompleteMsg := fmt.Sprintf(`{"type":"compact_complete","continuation_count":%d}`, continuationCount)
+					broadcaster.Send(compactCompleteMsg)
+				}
+			}
 
 			currentMessage = "You were interrupted due to turn limits. Continue where you left off."
 		}

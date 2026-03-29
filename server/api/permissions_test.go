@@ -13,7 +13,7 @@ func TestPermissionRequestAndRespond(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0, 0)
 
 	type result struct {
 		status int
@@ -71,7 +71,7 @@ func TestPermissionRespondNoRequest(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0, 0)
 
 	body := `{"decision":"allow"}`
 	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/permission-respond", strings.NewReader(body))
@@ -90,7 +90,7 @@ func TestPermissionRequestBroadcastsAndLifecycle(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0, 0)
 
 	// Verify activity state starts as idle
 	s, _ := store.GetSessionByID(sess.ID)
@@ -163,7 +163,7 @@ func TestPermissionPendingEndpoint(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0, 0)
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID+"/pending-permission", nil)
 	req.Header.Set("Authorization", "Bearer test-api-key")

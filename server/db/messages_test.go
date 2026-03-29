@@ -13,7 +13,7 @@ func TestCreateAndListMessages(t *testing.T) {
 	}
 	defer store.Close()
 
-	sess, err := store.CreateManagedSession("/tmp/project", `["Bash","Read","Edit"]`, 50, 5.0)
+	sess, err := store.CreateManagedSession("/tmp/project", `["Bash","Read","Edit"]`, 50, 5.0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestDeleteSessionCascadesMessages(t *testing.T) {
 	}
 	defer store.Close()
 
-	sess, err := store.CreateManagedSession("/tmp/project", `["Read"]`, 50, 5.0)
+	sess, err := store.CreateManagedSession("/tmp/project", `["Read"]`, 50, 5.0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
