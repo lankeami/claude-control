@@ -91,7 +91,7 @@ func TestHandleListCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(cmdDir, "test.md"),
 		[]byte("---\nname: test\ndescription: Test cmd\n---\ntest body"), 0644)
 
-	sess, _ := store.CreateManagedSession(tmpDir, `["Bash"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession(tmpDir, `["Bash"]`, 50, 5.0, 0)
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID+"/commands", nil)
 	req.Header.Set("Authorization", "Bearer test-api-key")
@@ -142,7 +142,7 @@ func TestHandleCommandContent(t *testing.T) {
 	os.WriteFile(filepath.Join(cmdDir, "greet.md"),
 		[]byte("---\nname: greet\ndescription: Greet someone\nargument-hint: [name]\n---\nHello, please greet $ARGUMENTS warmly."), 0644)
 
-	sess, _ := store.CreateManagedSession(tmpDir, `["Bash"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession(tmpDir, `["Bash"]`, 50, 5.0, 0)
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID+"/commands/content?name=/greet", nil)
 	req.Header.Set("Authorization", "Bearer test-api-key")
@@ -172,7 +172,7 @@ func TestHandleCommandContentNotFound(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp/nonexistent", `["Bash"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp/nonexistent", `["Bash"]`, 50, 5.0, 0)
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID+"/commands/content?name=/nope", nil)
 	req.Header.Set("Authorization", "Bearer test-api-key")

@@ -116,6 +116,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		`["Bash","Read","Edit","Write","Glob","Grep"]`,
 		50,
 		5.0,
+		0,
 	)
 	if err != nil {
 		os.RemoveAll(fullPath)

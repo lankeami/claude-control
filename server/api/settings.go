@@ -12,11 +12,12 @@ import (
 )
 
 type settingsPayload struct {
-	Port           string `json:"port"`
-	NgrokAuthtoken string `json:"ngrok_authtoken"`
-	ClaudeBin      string `json:"claude_bin"`
-	ClaudeArgs     string `json:"claude_args"`
-	ClaudeEnv      string `json:"claude_env"`
+	Port                   string `json:"port"`
+	NgrokAuthtoken         string `json:"ngrok_authtoken"`
+	ClaudeBin              string `json:"claude_bin"`
+	ClaudeArgs             string `json:"claude_args"`
+	ClaudeEnv              string `json:"claude_env"`
+	CompactEveryNContinues string `json:"compact_every_n_continues"`
 }
 
 func (s *Server) handleSettingsExists(w http.ResponseWriter, r *http.Request) {
@@ -36,11 +37,12 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := settingsPayload{
-		Port:           vals["PORT"],
-		NgrokAuthtoken: vals["NGROK_AUTHTOKEN"],
-		ClaudeBin:      vals["CLAUDE_BIN"],
-		ClaudeArgs:     vals["CLAUDE_ARGS"],
-		ClaudeEnv:      vals["CLAUDE_ENV"],
+		Port:                   vals["PORT"],
+		NgrokAuthtoken:         vals["NGROK_AUTHTOKEN"],
+		ClaudeBin:              vals["CLAUDE_BIN"],
+		ClaudeArgs:             vals["CLAUDE_ARGS"],
+		ClaudeEnv:              vals["CLAUDE_ENV"],
+		CompactEveryNContinues: vals["COMPACT_EVERY_N_CONTINUES"],
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
@@ -143,6 +145,9 @@ func formatEnvFile(p settingsPayload) string {
 	}
 	if p.ClaudeEnv != "" {
 		b.WriteString("CLAUDE_ENV=" + p.ClaudeEnv + "\n")
+	}
+	if p.CompactEveryNContinues != "" && p.CompactEveryNContinues != "0" {
+		b.WriteString("COMPACT_EVERY_N_CONTINUES=" + p.CompactEveryNContinues + "\n")
 	}
 	return b.String()
 }

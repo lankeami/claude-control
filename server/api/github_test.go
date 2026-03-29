@@ -56,7 +56,7 @@ func TestListGithubIssues_ManagedNoCWDReturns400(t *testing.T) {
 	defer store.Close()
 
 	// CreateManagedSession with empty cwd
-	sess, err := store.CreateManagedSession("", `[]`, 0, 0)
+	sess, err := store.CreateManagedSession("", `[]`, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("CreateManagedSession: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestListGithubIssues_InvalidStateParam(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, err := store.CreateManagedSession("/tmp", `[]`, 0, 0)
+	sess, err := store.CreateManagedSession("/tmp", `[]`, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("CreateManagedSession: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestGetGithubIssue_InvalidNumberReturns400(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, err := store.CreateManagedSession("/tmp", `[]`, 0, 0)
+	sess, err := store.CreateManagedSession("/tmp", `[]`, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("CreateManagedSession: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestGetGithubIssue_ManagedNoCWDReturns400(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, err := store.CreateManagedSession("", `[]`, 0, 0)
+	sess, err := store.CreateManagedSession("", `[]`, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("CreateManagedSession: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestListGithubIssues_DefaultParamsAccepted(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, err := store.CreateManagedSession("/tmp", `[]`, 0, 0)
+	sess, err := store.CreateManagedSession("/tmp", `[]`, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("CreateManagedSession: %v", err)
 	}

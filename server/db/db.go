@@ -129,6 +129,7 @@ func migrate(db *sql.DB) error {
 			name TEXT NOT NULL,
 			last_used_at DATETIME NOT NULL DEFAULT (datetime('now'))
 		)`,
+		`ALTER TABLE sessions ADD COLUMN compact_every_n_continues INTEGER NOT NULL DEFAULT 0`,
 	}
 
 	for _, m := range migrations {

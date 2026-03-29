@@ -174,6 +174,9 @@
               <span style="opacity:0.7;">Continues</span>
               <span x-text="continuationCount + '/' + (currentSession?.max_continuations || 0)" style="font-weight:600;"></span>
             </div>
+            <div x-show="isCompacting" style="display:flex; align-items:center; gap:4px; padding-left:4px; border-left:1px solid var(--border); color:#f39c12;">
+              <span style="font-weight:600;">Compacting...</span>
+            </div>
             <button class="btn btn-sm"
                     @click="interruptSession()"
                     :disabled="currentSession?.activity_state !== 'working'"
@@ -1011,6 +1014,13 @@
           <input x-model="settingsForm.claude_env" type="text" placeholder="CLAUDE_CONFIG_DIR=/path"
                  style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
           <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Comma-separated KEY=VALUE pairs for managed session environment</div>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">COMPACT_EVERY_N_CONTINUES</label>
+          <input x-model="settingsForm.compact_every_n_continues" type="number" min="0" placeholder="0"
+                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Run /compact every N auto-continues to reduce token usage. 0 = disabled.</div>
         </div>
       </div>
 

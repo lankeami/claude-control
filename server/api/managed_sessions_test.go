@@ -91,7 +91,7 @@ func TestListMessagesAPI(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0, 0)
 	store.CreateMessage(sess.ID, "user", "hello")
 	store.CreateMessage(sess.ID, "assistant", `{"type":"assistant","content":"hi"}`)
 
@@ -120,7 +120,7 @@ func TestShellExecuteAPI(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0, 0)
 
 	body := `{"command": "echo hello"}`
 	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
@@ -149,7 +149,7 @@ func TestShellExecuteRejectsEmptyCommand(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0, 0)
 
 	body := `{"command": ""}`
 	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
@@ -208,7 +208,7 @@ func TestShellExecutePersistsMessages(t *testing.T) {
 	defer ts.Close()
 	defer store.Close()
 
-	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0)
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0, 0)
 
 	body := `{"command": "echo hello", "timeout": 5}`
 	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
@@ -306,8 +306,8 @@ func TestRecentDirsAPI(t *testing.T) {
 	}
 
 	// Create sessions, then check
-	store.CreateManagedSession("/tmp/project-a", `["Bash"]`, 50, 5.0)
-	store.CreateManagedSession("/tmp/project-b", `["Bash"]`, 50, 5.0)
+	store.CreateManagedSession("/tmp/project-a", `["Bash"]`, 50, 5.0, 0)
+	store.CreateManagedSession("/tmp/project-b", `["Bash"]`, 50, 5.0, 0)
 
 	req2, _ := http.NewRequest("GET", ts.URL+"/api/sessions/recent-dirs", nil)
 	req2.Header.Set("Authorization", "Bearer test-api-key")
