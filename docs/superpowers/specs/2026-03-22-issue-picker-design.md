@@ -35,15 +35,15 @@ Add a GitHub issue picker to the web UI that lets users browse repo issues, view
 
 ### Repo Detection
 
-The server detects the GitHub repo from the managed session's CWD by running `gh repo view --json nameWithOwner` in that directory. This is done once when issues are first fetched for a session and cached.
+The server detects the GitHub repo from the managed session's CWD by running `git remote get-url origin` and parsing the owner/repo from the URL using a regex that supports both HTTPS (`https://github.com/owner/repo.git`) and SSH (`git@github.com:owner/repo.git`) formats.
 
 ### Backend — New API Endpoints
 
-All endpoints shell out to the `gh` CLI in the session's CWD directory, reusing the user's existing `gh` auth. No API tokens to manage.
+All endpoints use the **GitHub REST API** (`api.github.com`) directly via `net/http`, authenticated with a `GITHUB_TOKEN` stored in the server's `.env` file (configurable through the Settings modal in the web UI). This eliminates the dependency on the `gh` CLI being installed.
 
 **Session mode guard:** These endpoints only work for managed sessions (which have a CWD). Hook-mode sessions return 400. The frontend hides the issues section for hook-mode sessions.
 
-**Safety:** All `gh` CLI arguments are passed as separate args to `exec.Command()` (never interpolated into a shell string) to prevent injection.
+**Token management:** The `GITHUB_TOKEN` is stored in the `.env` file alongside other secrets and displayed masked (`****` + last 4 chars) in the settings UI. It requires `repo` scope for private repos or no scope for public repos.
 
 #### `GET /api/sessions/{id}/github/issues`
 
@@ -52,11 +52,11 @@ Query params:
 - `search` — search string (optional)
 - `limit` — number of issues to return (default 10)
 
-Implementation: Shells out to `gh issue list --state {state} --search {search} --limit {limit} --json number,title,state,createdAt,author,labels` in the session's CWD.
+Implementation: Calls the GitHub REST API. For plain listing, uses `GET /repos/{owner}/{repo}/issues?state={state}&per_page={limit+1}`. For search queries, uses the GitHub Search API: `GET /search/issues?q=repo:{owner/repo}+is:issue+state:{state}+{search}&per_page={limit+1}`.
 
-The `gh` CLI returns `author` as an object (`{"login": "..."}`) and `labels` as an array of objects (`[{"name": "...", "color": "..."}]`). The Go handler defines structs to deserialize the raw output and reshapes it into the simplified response below, extracting `author.login` as a string and mapping labels to `[{"name": "...", "color": "..."}]`.
+The GitHub API returns `user` as an object (`{"login": "..."}`) and `labels` as an array of objects (`[{"name": "...", "color": "..."}]`). The Go handler defines structs to deserialize the raw JSON and reshapes it into the simplified response below, extracting `user.login` as `author` and mapping labels to `[{"name": "...", "color": "..."}]`. The Search API wraps results in `{ "items": [...] }` which is unwrapped before reshaping.
 
-**Pagination:** The `gh` CLI has no offset/page support. "Show more" works by incrementing the `limit` param (e.g., first load fetches 10, "Show more" fetches 20). The frontend replaces the full list on each fetch. If the number of results returned is less than the requested limit, there are no more results (used to hide the "Show more" link). No `total_count` field.
+**Pagination:** "Show more" works by incrementing the `per_page` param (e.g., first load fetches 10, "Show more" fetches 20). We request `limit+1` results to determine `has_more`. The frontend replaces the full list on each fetch. If the number of results returned is less than the requested limit, there are no more results (used to hide the "Show more" link).
 
 Response:
 ```json
@@ -78,7 +78,7 @@ Response:
 
 #### `GET /api/sessions/{id}/github/issues/{number}`
 
-Implementation: Shells out to `gh issue view {number} --json number,title,state,body,createdAt,author,labels` in the session's CWD. Same struct reshaping as the list endpoint.
+Implementation: Calls `GET /repos/{owner}/{repo}/issues/{number}` on the GitHub REST API. Same struct reshaping as the list endpoint.
 
 Response:
 ```json
@@ -144,7 +144,7 @@ New styles for:
 - `.issues-search` — search input matching existing file tree search style
 - `.issue-row` — clickable issue item with hover state
 - `.issue-detail` — expanded view panel
-- `.issue-labels` — label pill styling; background color derived from the `color` field returned by `gh` (prefixed with `#`)
+- `.issue-labels` — label pill styling; background color derived from the `color` field returned by the GitHub API (prefixed with `#`)
 - `.issue-body` — markdown content area, rendered using the existing `marked.parse()` (already loaded in index.html)
 - `.generate-prompt-btn` — green action button
 
@@ -165,9 +165,9 @@ The prompt is inserted into the existing `inputText` Alpine.js property, which b
 
 ## Error Handling
 
-- **No `gh` CLI installed**: Show "GitHub CLI not found" message in issues section
+- **No GitHub token configured**: Show "GitHub token not configured — add it in Settings" message in issues section
 - **Not a git repo / no remote**: Show "No GitHub remote detected" message
-- **Auth failure**: Show "Run `gh auth login` to authenticate" message
+- **Auth failure (401/403)**: Show "GitHub token is invalid or lacks permissions — update it in Settings" message
 - **Network errors**: Show inline error with retry button
 - **Empty results**: Show "No issues found" with current filter state
 

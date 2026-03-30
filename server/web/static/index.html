@@ -1022,6 +1022,13 @@
                  style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
           <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Run /compact every N auto-continues to reduce token usage. 0 = disabled.</div>
         </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">GITHUB_TOKEN</label>
+          <input x-model="settingsForm.github_token" type="password" placeholder="ghp_..."
+                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Personal access token for GitHub issue tracking (needs repo scope)</div>
+        </div>
       </div>
 
       <p class="error-msg" x-show="settingsError" x-text="settingsError" style="margin-top:8px;"></p>
