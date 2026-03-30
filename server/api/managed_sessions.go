@@ -190,21 +190,30 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
-			// After first spawn, ensure subsequent spawns use --resume
-			if !sess.Initialized {
-				_ = s.store.SetInitialized(sessionID)
-				sess.Initialized = true
-			}
-
 			// onLine runs synchronously inside StreamNDJSON's read loop.
-			// autoInterrupting is safe to read after StreamNDJSON returns
-			// because StreamNDJSON blocks until stdout EOF, providing a
-			// happens-before guarantee with <-proc.Done.
+			// autoInterrupting and executionErrored are safe to read after
+			// StreamNDJSON returns because StreamNDJSON blocks until stdout
+			// EOF, providing a happens-before guarantee with <-proc.Done.
+			executionErrored := false
 			onLine := func(line string) {
-				if parseRole(line) == "heartbeat" {
+				role := parseRole(line)
+				if role == "heartbeat" {
 					return
 				}
-				role := parseRole(line)
+				if role == "result" {
+					var res struct {
+						Subtype string   `json:"subtype"`
+						IsError bool     `json:"is_error"`
+						Errors  []string `json:"errors"`
+					}
+					if json.Unmarshal([]byte(line), &res) == nil && res.Subtype == "error_during_execution" {
+						executionErrored = true
+						if len(res.Errors) > 0 {
+							errText := strings.Join(res.Errors, "; ")
+							_, _ = s.store.CreateMessage(sessionID, "assistant", errText)
+						}
+					}
+				}
 				if role == "assistant" {
 					text := extractAssistantText(line)
 					if text != "" {
@@ -228,6 +237,14 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 			stderrBytes, _ := io.ReadAll(proc.Stderr)
 			<-proc.Done
+
+			// Mark session as initialized only after a successful execution.
+			// If claude -p exits with error_during_execution (e.g. auth failure),
+			// no conversation was created, so --resume would fail on next message.
+			if !sess.Initialized && !executionErrored {
+				_ = s.store.SetInitialized(sessionID)
+				sess.Initialized = true
+			}
 
 			// Clean up temp MCP config file
 			os.Remove(fmt.Sprintf("/tmp/claude-mcp-%s.json", sessionID))
