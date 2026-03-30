@@ -4,9 +4,9 @@
 
 **Goal:** Add a GitHub issue picker to the web UI's right sidebar that lets users browse, search, and select issues, then generate a structured prompt for Claude to work on.
 
-**Architecture:** New Go handler file (`github.go`) shells out to the `gh` CLI in the session's CWD. Frontend adds an issues section below the git branch info in the right sidebar using Alpine.js state management. "Generate Prompt" populates the existing chat textarea.
+**Architecture:** New Go handler file (`github.go`) calls the GitHub REST API directly using `net/http`, authenticated with a `GITHUB_TOKEN` stored in the server's `.env` file. Repo detection uses `git remote get-url origin` with regex parsing. Frontend adds an issues section below the git branch info in the right sidebar using Alpine.js state management. "Generate Prompt" populates the existing chat textarea.
 
-**Tech Stack:** Go (backend handlers, `exec.Command` for `gh` CLI), Alpine.js (frontend state), HTML/CSS (UI), marked.js (markdown rendering, already loaded).
+**Tech Stack:** Go (backend handlers, `net/http` for GitHub REST API), Alpine.js (frontend state), HTML/CSS (UI), marked.js (markdown rendering, already loaded).
 
 **Spec:** `docs/superpowers/specs/2026-03-22-issue-picker-design.md`
 
@@ -16,8 +16,8 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `server/api/github.go` | Create | GitHub issue list/detail handlers, `gh` CLI interaction, response structs |
-| `server/api/github_test.go` | Create | Tests for GitHub handlers (mocked `gh` CLI output) |
+| `server/api/github.go` | Create | GitHub issue list/detail handlers, GitHub REST API interaction, response structs |
+| `server/api/github_test.go` | Create | Tests for GitHub handlers (session mode guard, param validation) |
 | `server/api/router.go` | Modify (lines 57-61) | Register two new routes |
 | `server/web/static/index.html` | Modify (after line 248) | Issues section HTML in right sidebar |
 | `server/web/static/app.js` | Modify | Alpine.js state, fetch methods, prompt generation |
@@ -72,165 +72,7 @@ Expected: FAIL — `handleListGithubIssues` does not exist yet
 
 - [ ] **Step 3: Create `github.go` with structs and list handler**
 
-```go
-// server/api/github.go
-package api
-
-import (
-	"encoding/json"
-	"net/http"
-	"os/exec"
-	"strconv"
-	"time"
-)
-
-// Raw structs matching gh CLI JSON output
-type ghAuthor struct {
-	Login string `json:"login"`
-}
-
-type ghLabel struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
-}
-
-type ghIssue struct {
-	Number    int       `json:"number"`
-	Title     string    `json:"title"`
-	State     string    `json:"state"`
-	CreatedAt time.Time `json:"createdAt"`
-	Author    ghAuthor  `json:"author"`
-	Labels    []ghLabel `json:"labels"`
-	Body      string    `json:"body,omitempty"`
-}
-
-// Response structs (reshaped for frontend)
-type issueLabel struct {
-	Name  string `json:"name"`
-	Color string `json:"color"`
-}
-
-type issueResponse struct {
-	Number    int          `json:"number"`
-	Title     string       `json:"title"`
-	State     string       `json:"state"`
-	CreatedAt time.Time    `json:"created_at"`
-	Author    string       `json:"author"`
-	Labels    []issueLabel `json:"labels"`
-	Body      string       `json:"body,omitempty"`
-}
-
-type issueListResponse struct {
-	Repo    string          `json:"repo"`
-	Issues  []issueResponse `json:"issues"`
-	HasMore bool            `json:"has_more"`
-}
-
-func reshapeIssue(gh ghIssue) issueResponse {
-	labels := make([]issueLabel, len(gh.Labels))
-	for i, l := range gh.Labels {
-		labels[i] = issueLabel{Name: l.Name, Color: l.Color}
-	}
-	if labels == nil {
-		labels = []issueLabel{}
-	}
-	return issueResponse{
-		Number:    gh.Number,
-		Title:     gh.Title,
-		State:     gh.State,
-		CreatedAt: gh.CreatedAt,
-		Author:    gh.Author.Login,
-		Labels:    labels,
-		Body:      gh.Body,
-	}
-}
-
-func (s *Server) handleListGithubIssues(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.PathValue("id")
-
-	sess, err := s.store.GetSessionByID(sessionID)
-	if err != nil {
-		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
-		return
-	}
-
-	// Only managed sessions have a CWD
-	if sess.Mode != "managed" || sess.CWD == "" {
-		http.Error(w, `{"error":"issue picker requires a managed session with a working directory"}`, http.StatusBadRequest)
-		return
-	}
-
-	// Parse query params
-	state := r.URL.Query().Get("state")
-	if state == "" {
-		state = "open"
-	}
-	if state != "open" && state != "closed" {
-		http.Error(w, `{"error":"state must be open or closed"}`, http.StatusBadRequest)
-		return
-	}
-
-	search := r.URL.Query().Get("search")
-
-	limitStr := r.URL.Query().Get("limit")
-	limit := 10
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
-			limit = l
-		}
-	}
-
-	// Detect repo name
-	repoCmd := exec.Command("gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner")
-	repoCmd.Dir = sess.CWD
-	repoOut, err := repoCmd.Output()
-	if err != nil {
-		http.Error(w, `{"error":"failed to detect GitHub repo — is gh CLI installed and authenticated?"}`, http.StatusInternalServerError)
-		return
-	}
-	repo := strings.TrimSpace(string(repoOut))
-
-	// Build gh issue list command
-	// Fetch limit+1 to determine has_more
-	args := []string{"issue", "list", "--state", state, "--limit", strconv.Itoa(limit + 1), "--json", "number,title,state,createdAt,author,labels"}
-	if search != "" {
-		args = append(args, "--search", search)
-	}
-
-	cmd := exec.Command("gh", args...)
-	cmd.Dir = sess.CWD
-	out, err := cmd.Output()
-	if err != nil {
-		http.Error(w, `{"error":"failed to list issues — check gh CLI auth"}`, http.StatusInternalServerError)
-		return
-	}
-
-	var ghIssues []ghIssue
-	if err := json.Unmarshal(out, &ghIssues); err != nil {
-		http.Error(w, `{"error":"failed to parse gh output"}`, http.StatusInternalServerError)
-		return
-	}
-
-	hasMore := len(ghIssues) > limit
-	if hasMore {
-		ghIssues = ghIssues[:limit]
-	}
-
-	issues := make([]issueResponse, len(ghIssues))
-	for i, gh := range ghIssues {
-		issues[i] = reshapeIssue(gh)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(issueListResponse{
-		Repo:    repo,
-		Issues:  issues,
-		HasMore: hasMore,
-	})
-}
-```
-
-Note: Add `"strings"` to the import block (already shown in the import list above).
+Uses GitHub REST API directly via `net/http` with a `GITHUB_TOKEN` from the `.env` file. Repo detection parses `git remote get-url origin` output with a regex supporting HTTPS and SSH URLs. Search uses the GitHub Search API (`/search/issues`) with `{ items: [...] }` unwrapping. See `server/api/github.go` for the full implementation.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -299,48 +141,7 @@ Expected: FAIL — `handleGetGithubIssue` does not exist yet
 
 - [ ] **Step 3: Add detail handler to `github.go`**
 
-Append to `server/api/github.go`:
-
-```go
-func (s *Server) handleGetGithubIssue(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.PathValue("id")
-	number := r.PathValue("number")
-
-	sess, err := s.store.GetSessionByID(sessionID)
-	if err != nil {
-		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
-		return
-	}
-
-	if sess.Mode != "managed" || sess.CWD == "" {
-		http.Error(w, `{"error":"issue picker requires a managed session with a working directory"}`, http.StatusBadRequest)
-		return
-	}
-
-	// Validate number is numeric
-	if _, err := strconv.Atoi(number); err != nil {
-		http.Error(w, `{"error":"invalid issue number"}`, http.StatusBadRequest)
-		return
-	}
-
-	cmd := exec.Command("gh", "issue", "view", number, "--json", "number,title,state,body,createdAt,author,labels")
-	cmd.Dir = sess.CWD
-	out, err := cmd.Output()
-	if err != nil {
-		http.Error(w, `{"error":"failed to fetch issue"}`, http.StatusInternalServerError)
-		return
-	}
-
-	var gh ghIssue
-	if err := json.Unmarshal(out, &gh); err != nil {
-		http.Error(w, `{"error":"failed to parse gh output"}`, http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(reshapeIssue(gh))
-}
-```
+Calls `GET /repos/{owner}/{repo}/issues/{number}` on the GitHub REST API. Returns 400 if no token configured, 401 on auth failure, 404 if issue not found. See `server/api/github.go` for the full implementation.
 
 - [ ] **Step 4: Register the route in router.go**
 

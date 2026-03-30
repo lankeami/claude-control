@@ -106,7 +106,7 @@ document.addEventListener('alpine:init', () => {
     // Settings state
     showSettingsModal: false,
     settingsFirstRun: false,
-    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '' },
+    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '' },
     settingsError: '',
     settingsSaving: false,
     settingsRestartRequired: false,
@@ -451,9 +451,10 @@ document.addEventListener('alpine:init', () => {
           claude_args: data.claude_args || '',
           claude_env: data.claude_env || '',
           compact_every_n_continues: data.compact_every_n_continues || '',
+          github_token: data.github_token || '',
         };
       } catch (e) {
-        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '' };
+        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '' };
       }
       this.showSettingsModal = true;
     },

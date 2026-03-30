@@ -18,6 +18,7 @@ type settingsPayload struct {
 	ClaudeArgs             string `json:"claude_args"`
 	ClaudeEnv              string `json:"claude_env"`
 	CompactEveryNContinues string `json:"compact_every_n_continues"`
+	GithubToken            string `json:"github_token"`
 }
 
 func (s *Server) handleSettingsExists(w http.ResponseWriter, r *http.Request) {
@@ -29,11 +30,13 @@ func (s *Server) handleSettingsExists(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	vals := readEnvFile(s.envPath)
 
-	// Mask authtoken
-	if tok := vals["NGROK_AUTHTOKEN"]; len(tok) > 4 {
-		vals["NGROK_AUTHTOKEN"] = "****" + tok[len(tok)-4:]
-	} else if tok != "" {
-		vals["NGROK_AUTHTOKEN"] = "****"
+	// Mask secrets
+	for _, key := range []string{"NGROK_AUTHTOKEN", "GITHUB_TOKEN"} {
+		if tok := vals[key]; len(tok) > 4 {
+			vals[key] = "****" + tok[len(tok)-4:]
+		} else if tok != "" {
+			vals[key] = "****"
+		}
 	}
 
 	resp := settingsPayload{
@@ -43,6 +46,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		ClaudeArgs:             vals["CLAUDE_ARGS"],
 		ClaudeEnv:              vals["CLAUDE_ENV"],
 		CompactEveryNContinues: vals["COMPACT_EVERY_N_CONTINUES"],
+		GithubToken:            vals["GITHUB_TOKEN"],
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
@@ -67,9 +71,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// Read current values for comparison and sentinel handling
 	current := readEnvFile(s.envPath)
 
-	// Handle masked authtoken sentinel
+	// Handle masked secret sentinels
 	if strings.HasPrefix(payload.NgrokAuthtoken, "****") {
 		payload.NgrokAuthtoken = current["NGROK_AUTHTOKEN"]
+	}
+	if strings.HasPrefix(payload.GithubToken, "****") {
+		payload.GithubToken = current["GITHUB_TOKEN"]
 	}
 
 	// Check if restart-requiring fields changed
@@ -148,6 +155,10 @@ func formatEnvFile(p settingsPayload) string {
 	}
 	if p.CompactEveryNContinues != "" && p.CompactEveryNContinues != "0" {
 		b.WriteString("COMPACT_EVERY_N_CONTINUES=" + p.CompactEveryNContinues + "\n")
+	}
+	b.WriteString("\n# GitHub\n")
+	if p.GithubToken != "" {
+		b.WriteString("GITHUB_TOKEN=" + p.GithubToken + "\n")
 	}
 	return b.String()
 }
