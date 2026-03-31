@@ -68,7 +68,7 @@ document.addEventListener('alpine:init', () => {
     githubIssuesHasMore: false,
     githubIssuesLoading: false,
     githubIssuesError: null,
-    issuesExpanded: true,
+    issuesExpanded: false,
     selectedIssue: null,
     selectedIssueLoading: false,
     _searchIssuesTimer: null,
