@@ -153,6 +153,36 @@ func TestManagerSpawnShellTimeout(t *testing.T) {
 	}
 }
 
+func TestSpawnExposesStdin(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc, err := m.Spawn("stdin-test", SpawnOpts{
+		Args: []string{},
+		CWD:  "/tmp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Teardown("stdin-test", 2*time.Second)
+
+	if proc.Stdin == nil {
+		t.Fatal("proc.Stdin should not be nil")
+	}
+
+	// Write to stdin and close — cat should echo it back via stdout
+	_, err = proc.Stdin.Write([]byte("hello\n"))
+	if err != nil {
+		t.Fatalf("write to stdin: %v", err)
+	}
+	proc.Stdin.Close()
+
+	<-proc.Done
+	if proc.ExitCode != 0 {
+		t.Errorf("exit code=%d, want 0", proc.ExitCode)
+	}
+}
+
 func TestUpdateConfig(t *testing.T) {
 	mgr := NewManager(Config{ClaudeBin: "old-bin", ClaudeArgs: []string{"--old"}, ClaudeEnv: []string{"OLD=1"}})
 

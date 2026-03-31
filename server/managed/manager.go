@@ -24,12 +24,14 @@ type SpawnOpts struct {
 }
 
 type Process struct {
-	Cmd      *exec.Cmd
-	Stdout   io.ReadCloser
-	Stderr   io.ReadCloser
-	Done     chan struct{}
-	ExitCode int
-	TimedOut bool
+	Cmd          *exec.Cmd
+	Stdin        io.WriteCloser
+	Stdout       io.ReadCloser
+	Stderr       io.ReadCloser
+	Done         chan struct{}
+	ExitCode     int
+	TimedOut     bool
+	LastActivity time.Time
 }
 
 type Manager struct {
@@ -99,6 +101,10 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	cmd.Env = append(os.Environ(), cfg.ClaudeEnv...)
 	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1")
 
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stdin pipe: %w", err)
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
@@ -113,10 +119,12 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	}
 
 	proc := &Process{
-		Cmd:    cmd,
-		Stdout: stdout,
-		Stderr: stderr,
-		Done:   make(chan struct{}),
+		Cmd:          cmd,
+		Stdin:        stdin,
+		Stdout:       stdout,
+		Stderr:       stderr,
+		Done:         make(chan struct{}),
+		LastActivity: time.Now(),
 	}
 
 	m.mu.Lock()
