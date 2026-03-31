@@ -12,11 +12,12 @@ import (
 )
 
 type Config struct {
-	ClaudeBin  string
-	ClaudeArgs []string
-	ClaudeEnv  []string
-	ServerPort int
-	BinaryPath string
+	ClaudeBin          string
+	ClaudeArgs         []string
+	ClaudeEnv          []string
+	ServerPort         int
+	BinaryPath         string
+	IdleTimeoutMinutes int
 }
 
 type SpawnOpts struct {
@@ -212,6 +213,27 @@ func (m *Manager) ReapIdle(maxIdle time.Duration) {
 			proc.Stdin.Close()
 		}
 	}
+}
+
+// StartReaper starts a background goroutine that periodically calls ReapIdle.
+// If IdleTimeoutMinutes is 0, defaults to 30 minutes.
+func (m *Manager) StartReaper() {
+	m.mu.Lock()
+	timeout := m.cfg.IdleTimeoutMinutes
+	m.mu.Unlock()
+
+	if timeout <= 0 {
+		timeout = 30
+	}
+	maxIdle := time.Duration(timeout) * time.Minute
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			m.ReapIdle(maxIdle)
+		}
+	}()
 }
 
 type ShellOpts struct {
