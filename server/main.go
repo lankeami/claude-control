@@ -92,6 +92,7 @@ func main() {
 		BinaryPath: binaryPath,
 	}
 	mgr := managed.NewManager(managedCfg)
+	mgr.StartReaper()
 
 	router := api.NewRouter(store, apiKey, mgr, envPath)
 

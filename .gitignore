@@ -5,3 +5,4 @@ xcuserdata/
 .superpowers/
 server/claude-controller
 .playwright-mcp/
+.worktrees/

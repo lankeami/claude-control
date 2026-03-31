@@ -3,6 +3,7 @@ package managed
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"sync"
@@ -11,11 +12,12 @@ import (
 )
 
 type Config struct {
-	ClaudeBin  string
-	ClaudeArgs []string
-	ClaudeEnv  []string
-	ServerPort int
-	BinaryPath string
+	ClaudeBin          string
+	ClaudeArgs         []string
+	ClaudeEnv          []string
+	ServerPort         int
+	BinaryPath         string
+	IdleTimeoutMinutes int
 }
 
 type SpawnOpts struct {
@@ -24,12 +26,14 @@ type SpawnOpts struct {
 }
 
 type Process struct {
-	Cmd      *exec.Cmd
-	Stdout   io.ReadCloser
-	Stderr   io.ReadCloser
-	Done     chan struct{}
-	ExitCode int
-	TimedOut bool
+	Cmd          *exec.Cmd
+	Stdin        io.WriteCloser
+	Stdout       io.ReadCloser
+	Stderr       io.ReadCloser
+	Done         chan struct{}
+	ExitCode     int
+	TimedOut     bool
+	LastActivity time.Time
 }
 
 type Manager struct {
@@ -99,6 +103,10 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	cmd.Env = append(os.Environ(), cfg.ClaudeEnv...)
 	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1")
 
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stdin pipe: %w", err)
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
@@ -113,10 +121,12 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	}
 
 	proc := &Process{
-		Cmd:    cmd,
-		Stdout: stdout,
-		Stderr: stderr,
-		Done:   make(chan struct{}),
+		Cmd:          cmd,
+		Stdin:        stdin,
+		Stdout:       stdout,
+		Stderr:       stderr,
+		Done:         make(chan struct{}),
+		LastActivity: time.Now(),
 	}
 
 	m.mu.Lock()
@@ -137,6 +147,33 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	return proc, nil
 }
 
+// EnsureProcess returns an existing warm process for the session, or spawns a new one.
+func (m *Manager) EnsureProcess(sessionID string, opts SpawnOpts) (*Process, error) {
+	m.mu.Lock()
+	if proc, ok := m.procs[sessionID]; ok {
+		proc.LastActivity = time.Now()
+		m.mu.Unlock()
+		return proc, nil
+	}
+	m.mu.Unlock()
+
+	return m.Spawn(sessionID, opts)
+}
+
+// SendTurn writes a user message JSON line to the process's stdin.
+func (m *Manager) SendTurn(sessionID string, messageJSON string) error {
+	m.mu.Lock()
+	proc, ok := m.procs[sessionID]
+	m.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("no running process for session %s", sessionID)
+	}
+
+	proc.LastActivity = time.Now()
+	_, err := fmt.Fprintf(proc.Stdin, "%s\n", messageJSON)
+	return err
+}
+
 func (m *Manager) IsRunning(sessionID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -152,6 +189,51 @@ func (m *Manager) Interrupt(sessionID string) error {
 		return fmt.Errorf("no running process for session %s", sessionID)
 	}
 	return proc.Cmd.Process.Signal(syscall.SIGINT)
+}
+
+// ReapIdle closes stdin on any process that has been idle longer than maxIdle.
+// This lets the process exit gracefully. Call this periodically from a goroutine.
+func (m *Manager) ReapIdle(maxIdle time.Duration) {
+	m.mu.Lock()
+	var toReap []string
+	now := time.Now()
+	for id, proc := range m.procs {
+		if now.Sub(proc.LastActivity) > maxIdle {
+			toReap = append(toReap, id)
+		}
+	}
+	m.mu.Unlock()
+
+	for _, id := range toReap {
+		m.mu.Lock()
+		proc, ok := m.procs[id]
+		m.mu.Unlock()
+		if ok && proc.Stdin != nil {
+			log.Printf("reaping idle process for session %s", id)
+			proc.Stdin.Close()
+		}
+	}
+}
+
+// StartReaper starts a background goroutine that periodically calls ReapIdle.
+// If IdleTimeoutMinutes is 0, defaults to 30 minutes.
+func (m *Manager) StartReaper() {
+	m.mu.Lock()
+	timeout := m.cfg.IdleTimeoutMinutes
+	m.mu.Unlock()
+
+	if timeout <= 0 {
+		timeout = 30
+	}
+	maxIdle := time.Duration(timeout) * time.Minute
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			m.ReapIdle(maxIdle)
+		}
+	}()
 }
 
 type ShellOpts struct {

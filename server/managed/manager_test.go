@@ -1,6 +1,7 @@
 package managed
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -150,6 +151,119 @@ func TestManagerSpawnShellTimeout(t *testing.T) {
 
 	if m.IsRunning("shell-timeout") {
 		t.Error("session should not be running after timeout")
+	}
+}
+
+func TestSpawnExposesStdin(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc, err := m.Spawn("stdin-test", SpawnOpts{
+		Args: []string{},
+		CWD:  "/tmp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Teardown("stdin-test", 2*time.Second)
+
+	if proc.Stdin == nil {
+		t.Fatal("proc.Stdin should not be nil")
+	}
+
+	// Write to stdin and close — cat should echo it back via stdout
+	_, err = proc.Stdin.Write([]byte("hello\n"))
+	if err != nil {
+		t.Fatalf("write to stdin: %v", err)
+	}
+	proc.Stdin.Close()
+
+	<-proc.Done
+	if proc.ExitCode != 0 {
+		t.Errorf("exit code=%d, want 0", proc.ExitCode)
+	}
+}
+
+func TestEnsureProcessSpawnsAndReuses(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc1, err := m.EnsureProcess("reuse-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proc1 == nil {
+		t.Fatal("proc1 is nil")
+	}
+
+	proc2, err := m.EnsureProcess("reuse-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if proc1 != proc2 {
+		t.Error("EnsureProcess should return the same process on second call")
+	}
+
+	m.Teardown("reuse-test", 2*time.Second)
+}
+
+func TestSendTurn(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc, err := m.EnsureProcess("send-turn-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}`
+	err = m.SendTurn("send-turn-test", msg)
+	if err != nil {
+		t.Fatalf("SendTurn failed: %v", err)
+	}
+
+	buf := make([]byte, 4096)
+	n, err := proc.Stdout.Read(buf)
+	if err != nil {
+		t.Fatalf("read stdout: %v", err)
+	}
+	got := strings.TrimSpace(string(buf[:n]))
+	if got != msg {
+		t.Errorf("got %q, want %q", got, msg)
+	}
+
+	m.Teardown("send-turn-test", 2*time.Second)
+}
+
+func TestIdleTimeoutReapsProcess(t *testing.T) {
+	cfg := Config{
+		ClaudeBin:  "cat",
+		ClaudeArgs: []string{},
+		ClaudeEnv:  []string{},
+	}
+	m := NewManager(cfg)
+
+	proc, err := m.EnsureProcess("idle-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Backdate LastActivity to trigger immediate reap
+	m.mu.Lock()
+	proc.LastActivity = time.Now().Add(-1 * time.Hour)
+	m.mu.Unlock()
+
+	m.ReapIdle(1 * time.Millisecond)
+
+	select {
+	case <-proc.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("process was not reaped after idle timeout")
+	}
+
+	if m.IsRunning("idle-test") {
+		t.Error("session should not be running after reap")
 	}
 }
 

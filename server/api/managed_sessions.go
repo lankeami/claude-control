@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
@@ -62,9 +63,11 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(sess)
 }
 
-func buildClaudeArgs(sess *db.Session, message string, cfg managed.Config) []string {
+// buildPersistentArgs builds CLI args for a persistent process (no message in args).
+// The message will be sent via stdin as stream-json.
+func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
 	var args []string
-	args = append(args, "-p", message)
+	args = append(args, "-p")
 
 	resumeID := sess.ID
 	if sess.ClaudeSessionID != "" {
@@ -76,7 +79,7 @@ func buildClaudeArgs(sess *db.Session, message string, cfg managed.Config) []str
 		args = append(args, "--session-id", resumeID)
 	}
 
-	args = append(args, "--output-format", "stream-json", "--verbose")
+	args = append(args, "--output-format", "stream-json", "--input-format", "stream-json", "--verbose")
 
 	if sess.AllowedTools != "" {
 		var tools []string
@@ -90,7 +93,6 @@ func buildClaudeArgs(sess *db.Session, message string, cfg managed.Config) []str
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", sess.MaxBudgetUSD))
 	}
 
-	// Add MCP permission prompt config if binary path is available
 	if cfg.BinaryPath != "" && cfg.ServerPort > 0 {
 		mcpConfig := map[string]interface{}{
 			"mcpServers": map[string]interface{}{
@@ -111,6 +113,21 @@ func buildClaudeArgs(sess *db.Session, message string, cfg managed.Config) []str
 	}
 
 	return args
+}
+
+// formatUserTurn formats a user message as a stream-json input line.
+func formatUserTurn(message string) string {
+	turn := map[string]interface{}{
+		"type": "user",
+		"message": map[string]interface{}{
+			"role": "user",
+			"content": []map[string]string{
+				{"type": "text", "text": message},
+			},
+		},
+	}
+	b, _ := json.Marshal(turn)
+	return string(b)
 }
 
 func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
@@ -141,8 +158,10 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a managed session", http.StatusBadRequest)
 		return
 	}
-	if s.manager.IsRunning(sessionID) {
-		http.Error(w, "session already has a running process", http.StatusConflict)
+	// A warm process in "waiting" state is fine — we'll send it a new turn.
+	// Only block if actively processing.
+	if sess.ActivityState == "working" {
+		http.Error(w, "session is currently processing", http.StatusConflict)
 		return
 	}
 
@@ -152,17 +171,78 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	broadcaster := s.manager.GetBroadcaster(sessionID)
 
 	go func() {
-
-		// Use a detached context — this goroutine outlives the HTTP request,
-		// so r.Context() would be cancelled as soon as the handler returns.
 		ctx := context.Background()
 		continuationCount := 0
-		// int() truncates toward zero, same as floor() for positive numbers
 		threshold := int(sess.AutoContinueThreshold * float64(sess.MaxTurns))
 		currentMessage := req.Message
 
+		// --- Per-turn mutable state, shared with onLine callback ---
+		// onLine runs in the StreamNDJSON goroutine, which lives for the
+		// process lifetime. These vars are reset at the top of each turn.
+		var mu sync.Mutex
+		var turnsSinceLastContinue int
+		var autoInterrupting bool
+		var executionErrored bool
+
+		// turnDone is signaled by StreamNDJSON on each "result" message.
+		// Buffered so the signal isn't lost if we're between select calls.
+		turnDone := make(chan struct{}, 4)
+
+		// streamDone closes when the StreamNDJSON goroutine exits (process EOF).
+		streamDone := make(chan struct{})
+
+		// onLine persists for the process lifetime — references mutable state via mu.
+		onLine := func(line string) {
+			role := parseRole(line)
+			if role == "heartbeat" {
+				return
+			}
+			if role == "result" {
+				var res struct {
+					Subtype string   `json:"subtype"`
+					IsError bool     `json:"is_error"`
+					Errors  []string `json:"errors"`
+				}
+				if json.Unmarshal([]byte(line), &res) == nil && res.Subtype == "error_during_execution" {
+					mu.Lock()
+					executionErrored = true
+					mu.Unlock()
+					if len(res.Errors) > 0 {
+						errText := strings.Join(res.Errors, "; ")
+						_, _ = s.store.CreateMessage(sessionID, "assistant", errText)
+					}
+				}
+			}
+			if role == "assistant" {
+				text := extractAssistantText(line)
+				if text != "" {
+					_, _ = s.store.CreateMessage(sessionID, role, text)
+				}
+				for _, toolName := range extractToolNames(line) {
+					_, _ = s.store.CreateMessage(sessionID, "activity", toolName)
+				}
+				mu.Lock()
+				turnsSinceLastContinue++
+				mu.Unlock()
+				count, _ := s.store.IncrementTurnCount(sessionID)
+				mu.Lock()
+				if count >= threshold && !autoInterrupting {
+					autoInterrupting = true
+					mu.Unlock()
+					log.Printf("session %s hit auto-continue threshold (%d/%d), interrupting", sessionID, count, sess.MaxTurns)
+					_ = s.manager.Interrupt(sessionID)
+				} else {
+					mu.Unlock()
+				}
+			}
+			extractSessionFiles(line, sessionID, s.store)
+		}
+
+		// Track whether we've started the stream reader for the current process.
+		var proc *managed.Process
+		var procStarted bool
+
 		for {
-			// Check context cancellation before each spawn (SSE client disconnect)
 			select {
 			case <-ctx.Done():
 				log.Printf("session %s: client disconnected, stopping auto-continue", sessionID)
@@ -173,117 +253,135 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			default:
 			}
 
+			// Reset per-turn state
 			_ = s.store.ResetTurnCount(sessionID)
-			turnsSinceLastContinue := 0
-			autoInterrupting := false
+			mu.Lock()
+			turnsSinceLastContinue = 0
+			autoInterrupting = false
+			executionErrored = false
+			mu.Unlock()
 
-			args := buildClaudeArgs(sess, currentMessage, s.manager.Config())
-			proc, err := s.manager.Spawn(sessionID, managed.SpawnOpts{
-				Args: args,
+			// Drain any stale turnDone signals from previous turns
+			for {
+				select {
+				case <-turnDone:
+				default:
+					goto drained
+				}
+			}
+		drained:
+
+			// Ensure we have a warm process (spawns on first call, reuses after)
+			var err error
+			proc, err = s.manager.EnsureProcess(sessionID, managed.SpawnOpts{
+				Args: buildPersistentArgs(sess, s.manager.Config()),
 				CWD:  sess.CWD,
 			})
 			if err != nil {
-				log.Printf("auto-continue spawn error for session %s: %v", sessionID, err)
-				errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to spawn process: %s"}`, err.Error())
+				log.Printf("ensure process error for session %s: %v", sessionID, err)
+				errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to start process: %s"}`, err.Error())
 				broadcaster.Send(errMsg)
 				_ = s.store.UpdateActivityState(sessionID, "idle")
 				break
 			}
 
-			// onLine runs synchronously inside StreamNDJSON's read loop.
-			// autoInterrupting and executionErrored are safe to read after
-			// StreamNDJSON returns because StreamNDJSON blocks until stdout
-			// EOF, providing a happens-before guarantee with <-proc.Done.
-			executionErrored := false
-			onLine := func(line string) {
-				role := parseRole(line)
-				if role == "heartbeat" {
-					return
-				}
-				if role == "result" {
-					var res struct {
-						Subtype string   `json:"subtype"`
-						IsError bool     `json:"is_error"`
-						Errors  []string `json:"errors"`
-					}
-					if json.Unmarshal([]byte(line), &res) == nil && res.Subtype == "error_during_execution" {
-						executionErrored = true
-						if len(res.Errors) > 0 {
-							errText := strings.Join(res.Errors, "; ")
-							_, _ = s.store.CreateMessage(sessionID, "assistant", errText)
-						}
-					}
-				}
-				if role == "assistant" {
-					text := extractAssistantText(line)
-					if text != "" {
-						_, _ = s.store.CreateMessage(sessionID, role, text)
-					}
-					for _, toolName := range extractToolNames(line) {
-						_, _ = s.store.CreateMessage(sessionID, "activity", toolName)
-					}
-					turnsSinceLastContinue++
-					count, _ := s.store.IncrementTurnCount(sessionID)
-					if count >= threshold && !autoInterrupting {
-						autoInterrupting = true
-						log.Printf("session %s hit auto-continue threshold (%d/%d), interrupting", sessionID, count, sess.MaxTurns)
-						_ = s.manager.Interrupt(sessionID)
-					}
-				}
-				extractSessionFiles(line, sessionID, s.store)
+			// Start the stdout reader only once per process
+			if !procStarted {
+				procStarted = true
+				go func() {
+					defer close(streamDone)
+					managed.StreamNDJSON(proc.Stdout, broadcaster, onLine, turnDone)
+				}()
 			}
 
-			managed.StreamNDJSON(proc.Stdout, broadcaster, onLine)
+			// Send the user message via stdin
+			userTurn := formatUserTurn(currentMessage)
+			if err := s.manager.SendTurn(sessionID, userTurn); err != nil {
+				log.Printf("send turn error for session %s: %v", sessionID, err)
+				errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to send message: %s"}`, err.Error())
+				broadcaster.Send(errMsg)
+				_ = s.store.UpdateActivityState(sessionID, "idle")
+				break
+			}
 
-			stderrBytes, _ := io.ReadAll(proc.Stderr)
-			<-proc.Done
+			// Wait for either turn completion or process death
+			select {
+			case <-turnDone:
+				// Turn completed normally
+			case <-proc.Done:
+				// Process died — fall through to recovery
+			}
 
-			// Mark session as initialized only after a successful execution.
-			// If claude -p exits with error_during_execution (e.g. auth failure),
-			// no conversation was created, so --resume would fail on next message.
-			if !sess.Initialized && !executionErrored {
+			mu.Lock()
+			errored := executionErrored
+			interrupted := autoInterrupting
+			turns := turnsSinceLastContinue
+			mu.Unlock()
+
+			if !sess.Initialized && !errored {
 				_ = s.store.SetInitialized(sessionID)
 				sess.Initialized = true
 			}
 
-			// Clean up temp MCP config file
-			os.Remove(fmt.Sprintf("/tmp/claude-mcp-%s.json", sessionID))
-
 			// Clean up any pending permission request
 			s.permissions.Delete(sessionID)
 
-			if proc.ExitCode != 0 && len(stderrBytes) > 0 {
-				errMsg := fmt.Sprintf(`{"type":"system","error":true,"stderr":%q,"exit_code":%d}`, string(stderrBytes), proc.ExitCode)
-				_, _ = s.store.CreateMessageWithExitCode(sessionID, "system", errMsg, proc.ExitCode)
-				broadcaster.Send(errMsg)
+			// Check if process died
+			select {
+			case <-proc.Done:
+				// Process exited — drain stream, clean up
+				stderrBytes, _ := io.ReadAll(proc.Stderr)
+				<-streamDone
+
+				os.Remove(fmt.Sprintf("/tmp/claude-mcp-%s.json", sessionID))
+
+				if proc.ExitCode != 0 && len(stderrBytes) > 0 {
+					errMsg := fmt.Sprintf(`{"type":"system","error":true,"stderr":%q,"exit_code":%d}`, string(stderrBytes), proc.ExitCode)
+					_, _ = s.store.CreateMessageWithExitCode(sessionID, "system", errMsg, proc.ExitCode)
+					broadcaster.Send(errMsg)
+				}
+
+				if proc.ExitCode == 0 && !interrupted {
+					_ = s.store.UpdateActivityState(sessionID, "waiting")
+					doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+					broadcaster.Send(doneMsg)
+					return
+				}
+
+				if !interrupted {
+					_ = s.store.UpdateActivityState(sessionID, "idle")
+					doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+					broadcaster.Send(doneMsg)
+					return
+				}
+
+				// Process died during auto-interrupt — need fresh process for next turn.
+				// Reset stream state so next EnsureProcess starts a new reader.
+				procStarted = false
+				turnDone = make(chan struct{}, 4)
+				streamDone = make(chan struct{})
+
+			default:
+				// Process still alive — turn completed normally
+				if !interrupted {
+					_ = s.store.UpdateActivityState(sessionID, "waiting")
+					doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
+					broadcaster.Send(doneMsg)
+					return
+				}
 			}
 
-			// Natural exit (code 0) — Claude finished on its own, no auto-continue needed.
-			if proc.ExitCode == 0 && !autoInterrupting {
-				_ = s.store.UpdateActivityState(sessionID, "waiting")
-				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
-				broadcaster.Send(doneMsg)
-				break
-			}
+			// --- Auto-continue logic ---
 
-			// Process exited without our threshold SIGINT — manual interrupt or error
-			if !autoInterrupting {
-				_ = s.store.UpdateActivityState(sessionID, "idle")
-				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
-				broadcaster.Send(doneMsg)
-				break
-			}
-
-			// Minimum progress guard: need at least 2 turns of work
-			if turnsSinceLastContinue < 2 {
-				log.Printf("session %s not making progress (%d turns), stopping auto-continue", sessionID, turnsSinceLastContinue)
+			if turns < 2 {
+				log.Printf("session %s not making progress (%d turns), stopping auto-continue", sessionID, turns)
 				_, _ = s.store.CreateMessage(sessionID, "system", "Auto-continue stopped: not making progress")
 				noProgressMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d,"reason":"no_progress"}`, continuationCount)
 				broadcaster.Send(noProgressMsg)
 				_ = s.store.UpdateActivityState(sessionID, "waiting")
-				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
 				broadcaster.Send(doneMsg)
-				break
+				return
 			}
 
 			continuationCount++
@@ -295,9 +393,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				_, _ = s.store.CreateMessage(sessionID, "system",
 					fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations))
 				_ = s.store.UpdateActivityState(sessionID, "waiting")
-				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
 				broadcaster.Send(doneMsg)
-				break
+				return
 			}
 
 			// Auto-continue
@@ -307,37 +405,29 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			_, _ = s.store.CreateMessage(sessionID, "system",
 				fmt.Sprintf("Auto-continuing (%d/%d)...", continuationCount, sess.MaxContinuations))
 
-			// Compact step: run /compact before resuming if configured
+			// Compact step
 			if sess.CompactEveryNContinues > 0 && continuationCount%sess.CompactEveryNContinues == 0 {
 				compactingMsg := fmt.Sprintf(`{"type":"compacting","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(compactingMsg)
 				_, _ = s.store.CreateMessage(sessionID, "system", "Running /compact to reduce context size...")
 
-				compactArgs := buildClaudeArgs(sess, "/compact", s.manager.Config())
-				compactProc, compactErr := s.manager.Spawn(sessionID, managed.SpawnOpts{
-					Args: compactArgs,
-					CWD:  sess.CWD,
-				})
-				if compactErr != nil {
-					log.Printf("session %s: compact spawn failed: %v", sessionID, compactErr)
+				compactTurn := formatUserTurn("/compact")
+				if err := s.manager.SendTurn(sessionID, compactTurn); err != nil {
+					log.Printf("session %s: compact send failed: %v", sessionID, err)
 					_, _ = s.store.CreateMessage(sessionID, "system", "Compact failed, continuing without it.")
 				} else {
-					// Drain stdout to avoid blocking, but don't process lines as regular output
-					go io.Copy(io.Discard, compactProc.Stdout)
-					go io.Copy(io.Discard, compactProc.Stderr)
-					<-compactProc.Done
-					os.Remove(fmt.Sprintf("/tmp/claude-mcp-%s.json", sessionID))
-
-					if compactProc.ExitCode == 0 {
-						log.Printf("session %s: compact completed successfully", sessionID)
+					select {
+					case <-turnDone:
+						log.Printf("session %s: compact completed", sessionID)
 						_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.")
-					} else {
-						log.Printf("session %s: compact exited with code %d", sessionID, compactProc.ExitCode)
-						_, _ = s.store.CreateMessage(sessionID, "system", "Compact failed, continuing without it.")
+					case <-proc.Done:
+						log.Printf("session %s: process died during compact", sessionID)
+					case <-time.After(2 * time.Minute):
+						log.Printf("session %s: compact timed out", sessionID)
 					}
-					compactCompleteMsg := fmt.Sprintf(`{"type":"compact_complete","continuation_count":%d}`, continuationCount)
-					broadcaster.Send(compactCompleteMsg)
 				}
+				compactCompleteMsg := fmt.Sprintf(`{"type":"compact_complete","continuation_count":%d}`, continuationCount)
+				broadcaster.Send(compactCompleteMsg)
 			}
 
 			currentMessage = "You were interrupted due to turn limits. Continue where you left off."
