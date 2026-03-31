@@ -1007,6 +1007,11 @@ document.addEventListener('alpine:init', () => {
 
     // --- End slash commands ---
 
+    sendLgtm() {
+      this.inputText = '\u{1F44D} Looks Good To Me';
+      this.handleInput();
+    },
+
     async handleInput() {
       if (!this.selectedSessionId || !this.inputText.trim()) return;
       this.showSlashMenu = false;

@@ -269,6 +269,10 @@
 
             <!-- Input bar (managed mode messages OR hook-mode instructions) -->
             <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt" style="position:relative">
+              <button class="lgtm-btn"
+                      @click="sendLgtm()"
+                      :disabled="inputSending"
+                      title="Send 👍 Looks Good To Me">👍</button>
               <button class="shell-toggle-btn"
                       x-show="currentSession?.mode === 'managed'"
                       :class="{ active: shellMode }"

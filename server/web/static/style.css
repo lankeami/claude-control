@@ -1696,6 +1696,25 @@ body {
     font-size: 10px;
 }
 
+/* LGTM quick-send button */
+.lgtm-btn {
+  background: var(--bg-secondary, #f3f4f6);
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.lgtm-btn:hover {
+  background: var(--bg-tertiary, #e5e7eb);
+}
+.lgtm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Shell mode toggle button */
 .shell-toggle-btn {
   background: var(--bg-secondary, #f3f4f6);
