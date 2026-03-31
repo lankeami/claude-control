@@ -161,7 +161,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	// A warm process in "waiting" state is fine — we'll send it a new turn.
 	// Only block if actively processing.
 	if sess.ActivityState == "working" {
-		http.Error(w, "session is currently processing", http.StatusConflict)
+		http.Error(w, "session is currently processing (may be auto-continuing — wait for it to finish or interrupt first)", http.StatusConflict)
 		return
 	}
 
@@ -364,6 +364,10 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			default:
 				// Process still alive — turn completed normally
 				if !interrupted {
+					// Shut down warm process so next message spawns fresh.
+					// This prevents duplicate stdout readers across handleSendMessage calls.
+					_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
+					<-streamDone
 					_ = s.store.UpdateActivityState(sessionID, "waiting")
 					doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
 					broadcaster.Send(doneMsg)
