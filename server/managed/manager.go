@@ -3,6 +3,7 @@ package managed
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"sync"
@@ -187,6 +188,30 @@ func (m *Manager) Interrupt(sessionID string) error {
 		return fmt.Errorf("no running process for session %s", sessionID)
 	}
 	return proc.Cmd.Process.Signal(syscall.SIGINT)
+}
+
+// ReapIdle closes stdin on any process that has been idle longer than maxIdle.
+// This lets the process exit gracefully. Call this periodically from a goroutine.
+func (m *Manager) ReapIdle(maxIdle time.Duration) {
+	m.mu.Lock()
+	var toReap []string
+	now := time.Now()
+	for id, proc := range m.procs {
+		if now.Sub(proc.LastActivity) > maxIdle {
+			toReap = append(toReap, id)
+		}
+	}
+	m.mu.Unlock()
+
+	for _, id := range toReap {
+		m.mu.Lock()
+		proc, ok := m.procs[id]
+		m.mu.Unlock()
+		if ok && proc.Stdin != nil {
+			log.Printf("reaping idle process for session %s", id)
+			proc.Stdin.Close()
+		}
+	}
 }
 
 type ShellOpts struct {

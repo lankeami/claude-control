@@ -236,6 +236,37 @@ func TestSendTurn(t *testing.T) {
 	m.Teardown("send-turn-test", 2*time.Second)
 }
 
+func TestIdleTimeoutReapsProcess(t *testing.T) {
+	cfg := Config{
+		ClaudeBin:  "cat",
+		ClaudeArgs: []string{},
+		ClaudeEnv:  []string{},
+	}
+	m := NewManager(cfg)
+
+	proc, err := m.EnsureProcess("idle-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Backdate LastActivity to trigger immediate reap
+	m.mu.Lock()
+	proc.LastActivity = time.Now().Add(-1 * time.Hour)
+	m.mu.Unlock()
+
+	m.ReapIdle(1 * time.Millisecond)
+
+	select {
+	case <-proc.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("process was not reaped after idle timeout")
+	}
+
+	if m.IsRunning("idle-test") {
+		t.Error("session should not be running after reap")
+	}
+}
+
 func TestUpdateConfig(t *testing.T) {
 	mgr := NewManager(Config{ClaudeBin: "old-bin", ClaudeArgs: []string{"--old"}, ClaudeEnv: []string{"OLD=1"}})
 
