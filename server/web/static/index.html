@@ -375,6 +375,39 @@
                 </div>
               </div>
             </template>
+
+            <!-- Pull Request viewer -->
+            <template x-if="selectedPull">
+              <div style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden">
+                <div class="file-viewer-header">
+                  <span class="file-viewer-path" x-text="'PR #' + selectedPull.number"></span>
+                  <span class="file-type-badge" x-text="selectedPull.state" :style="selectedPull.state === 'open' ? 'background:#238636;color:#fff' : 'background:#8957e5;color:#fff'"></span>
+                  <div class="file-viewer-controls">
+                    <a class="issue-link-btn" :href="'https://github.com/' + githubRepo + '/pull/' + selectedPull.number" target="_blank" rel="noopener"
+                       title="Open on GitHub">↗ GitHub</a>
+                    <button class="generate-prompt-btn" style="padding:2px 10px;font-size:11px;width:auto;border-radius:4px" @click="generatePullPrompt(selectedPull)">Generate Prompt</button>
+                    <button class="file-viewer-close" @click="closePullViewer()">&times;</button>
+                  </div>
+                </div>
+                <div class="file-viewer-body" style="padding:16px">
+                  <div x-show="selectedPullLoading" class="viewer-loading">Loading pull request...</div>
+                  <div x-show="!selectedPullLoading">
+                    <h3 style="margin:0 0 8px 0;font-size:16px;color:var(--text)" x-text="selectedPull.title"></h3>
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+                      opened by <span x-text="selectedPull.author"></span> ·
+                      <span x-text="issueTimeAgo(selectedPull.created_at || selectedPull.updated_at)"></span>
+                    </div>
+                    <div class="issue-labels" x-show="selectedPull.labels && selectedPull.labels.length > 0" style="margin-bottom:12px">
+                      <template x-for="label in (selectedPull.labels || [])" :key="label.name">
+                        <span class="issue-label" :style="issueLabelStyle(label)" x-text="label.name"></span>
+                      </template>
+                    </div>
+                    <div class="issue-body" style="max-height:none;background:transparent;border:none;padding:0"
+                         x-html="typeof marked !== 'undefined' ? marked.parse(selectedPull.body || '*No description*') : (selectedPull.body || '(No description)')"></div>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -477,6 +510,47 @@
             <button x-show="githubIssuesHasMore && !githubIssuesLoading"
                     class="issues-show-more"
                     @click="loadMoreIssues()">Show more</button>
+          </div>
+        </div>
+
+        <!-- GitHub Pull Requests Section -->
+        <div class="issues-section" x-show="gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+          <div class="issues-header" @click="pullsExpanded = !pullsExpanded" style="cursor:pointer">
+            <span class="issues-title">
+              <span class="issues-toggle" x-text="pullsExpanded ? '▼' : '▶'"></span>
+              Pull Requests
+            </span>
+            <div class="issue-state-toggles" x-show="pullsExpanded" @click.stop>
+              <button class="issue-state-toggle"
+                      :class="{ 'active-open': githubPullsState === 'open' }"
+                      @click="togglePullState('open')">Open</button>
+              <button class="issue-state-toggle"
+                      :class="{ 'active-closed': githubPullsState === 'closed' }"
+                      @click="togglePullState('closed')">Closed</button>
+            </div>
+          </div>
+          <div x-show="pullsExpanded" x-collapse>
+            <input type="text" class="issues-search" placeholder="Search pull requests..."
+                   x-model="githubPullsSearch"
+                   @input="searchPulls()">
+            <div x-show="githubPullsLoading" class="issues-loading">Loading...</div>
+            <div x-show="!githubPullsLoading && githubPullsError" class="issues-error" x-text="githubPullsError"></div>
+            <div x-show="!githubPullsLoading && !githubPullsError && githubPulls.length === 0" class="issues-empty">No pull requests found</div>
+            <div class="issue-list" x-show="!githubPullsLoading && !githubPullsError && githubPulls.length > 0">
+              <template x-for="pull in githubPulls" :key="pull.number">
+                <div class="issue-row" :class="{ 'is-selected': selectedPull?.number === pull.number }"
+                     @click="fetchPullDetail(selectedSessionId, pull.number)">
+                  <div class="issue-dot" :class="pull.state"></div>
+                  <div class="issue-row-content">
+                    <div class="issue-row-title" x-text="pull.title"></div>
+                    <div class="issue-row-meta" x-text="'#' + pull.number + ' · ' + issueTimeAgo(pull.updated_at)"></div>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <button x-show="githubPullsHasMore && !githubPullsLoading"
+                    class="issues-show-more"
+                    @click="loadMorePulls()">Show more</button>
           </div>
         </div>
       </div>
