@@ -267,6 +267,61 @@ func TestIdleTimeoutReapsProcess(t *testing.T) {
 	}
 }
 
+func TestSpawnAfterProcessExits(t *testing.T) {
+	cfg := Config{ClaudeBin: "echo", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc1, err := m.Spawn("race-test", SpawnOpts{Args: []string{"hello"}, CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-proc1.Done
+
+	proc2, err := m.Spawn("race-test", SpawnOpts{Args: []string{"world"}, CWD: "/tmp"})
+	if err != nil {
+		t.Fatalf("second spawn should succeed after process exited: %v", err)
+	}
+	<-proc2.Done
+}
+
+func TestGracefulShutdown(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc, err := m.Spawn("graceful-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.IsRunning("graceful-test") {
+		t.Fatal("should be running")
+	}
+
+	err = m.GracefulShutdown("graceful-test", 5*time.Second)
+	if err != nil {
+		t.Fatalf("graceful shutdown failed: %v", err)
+	}
+
+	select {
+	case <-proc.Done:
+	default:
+		t.Error("process should be done after graceful shutdown")
+	}
+
+	if m.IsRunning("graceful-test") {
+		t.Error("should not be running after graceful shutdown")
+	}
+}
+
+func TestGracefulShutdownNoProcess(t *testing.T) {
+	cfg := Config{ClaudeBin: "echo", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	err := m.GracefulShutdown("nonexistent", 5*time.Second)
+	if err != nil {
+		t.Errorf("expected nil error for nonexistent session, got: %v", err)
+	}
+}
+
 func TestUpdateConfig(t *testing.T) {
 	mgr := NewManager(Config{ClaudeBin: "old-bin", ClaudeArgs: []string{"--old"}, ClaudeEnv: []string{"OLD=1"}})
 
