@@ -63,57 +63,6 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(sess)
 }
 
-func buildClaudeArgs(sess *db.Session, message string, cfg managed.Config) []string {
-	var args []string
-	args = append(args, "-p", message)
-
-	resumeID := sess.ID
-	if sess.ClaudeSessionID != "" {
-		resumeID = sess.ClaudeSessionID
-	}
-	if sess.Initialized {
-		args = append(args, "--resume", resumeID)
-	} else {
-		args = append(args, "--session-id", resumeID)
-	}
-
-	args = append(args, "--output-format", "stream-json", "--verbose")
-
-	if sess.AllowedTools != "" {
-		var tools []string
-		json.Unmarshal([]byte(sess.AllowedTools), &tools)
-		if len(tools) > 0 {
-			args = append(args, "--allowedTools", strings.Join(tools, ","))
-		}
-	}
-
-	if sess.MaxBudgetUSD > 0 {
-		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", sess.MaxBudgetUSD))
-	}
-
-	// Add MCP permission prompt config if binary path is available
-	if cfg.BinaryPath != "" && cfg.ServerPort > 0 {
-		mcpConfig := map[string]interface{}{
-			"mcpServers": map[string]interface{}{
-				"controller": map[string]interface{}{
-					"command": cfg.BinaryPath,
-					"args":   []string{"mcp-bridge", "--session-id", sess.ID, "--port", fmt.Sprintf("%d", cfg.ServerPort)},
-				},
-			},
-		}
-		mcpJSON, err := json.Marshal(mcpConfig)
-		if err == nil {
-			tmpFile := fmt.Sprintf("/tmp/claude-mcp-%s.json", sess.ID)
-			if os.WriteFile(tmpFile, mcpJSON, 0644) == nil {
-				args = append(args, "--permission-prompt-tool", "mcp__controller__permission_prompt")
-				args = append(args, "--mcp-config", tmpFile)
-			}
-		}
-	}
-
-	return args
-}
-
 // buildPersistentArgs builds CLI args for a persistent process (no message in args).
 // The message will be sent via stdin as stream-json.
 func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
