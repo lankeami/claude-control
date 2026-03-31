@@ -233,7 +233,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				extractSessionFiles(line, sessionID, s.store)
 			}
 
-			managed.StreamNDJSON(proc.Stdout, broadcaster, onLine)
+			managed.StreamNDJSON(proc.Stdout, broadcaster, onLine, nil)
 
 			stderrBytes, _ := io.ReadAll(proc.Stderr)
 			<-proc.Done

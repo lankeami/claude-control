@@ -82,7 +82,7 @@ func TestStreamNDJSON(t *testing.T) {
 		persisted = append(persisted, line)
 	}
 
-	StreamNDJSON(strings.NewReader(input), b, onLine)
+	StreamNDJSON(strings.NewReader(input), b, onLine, nil)
 	b.Close()
 
 	if len(persisted) != 3 {
@@ -109,7 +109,7 @@ func TestStreamNDJSONCountsAssistantTurns(t *testing.T) {
 		}
 	}
 
-	StreamNDJSON(strings.NewReader(input), b, onLine)
+	StreamNDJSON(strings.NewReader(input), b, onLine, nil)
 	b.Close()
 
 	if turnCount != 3 {
@@ -153,7 +153,7 @@ func TestStreamNDJSON_SendsHeartbeats(t *testing.T) {
 		pw.Close()
 	}()
 
-	StreamNDJSON(pr, b, nil)
+	StreamNDJSON(pr, b, nil, nil)
 	b.Close()
 	<-done
 
@@ -198,7 +198,7 @@ func TestStreamNDJSON_OnLineNotCalledForHeartbeats(t *testing.T) {
 		pw.Close()
 	}()
 
-	StreamNDJSON(pr, b, onLine)
+	StreamNDJSON(pr, b, onLine, nil)
 	b.Close()
 
 	mu.Lock()
@@ -223,7 +223,7 @@ func TestStreamNDJSON_BroadcastsLines(t *testing.T) {
 		}
 	}()
 
-	StreamNDJSON(strings.NewReader(input), b, nil)
+	StreamNDJSON(strings.NewReader(input), b, nil, nil)
 	b.Close()
 
 	select {
@@ -233,5 +233,23 @@ func TestStreamNDJSON_BroadcastsLines(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Error("timed out waiting for broadcast message")
+	}
+}
+
+func TestStreamNDJSON_SignalsTurnDone(t *testing.T) {
+	input := `{"type":"assistant","content":"hello"}
+{"type":"result","cost":0.01}
+`
+	b := NewBroadcaster()
+	turnDone := make(chan struct{}, 1)
+
+	StreamNDJSON(strings.NewReader(input), b, nil, turnDone)
+	b.Close()
+
+	select {
+	case <-turnDone:
+		// expected
+	default:
+		t.Error("expected turnDone signal for result message")
 	}
 }

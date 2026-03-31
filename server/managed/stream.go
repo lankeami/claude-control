@@ -2,6 +2,7 @@ package managed
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -64,9 +65,10 @@ func (b *Broadcaster) Close() {
 
 // StreamNDJSON reads NDJSON lines from r, broadcasts each via b, and calls onLine for each.
 // onLine is called synchronously per line (use for persistence/turn counting).
+// If turnDone is non-nil, a signal is sent on each "result" message (turn delimiter).
 // A heartbeat JSON message is broadcast at HeartbeatInterval; onLine is NOT called for heartbeats.
 // Blocks until r is closed/EOF.
-func StreamNDJSON(r io.Reader, b *Broadcaster, onLine func(string)) {
+func StreamNDJSON(r io.Reader, b *Broadcaster, onLine func(string), turnDone chan<- struct{}) {
 	type result struct {
 		line string
 		err  error
@@ -106,6 +108,15 @@ func StreamNDJSON(r io.Reader, b *Broadcaster, onLine func(string)) {
 			b.Send(res.line)
 			if onLine != nil {
 				onLine(res.line)
+			}
+			if turnDone != nil {
+				var obj struct{ Type string `json:"type"` }
+				if json.Unmarshal([]byte(res.line), &obj) == nil && obj.Type == "result" {
+					select {
+					case turnDone <- struct{}{}:
+					default:
+					}
+				}
 			}
 		case <-ticker.C:
 			hb := fmt.Sprintf(`{"type":"heartbeat","ts":%d}`, time.Now().UnixMilli())
