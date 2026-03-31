@@ -74,6 +74,8 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath str
 	// GitHub endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues", s.handleListGithubIssues)
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues/{number}", s.handleGetGithubIssue)
+	apiMux.HandleFunc("GET /api/sessions/{id}/github/pulls", s.handleListGithubPulls)
+	apiMux.HandleFunc("GET /api/sessions/{id}/github/pulls/{number}", s.handleGetGithubPull)
 
 	// Settings endpoints
 	apiMux.HandleFunc("GET /api/settings/exists", s.handleSettingsExists)

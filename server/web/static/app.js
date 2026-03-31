@@ -68,10 +68,23 @@ document.addEventListener('alpine:init', () => {
     githubIssuesHasMore: false,
     githubIssuesLoading: false,
     githubIssuesError: null,
-    issuesExpanded: true,
+    issuesExpanded: false,
     selectedIssue: null,
     selectedIssueLoading: false,
     _searchIssuesTimer: null,
+
+    // GitHub Pull Requests state
+    githubPulls: [],
+    githubPullsState: 'open',
+    githubPullsSearch: '',
+    githubPullsLimit: 10,
+    githubPullsHasMore: false,
+    githubPullsLoading: false,
+    githubPullsError: null,
+    pullsExpanded: false,
+    selectedPull: null,
+    selectedPullLoading: false,
+    _searchPullsTimer: null,
     viewerFile: null,
     viewerMode: 'diff',
     viewerDiffs: [],
@@ -717,6 +730,13 @@ document.addEventListener('alpine:init', () => {
         this.selectedIssue = null;
         this.githubIssuesError = null;
         this.fetchGithubIssues(this.selectedSessionId);
+        this.githubPulls = [];
+        this.githubPullsState = 'open';
+        this.githubPullsSearch = '';
+        this.githubPullsLimit = 10;
+        this.selectedPull = null;
+        this.githubPullsError = null;
+        this.fetchGithubPulls(this.selectedSessionId);
       }
     },
 
@@ -1726,8 +1746,9 @@ document.addEventListener('alpine:init', () => {
     async fetchIssueDetail(sessionId, number) {
       if (!sessionId) return;
       this.selectedIssueLoading = true;
-      // Close any open file viewer and open issue in viewer panel
+      // Close any open file/pull viewer and open issue in viewer panel
       this.closeFileViewer();
+      this.selectedPull = null;
       if (this.isMobile()) { this.mobileOverlay = 'issue'; }
       try {
         const resp = await fetch(`/api/sessions/${sessionId}/github/issues/${number}`, {
@@ -1745,6 +1766,7 @@ document.addEventListener('alpine:init', () => {
 
     closeIssueViewer() {
       this.selectedIssue = null;
+      this.selectedPull = null;
     },
 
     toggleIssueState(state) {
@@ -1803,6 +1825,100 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       const g = parseInt(hex.substring(2, 4), 16);
       const b = parseInt(hex.substring(4, 6), 16);
       return `background: rgba(${r},${g},${b},0.2); color: rgb(${r},${g},${b}); border-color: rgba(${r},${g},${b},0.4);`;
+    },
+
+    // GitHub Pull Requests methods
+    async fetchGithubPulls(sessionId) {
+      if (!sessionId) return;
+      this.githubPullsLoading = true;
+      this.githubPullsError = null;
+      try {
+        const params = new URLSearchParams({
+          state: this.githubPullsState,
+          limit: this.githubPullsLimit,
+        });
+        if (this.githubPullsSearch.trim()) {
+          params.set('search', this.githubPullsSearch.trim());
+        }
+        const resp = await fetch(`/api/sessions/${sessionId}/github/pulls?${params}`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (resp.status === 401) { this.disconnect(); return; }
+        if (!resp.ok) {
+          const text = await resp.text();
+          this.githubPullsError = text || 'Failed to load pull requests';
+          return;
+        }
+        const data = await resp.json();
+        this.githubPulls = data.pulls || [];
+        this.githubPullsHasMore = data.has_more || false;
+        if (data.repo) this.githubRepo = data.repo;
+      } catch (e) {
+        this.githubPullsError = e.message || 'Failed to load pull requests';
+      } finally {
+        this.githubPullsLoading = false;
+      }
+    },
+
+    async fetchPullDetail(sessionId, number) {
+      if (!sessionId) return;
+      this.selectedPullLoading = true;
+      this.closeFileViewer();
+      this.closeIssueViewer();
+      if (this.isMobile()) { this.mobileOverlay = 'issue'; }
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/github/pulls/${number}`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (resp.status === 401) { this.disconnect(); return; }
+        if (!resp.ok) return;
+        this.selectedPull = await resp.json();
+      } catch (e) {
+        // Ignore
+      } finally {
+        this.selectedPullLoading = false;
+      }
+    },
+
+    closePullViewer() {
+      this.selectedPull = null;
+    },
+
+    togglePullState(state) {
+      this.githubPullsState = state;
+      this.githubPullsLimit = 10;
+      this.selectedPull = null;
+      this.fetchGithubPulls(this.selectedSessionId);
+    },
+
+    searchPulls() {
+      if (this._searchPullsTimer) clearTimeout(this._searchPullsTimer);
+      this._searchPullsTimer = setTimeout(() => {
+        this.githubPullsLimit = 10;
+        this.fetchGithubPulls(this.selectedSessionId);
+      }, 300);
+    },
+
+    loadMorePulls() {
+      this.githubPullsLimit += 10;
+      this.fetchGithubPulls(this.selectedSessionId);
+    },
+
+    generatePullPrompt(pull) {
+      const prompt = `Review pull request #${pull.number}: "${pull.title}"
+
+Description:
+${pull.body || '(No description provided)'}
+
+Please review this PR and provide feedback.`;
+      this.inputText = prompt;
+      this.$nextTick(() => {
+        const textarea = document.querySelector('.instruction-bar textarea');
+        if (textarea) {
+          textarea.style.height = 'auto';
+          textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+        }
+      });
     },
 
     // File browser methods
