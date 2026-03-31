@@ -88,12 +88,11 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
+	m.mu.Lock()
 	if _, running := m.procs[sessionID]; running {
+		m.mu.Unlock()
 		return nil, fmt.Errorf("session %s already has a running process", sessionID)
 	}
-
-	// Copy config under lock to prevent race with UpdateConfig
-	m.mu.Lock()
 	cfg := m.cfg
 	m.mu.Unlock()
 
@@ -247,9 +246,12 @@ func (m *Manager) SpawnShell(sessionID string, opts ShellOpts) (*Process, error)
 	mu.Lock()
 	defer mu.Unlock()
 
+	m.mu.Lock()
 	if _, running := m.procs[sessionID]; running {
+		m.mu.Unlock()
 		return nil, fmt.Errorf("session %s already has a running process", sessionID)
 	}
+	m.mu.Unlock()
 
 	cmd := exec.Command("sh", "-c", opts.Command)
 	cmd.Dir = opts.CWD
@@ -329,6 +331,31 @@ func (m *Manager) Teardown(sessionID string, timeout time.Duration) error {
 	m.mu.Unlock()
 	if proc == nil {
 		return nil
+	}
+
+	select {
+	case <-proc.Done:
+		return nil
+	case <-time.After(timeout):
+		proc.Cmd.Process.Kill()
+		<-proc.Done
+		return nil
+	}
+}
+
+// GracefulShutdown closes stdin to let the process exit naturally, then waits
+// up to timeout for it to finish. Falls back to SIGKILL if it doesn't exit.
+// No-op if no process is running for the session.
+func (m *Manager) GracefulShutdown(sessionID string, timeout time.Duration) error {
+	m.mu.Lock()
+	proc, ok := m.procs[sessionID]
+	m.mu.Unlock()
+	if !ok {
+		return nil
+	}
+
+	if proc.Stdin != nil {
+		proc.Stdin.Close()
 	}
 
 	select {
