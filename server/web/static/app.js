@@ -2137,7 +2137,7 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       const time = `<span class="bubble-time">${esc(this.timeAgo(msg.timestamp))}</span>`;
 
       if (msg.msg_type === 'text') {
-        if ((msg.role === 'assistant' || msg.command) && typeof marked !== 'undefined') {
+        if ((msg.role === 'assistant' || msg.role === 'user' || msg.command) && typeof marked !== 'undefined') {
           const r = new marked.Renderer();
           r.link = function(href, title, text) {
             const h = typeof href === 'object' ? href.href : href;
