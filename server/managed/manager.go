@@ -145,6 +145,33 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	return proc, nil
 }
 
+// EnsureProcess returns an existing warm process for the session, or spawns a new one.
+func (m *Manager) EnsureProcess(sessionID string, opts SpawnOpts) (*Process, error) {
+	m.mu.Lock()
+	if proc, ok := m.procs[sessionID]; ok {
+		proc.LastActivity = time.Now()
+		m.mu.Unlock()
+		return proc, nil
+	}
+	m.mu.Unlock()
+
+	return m.Spawn(sessionID, opts)
+}
+
+// SendTurn writes a user message JSON line to the process's stdin.
+func (m *Manager) SendTurn(sessionID string, messageJSON string) error {
+	m.mu.Lock()
+	proc, ok := m.procs[sessionID]
+	m.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("no running process for session %s", sessionID)
+	}
+
+	proc.LastActivity = time.Now()
+	_, err := fmt.Fprintf(proc.Stdin, "%s\n", messageJSON)
+	return err
+}
+
 func (m *Manager) IsRunning(sessionID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()

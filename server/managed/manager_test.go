@@ -1,6 +1,7 @@
 package managed
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -181,6 +182,58 @@ func TestSpawnExposesStdin(t *testing.T) {
 	if proc.ExitCode != 0 {
 		t.Errorf("exit code=%d, want 0", proc.ExitCode)
 	}
+}
+
+func TestEnsureProcessSpawnsAndReuses(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc1, err := m.EnsureProcess("reuse-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proc1 == nil {
+		t.Fatal("proc1 is nil")
+	}
+
+	proc2, err := m.EnsureProcess("reuse-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if proc1 != proc2 {
+		t.Error("EnsureProcess should return the same process on second call")
+	}
+
+	m.Teardown("reuse-test", 2*time.Second)
+}
+
+func TestSendTurn(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc, err := m.EnsureProcess("send-turn-test", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}`
+	err = m.SendTurn("send-turn-test", msg)
+	if err != nil {
+		t.Fatalf("SendTurn failed: %v", err)
+	}
+
+	buf := make([]byte, 4096)
+	n, err := proc.Stdout.Read(buf)
+	if err != nil {
+		t.Fatalf("read stdout: %v", err)
+	}
+	got := strings.TrimSpace(string(buf[:n]))
+	if got != msg {
+		t.Errorf("got %q, want %q", got, msg)
+	}
+
+	m.Teardown("send-turn-test", 2*time.Second)
 }
 
 func TestUpdateConfig(t *testing.T) {
