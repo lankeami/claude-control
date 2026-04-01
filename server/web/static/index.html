@@ -189,7 +189,7 @@
         </div>
 
         <div class="main-content-split">
-          <div class="chat-column" :class="{ 'has-viewer': viewerFile || selectedIssue }">
+          <div class="chat-column" :class="{ 'has-viewer': viewerFile || selectedIssue || selectedPull }">
             <!-- Chat area -->
             <div class="chat-area" id="chat-area">
               <template x-if="!selectedSessionId">
@@ -310,11 +310,11 @@
           </div>
 
           <!-- File viewer resize handle -->
-          <div class="resize-handle" x-show="viewerFile || selectedIssue"
+          <div class="resize-handle" x-show="viewerFile || selectedIssue || selectedPull"
                @mousedown="startResize($event, 'viewer')" @dblclick="viewerWidth = null"></div>
 
           <!-- File Viewer Panel -->
-          <div class="file-viewer-column" x-show="viewerFile || selectedIssue" x-cloak
+          <div class="file-viewer-column" x-show="viewerFile || selectedIssue || selectedPull" x-cloak
                :style="viewerWidth ? 'flex:none;width:' + viewerWidth + 'px' : ''"
             <!-- File viewer (existing) -->
             <template x-if="viewerFile && !selectedIssue">
