@@ -775,6 +775,33 @@ func extractSessionFiles(line, sessionID string, store *db.Store) {
 	}
 }
 
+func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if sess.Mode != "managed" {
+		http.Error(w, "not a managed session", http.StatusBadRequest)
+		return
+	}
+	if sess.ActivityState == "working" {
+		http.Error(w, "cannot clear while session is working", http.StatusConflict)
+		return
+	}
+
+	s.manager.Teardown(sessionID, 5*time.Second)
+
+	if err := s.store.ClearSession(sessionID); err != nil {
+		log.Printf("clear session %s: %v", sessionID, err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) handleRecentDirs(w http.ResponseWriter, r *http.Request) {
 	dirs, err := s.store.RecentDirectories(5)
 	if err != nil {

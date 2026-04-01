@@ -59,6 +59,7 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath str
 	apiMux.HandleFunc("GET /api/sessions/{id}/resumable", s.handleResumableList)
 	apiMux.HandleFunc("POST /api/sessions/{id}/resume", s.handleResumeSession)
 	apiMux.HandleFunc("POST /api/sessions/{id}/shell", s.handleShellExecute)
+	apiMux.HandleFunc("POST /api/sessions/{id}/clear", s.handleClearSession)
 	apiMux.HandleFunc("POST /api/sessions/{id}/permission-request", s.handlePermissionRequest)
 	apiMux.HandleFunc("POST /api/sessions/{id}/permission-respond", s.handlePermissionRespond)
 	apiMux.HandleFunc("GET /api/sessions/{id}/pending-permission", s.handlePendingPermission)

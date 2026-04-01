@@ -276,6 +276,84 @@ func TestAutoContinueThresholdCalculation(t *testing.T) {
 	}
 }
 
+func TestClearSessionAPI(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp/test-clear-api", `["Read"]`, 50, 5.0, 0)
+	store.CreateMessage(sess.ID, "user", "hello")
+	store.CreateMessage(sess.ID, "assistant", "hi")
+	store.SetInitialized(sess.ID)
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/clear", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+
+	msgs, _ := store.ListMessages(sess.ID)
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages, got %d", len(msgs))
+	}
+
+	updated, _ := store.GetSessionByID(sess.ID)
+	if updated.Initialized {
+		t.Error("expected initialized=false")
+	}
+	if updated.TurnCount != 0 {
+		t.Errorf("expected turn_count=0, got %d", updated.TurnCount)
+	}
+}
+
+func TestClearSessionAPI_RejectsWorking(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp/test-clear-working", `["Read"]`, 50, 5.0, 0)
+	store.UpdateActivityState(sess.ID, "working")
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/clear", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 409 {
+		t.Fatalf("status=%d, want 409 for working session", resp.StatusCode)
+	}
+}
+
+func TestClearSessionAPI_NotFound(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/nonexistent/clear", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 404 {
+		t.Fatalf("status=%d, want 404", resp.StatusCode)
+	}
+}
+
 func TestRecentDirsAPI(t *testing.T) {
 	ts, store := setupTestServer(t)
 	defer ts.Close()
