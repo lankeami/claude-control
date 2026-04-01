@@ -409,26 +409,25 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			_, _ = s.store.CreateMessage(sessionID, "system",
 				fmt.Sprintf("Auto-continuing (%d/%d)...", continuationCount, sess.MaxContinuations))
 
-			// Compact step
+			// Compact step — spawn a separate one-shot `claude -p "/compact" --resume <id>`
+			// process. The warm process is already dead from the SIGINT, so we can't
+			// SendTurn to it. The one-shot process compacts the session context on disk,
+			// and the next --resume picks up the compacted context.
 			if sess.CompactEveryNContinues > 0 && continuationCount%sess.CompactEveryNContinues == 0 {
 				compactingMsg := fmt.Sprintf(`{"type":"compacting","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(compactingMsg)
 				_, _ = s.store.CreateMessage(sessionID, "system", "Running /compact to reduce context size...")
 
-				compactTurn := formatUserTurn("/compact")
-				if err := s.manager.SendTurn(sessionID, compactTurn); err != nil {
-					log.Printf("session %s: compact send failed: %v", sessionID, err)
-					_, _ = s.store.CreateMessage(sessionID, "system", "Compact failed, continuing without it.")
+				resumeID := sess.ID
+				if sess.ClaudeSessionID != "" {
+					resumeID = sess.ClaudeSessionID
+				}
+				if err := s.manager.RunCompact(sessionID, resumeID, sess.CWD, 2*time.Minute); err != nil {
+					log.Printf("session %s: compact failed: %v", sessionID, err)
+					_, _ = s.store.CreateMessage(sessionID, "system", fmt.Sprintf("Compact failed: %v, continuing without it.", err))
 				} else {
-					select {
-					case <-turnDone:
-						log.Printf("session %s: compact completed", sessionID)
-						_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.")
-					case <-proc.Done:
-						log.Printf("session %s: process died during compact", sessionID)
-					case <-time.After(2 * time.Minute):
-						log.Printf("session %s: compact timed out", sessionID)
-					}
+					log.Printf("session %s: compact completed", sessionID)
+					_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.")
 				}
 				compactCompleteMsg := fmt.Sprintf(`{"type":"compact_complete","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(compactCompleteMsg)
