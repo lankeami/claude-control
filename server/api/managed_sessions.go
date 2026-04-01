@@ -159,10 +159,18 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A warm process in "waiting" state is fine — we'll send it a new turn.
-	// Only block if actively processing.
+	// Only block if actively processing. Check the actual process state too,
+	// because activity_state can be stale — the cleanup goroutine updates the
+	// DB after GracefulShutdown (up to 10s), or the goroutine may have exited
+	// without updating state (panic, unexpected error path).
 	if sess.ActivityState == "working" {
-		http.Error(w, "session is currently processing (may be auto-continuing — wait for it to finish or interrupt first)", http.StatusConflict)
-		return
+		if s.manager.IsRunning(sessionID) {
+			http.Error(w, "session is currently processing (may be auto-continuing — wait for it to finish or interrupt first)", http.StatusConflict)
+			return
+		}
+		// No process running — state is stale. Reset and proceed.
+		log.Printf("session %s: activity_state is 'working' but no process running, resetting to allow new message", sessionID)
+		_ = s.store.UpdateActivityState(sessionID, "waiting")
 	}
 
 	_, _ = s.store.CreateMessage(sessionID, "user", req.Message)
@@ -171,6 +179,15 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	broadcaster := s.manager.GetBroadcaster(sessionID)
 
 	go func() {
+		// Safety net: if the goroutine panics, reset activity state so the
+		// session doesn't get permanently stuck in "working".
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("session %s: message goroutine panicked: %v", sessionID, r)
+				_ = s.store.UpdateActivityState(sessionID, "idle")
+			}
+		}()
+
 		ctx := context.Background()
 		continuationCount := 0
 		threshold := int(sess.AutoContinueThreshold * float64(sess.MaxTurns))
