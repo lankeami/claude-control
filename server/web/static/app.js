@@ -871,9 +871,23 @@ document.addEventListener('alpine:init', () => {
         case '/resume':
           await this.openResumePicker();
           break;
-        case '/clear':
-          this.chatMessages = [];
+        case '/clear': {
+          try {
+            const resp = await fetch(`/api/sessions/${this.selectedSessionId}/clear`, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + this.apiKey },
+            });
+            if (!resp.ok) {
+              const errText = await resp.text();
+              this.chatMessages.push({ role: 'system', content: `Clear failed: ${errText}`, msg_type: 'text', timestamp: new Date().toISOString() });
+            } else {
+              this.chatMessages = [];
+            }
+          } catch (e) {
+            this.chatMessages.push({ role: 'system', content: `Clear failed: ${e.message}`, msg_type: 'text', timestamp: new Date().toISOString() });
+          }
           break;
+        }
         case '/compact': {
           const compactInstr = cmdArg || 'Please compact the conversation context and summarize what we\'ve been working on.';
           this.inputText = compactInstr;
