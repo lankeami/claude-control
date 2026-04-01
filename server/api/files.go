@@ -39,8 +39,6 @@ func isMediaFile(path string) bool {
 	return mediaExtensions[ext]
 }
 
-const maxRawFileSize = 10 << 20 // 10MB
-
 func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
 	filePath := r.URL.Query().Get("path")
 	sessionID := r.URL.Query().Get("session_id")
@@ -76,14 +74,9 @@ func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check file size
-	info, err := os.Stat(resolved)
-	if err != nil {
+	// Verify file exists
+	if _, err := os.Stat(resolved); err != nil {
 		http.Error(w, "file not found", http.StatusNotFound)
-		return
-	}
-	if info.Size() > maxRawFileSize {
-		http.Error(w, "file too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 
