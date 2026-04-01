@@ -37,6 +37,8 @@ document.addEventListener('alpine:init', () => {
     pendingPermission: null,
     newSessionCWD: '',
     sessionSSE: null,
+    sseReconnectAttempts: 0,
+    sseReconnectTimer: null,
 
     // Directory browser state
     browsePath: '',
@@ -1376,6 +1378,9 @@ document.addEventListener('alpine:init', () => {
         try {
           const data = JSON.parse(event.data);
 
+          // Any successful message means connection is alive — reset reconnect counter
+          this.sseReconnectAttempts = 0;
+
           // Heartbeat: just reset the timer and return
           if (data.type === 'heartbeat') {
             this.resetHeartbeatTimer();
@@ -1569,11 +1574,64 @@ document.addEventListener('alpine:init', () => {
       };
 
       this.sessionSSE.onerror = () => {
-        this.stopSessionSSE();
+        this.attemptSSEReconnect(sessionId);
       };
     },
 
+    attemptSSEReconnect(sessionId) {
+      // Close the broken connection
+      if (this.sessionSSE) {
+        this.sessionSSE.close();
+        this.sessionSSE = null;
+      }
+      this.clearHeartbeatTimer();
+
+      // Don't reconnect if we've switched sessions
+      if (sessionId !== this.selectedSessionId) return;
+
+      // Cap reconnect attempts
+      if (this.sseReconnectAttempts >= 10) {
+        this.addActivityPill('Connection lost — reconnect failed', 'disconnected');
+        this.sseReconnectAttempts = 0;
+        return;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s, 8s... capped at 15s
+      const delay = Math.min(1000 * Math.pow(2, this.sseReconnectAttempts), 15000);
+      this.sseReconnectAttempts++;
+
+      this.sseReconnectTimer = setTimeout(async () => {
+        // Check if session is still working before reconnecting
+        try {
+          const resp = await fetch(`/api/sessions/${sessionId}`, {
+            headers: { 'Authorization': `Bearer ${this.apiKey}` }
+          });
+          if (!resp.ok) return;
+          const session = await resp.json();
+          if (session.activity_state !== 'working') {
+            // Session finished while we were disconnected — reload messages
+            this.sseReconnectAttempts = 0;
+            await this.fetchManagedMessages(sessionId);
+            return;
+          }
+        } catch (e) {
+          // Server unreachable, try again later
+          this.attemptSSEReconnect(sessionId);
+          return;
+        }
+
+        // Session still working — reconnect SSE
+        this.startSessionSSE(sessionId);
+      }, delay);
+    },
+
     stopSessionSSE() {
+      // Clear any pending reconnect
+      if (this.sseReconnectTimer) {
+        clearTimeout(this.sseReconnectTimer);
+        this.sseReconnectTimer = null;
+      }
+      this.sseReconnectAttempts = 0;
       if (this.sessionSSE) {
         this.sessionSSE.close();
         this.sessionSSE = null;
@@ -2259,8 +2317,12 @@ Please review this PR and provide feedback.`;
     resetHeartbeatTimer() {
         this.clearHeartbeatTimer();
         this.heartbeatTimer = setTimeout(() => {
-            this.addActivityPill('Connection lost — server may be down', 'disconnected');
+            this.addActivityPill('Connection lost — reconnecting...', 'disconnected');
             this.clearStalenessTimer();
+            // Trigger reconnect instead of just showing a message
+            if (this.selectedSessionId && this.sessionSSE) {
+                this.attemptSSEReconnect(this.selectedSessionId);
+            }
         }, 30000);
     },
 

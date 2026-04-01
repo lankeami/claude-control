@@ -343,6 +343,41 @@ func (m *Manager) Teardown(sessionID string, timeout time.Duration) error {
 	}
 }
 
+// RunCompact spawns a one-shot `claude -p "/compact" --resume <id>` process
+// and waits for it to exit. This is separate from the warm persistent process
+// so it can run after the warm process has been interrupted.
+func (m *Manager) RunCompact(sessionID string, resumeID string, cwd string, timeout time.Duration) error {
+	m.mu.Lock()
+	cfg := m.cfg
+	m.mu.Unlock()
+
+	args := append([]string{}, cfg.ClaudeArgs...)
+	args = append(args, "-p", "/compact", "--resume", resumeID, "--output-format", "stream-json", "--verbose")
+
+	cmd := exec.Command(cfg.ClaudeBin, args...)
+	cmd.Dir = cwd
+	cmd.Env = append(os.Environ(), cfg.ClaudeEnv...)
+	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1")
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("compact start: %w", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(timeout):
+		cmd.Process.Kill()
+		<-done
+		return fmt.Errorf("compact timed out after %v", timeout)
+	}
+}
+
 // GracefulShutdown closes stdin to let the process exit naturally, then waits
 // up to timeout for it to finish. Falls back to SIGKILL if it doesn't exit.
 // No-op if no process is running for the session.
