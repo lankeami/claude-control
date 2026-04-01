@@ -359,9 +359,23 @@ func (m *Manager) RunCompact(sessionID string, resumeID string, cwd string, time
 	cmd.Env = append(os.Environ(), cfg.ClaudeEnv...)
 	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1")
 
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("compact stdout pipe: %w", err)
+	}
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("compact start: %w", err)
 	}
+
+	// Stream compact output through the session's broadcaster so SSE clients
+	// stay connected (heartbeats) and see compact progress.
+	broadcaster := m.GetBroadcaster(sessionID)
+	streamDone := make(chan struct{})
+	go func() {
+		StreamNDJSON(stdout, broadcaster, nil, nil)
+		close(streamDone)
+	}()
 
 	done := make(chan error, 1)
 	go func() {
@@ -370,10 +384,12 @@ func (m *Manager) RunCompact(sessionID string, resumeID string, cwd string, time
 
 	select {
 	case err := <-done:
+		<-streamDone // wait for stream goroutine to finish
 		return err
 	case <-time.After(timeout):
 		cmd.Process.Kill()
 		<-done
+		<-streamDone
 		return fmt.Errorf("compact timed out after %v", timeout)
 	}
 }
