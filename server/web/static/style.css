@@ -1151,6 +1151,9 @@ body {
     position: sticky;
     bottom: 0;
   }
+  .instruction-bar textarea {
+    font-size: 16px; /* prevent iOS auto-zoom on focus */
+  }
 
   /* Mobile Menu Overlay */
   .mobile-menu-overlay {
