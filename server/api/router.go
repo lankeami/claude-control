@@ -109,6 +109,17 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath str
 		s.handleSessionStream(w, r, apiKey)
 	})
 
+	// Raw file endpoint — handles its own auth via query param
+	// (HTML <video>/<audio>/<img> tags can't send Authorization headers)
+	root.HandleFunc("GET /api/files/raw", func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Query().Get("key")
+		if key == "" || key != apiKey {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		s.handleGetFileRaw(w, r)
+	})
+
 	// All other /api/ routes — through auth middleware
 	root.Handle("/api/", authedAPI)
 

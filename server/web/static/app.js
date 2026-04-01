@@ -2079,6 +2079,27 @@ Please review this PR and provide feedback.`;
         return;
       }
 
+      // Media files (images, video, audio) skip the JSON content fetch
+      // and go straight to the renderer which uses the raw endpoint
+      const mediaExt = this.viewerFile.split('.').pop().toLowerCase();
+      const mediaExts = [
+        'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp',
+        'mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v',
+        'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'
+      ];
+      if (mediaExts.includes(mediaExt)) {
+        const renderer = this.getRenderer(this.viewerFile);
+        this.viewerFileType = renderer.label;
+        this.viewerFullHtml = renderer.render('', this.viewerFile);
+        this.renderedContentCache[cacheKey] = {
+          html: this.viewerFullHtml,
+          fileType: this.viewerFileType,
+          binary: true,
+          truncated: false,
+        };
+        return;
+      }
+
       const rawCacheKey = this.viewerFile + ':' + this.selectedSessionId;
       let data;
       if (this.fileContentCache[rawCacheKey]) {
@@ -2108,8 +2129,8 @@ Please review this PR and provide feedback.`;
       const ext = this.viewerFile.split('.').pop().toLowerCase();
       const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'bmp'];
       if (data.binary && !imageExts.includes(ext)) {
-        this.viewerFullHtml = '';
-        this.viewerFileType = '';
+        this.viewerFullHtml = '<div class="binary-fallback">Binary file \u2014 cannot display preview.</div>';
+        this.viewerFileType = 'Binary';
         return;
       }
 
@@ -2358,6 +2379,21 @@ Please review this PR and provide feedback.`;
         'webp': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
         'ico': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
         'bmp': { render: (c, f) => this.renderImage(c, f), label: 'Image' },
+        // Video
+        'mp4': { render: (c, f) => this.renderVideo(f), label: 'Video' },
+        'webm': { render: (c, f) => this.renderVideo(f), label: 'Video' },
+        'mov': { render: (c, f) => this.renderVideo(f), label: 'Video' },
+        'avi': { render: (c, f) => this.renderVideo(f), label: 'Video' },
+        'mkv': { render: (c, f) => this.renderVideo(f), label: 'Video' },
+        'm4v': { render: (c, f) => this.renderVideo(f), label: 'Video' },
+        // Audio
+        'mp3': { render: (c, f) => this.renderAudio(f), label: 'Audio' },
+        'wav': { render: (c, f) => this.renderAudio(f), label: 'Audio' },
+        'ogg': { render: (c, f) => this.renderAudio(f), label: 'Audio' },
+        'm4a': { render: (c, f) => this.renderAudio(f), label: 'Audio' },
+        'flac': { render: (c, f) => this.renderAudio(f), label: 'Audio' },
+        'aac': { render: (c, f) => this.renderAudio(f), label: 'Audio' },
+        'wma': { render: (c, f) => this.renderAudio(f), label: 'Audio' },
       };
 
       const codeExts = [
@@ -2597,27 +2633,49 @@ Please review this PR and provide feedback.`;
     },
 
     renderImage(content, filePath) {
-      if (!content) return '<div class="image-preview">No image data</div>';
-
-      const ext = filePath.split('.').pop().toLowerCase();
-      const mimeMap = {
-        'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
-        'gif': 'image/gif', 'svg': 'image/svg+xml', 'webp': 'image/webp',
-        'ico': 'image/x-icon', 'bmp': 'image/bmp'
-      };
-      const mime = mimeMap[ext] || 'image/png';
       const fileName = filePath.split('/').pop();
+      const ext = fileName.split('.').pop().toLowerCase();
 
-      let src;
+      // SVG: keep inline rendering (works well as text)
       if (ext === 'svg') {
-        src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(content);
-      } else {
-        src = 'data:' + mime + ';base64,' + content;
+        if (!content) return '<div class="image-preview">No image data</div>';
+        const src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(content);
+        return '<div class="image-preview">' +
+          '<img src="' + src + '" alt="' + this.escapeHtml(fileName) + '">' +
+          '<div class="image-filename">' + this.escapeHtml(fileName) + '</div>' +
+          '</div>';
       }
 
+      // All other images: use raw endpoint
+      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId, key: this.apiKey });
+      const src = '/api/files/raw?' + params.toString();
       return '<div class="image-preview">' +
-        '<img src="' + src + '" alt="' + this.escapeHtml(fileName) + '">' +
+        '<img src="' + this.escapeHtml(src) + '" alt="' + this.escapeHtml(fileName) + '">' +
         '<div class="image-filename">' + this.escapeHtml(fileName) + '</div>' +
+        '</div>';
+    },
+
+    renderVideo(filePath) {
+      const fileName = filePath.split('/').pop();
+      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId, key: this.apiKey });
+      const src = '/api/files/raw?' + params.toString();
+      return '<div class="video-preview">' +
+        '<video controls preload="metadata" src="' + this.escapeHtml(src) + '">' +
+          'Your browser cannot play this video format.' +
+        '</video>' +
+        '<div class="media-filename">' + this.escapeHtml(fileName) + '</div>' +
+        '</div>';
+    },
+
+    renderAudio(filePath) {
+      const fileName = filePath.split('/').pop();
+      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId, key: this.apiKey });
+      const src = '/api/files/raw?' + params.toString();
+      return '<div class="audio-preview">' +
+        '<audio controls preload="metadata" src="' + this.escapeHtml(src) + '">' +
+          'Your browser cannot play this audio format.' +
+        '</audio>' +
+        '<div class="media-filename">' + this.escapeHtml(fileName) + '</div>' +
         '</div>';
     },
 
