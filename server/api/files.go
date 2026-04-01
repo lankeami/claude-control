@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,82 @@ var imageExtensions = map[string]bool{
 func isImageFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return imageExtensions[ext]
+}
+
+var mediaExtensions = map[string]bool{
+	// Images
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
+	".webp": true, ".ico": true, ".bmp": true, ".svg": true,
+	// Video
+	".mp4": true, ".webm": true, ".mov": true, ".avi": true,
+	".mkv": true, ".m4v": true,
+	// Audio
+	".mp3": true, ".wav": true, ".ogg": true, ".m4a": true,
+	".flac": true, ".aac": true, ".wma": true,
+}
+
+func isMediaFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return mediaExtensions[ext]
+}
+
+const maxRawFileSize = 10 << 20 // 10MB
+
+func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
+	filePath := r.URL.Query().Get("path")
+	sessionID := r.URL.Query().Get("session_id")
+
+	if filePath == "" || sessionID == "" {
+		http.Error(w, "path and session_id are required", http.StatusBadRequest)
+		return
+	}
+
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	// Symlink resolution
+	resolved, err := filepath.EvalSymlinks(filePath)
+	if err != nil {
+		http.Error(w, "file not found", http.StatusNotFound)
+		return
+	}
+
+	// CWD boundary check
+	if sess.CWD != "" {
+		resolvedCWD, err := filepath.EvalSymlinks(sess.CWD)
+		if err != nil {
+			resolvedCWD = sess.CWD
+		}
+		rel, err := filepath.Rel(resolvedCWD, resolved)
+		if err != nil || len(rel) >= 2 && rel[:2] == ".." {
+			http.Error(w, "file is outside session working directory", http.StatusForbidden)
+			return
+		}
+	}
+
+	// Check file size
+	info, err := os.Stat(resolved)
+	if err != nil {
+		http.Error(w, "file not found", http.StatusNotFound)
+		return
+	}
+	if info.Size() > maxRawFileSize {
+		http.Error(w, "file too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	// Detect MIME type by extension
+	ext := strings.ToLower(filepath.Ext(resolved))
+	contentType := mime.TypeByExtension(ext)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	http.ServeFile(w, r, resolved)
 }
 
 type fileEntry struct {
