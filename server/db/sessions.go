@@ -149,6 +149,22 @@ func (s *Store) ResumeSession(id, claudeSessionID string) error {
 	return tx.Commit()
 }
 
+func (s *Store) ClearSession(id string) error {
+	newClaudeSessionID := uuid.New().String()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin clear transaction: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
+		return fmt.Errorf("delete messages: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 0, turn_count = 0, activity_state = 'idle' WHERE id = ?`, newClaudeSessionID, id); err != nil {
+		return fmt.Errorf("reset session state: %w", err)
+	}
+	return tx.Commit()
+}
+
 func (s *Store) GetTranscriptPath(sessionID string) (string, error) {
 	var path sql.NullString
 	err := s.db.QueryRow("SELECT transcript_path FROM sessions WHERE id = ?", sessionID).Scan(&path)

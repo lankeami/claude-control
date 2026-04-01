@@ -19,7 +19,7 @@ type slashCommand struct {
 
 var builtinCommands = []slashCommand{
 	{Name: "/add-dir", Description: "Add a working directory for this session", Source: "builtin", HasArg: true, ArgHint: "<path>"},
-	{Name: "/clear", Description: "Clear chat display", Source: "builtin"},
+	{Name: "/clear", Description: "Clear chat and start fresh conversation", Source: "builtin"},
 	{Name: "/compact", Description: "Compact conversation context", Source: "builtin", HasArg: true, ArgHint: "[instructions]"},
 	{Name: "/config", Description: "Show session configuration", Source: "builtin"},
 	{Name: "/context", Description: "Show active context files (CLAUDE.md etc)", Source: "builtin"},

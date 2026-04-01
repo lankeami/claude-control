@@ -319,6 +319,70 @@ func TestRecentDirectories_DeduplicatesCWD(t *testing.T) {
 	}
 }
 
+func TestClearSession(t *testing.T) {
+	store := newTestStore(t)
+	sess, err := store.CreateManagedSession("/tmp/test-clear", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate some usage: add messages, set initialized, increment turns
+	store.CreateMessage(sess.ID, "user", "hello")
+	store.CreateMessage(sess.ID, "assistant", "hi there")
+	store.SetInitialized(sess.ID)
+	store.IncrementTurnCount(sess.ID)
+	store.IncrementTurnCount(sess.ID)
+	store.UpdateActivityState(sess.ID, "waiting")
+
+	oldSessionID := sess.ClaudeSessionID
+
+	// Clear the session
+	if err := store.ClearSession(sess.ID); err != nil {
+		t.Fatalf("ClearSession: %v", err)
+	}
+
+	// Verify messages deleted
+	msgs, err := store.ListMessages(sess.ID)
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected 0 messages after clear, got %d", len(msgs))
+	}
+
+	// Verify session state reset
+	updated, err := store.GetSessionByID(sess.ID)
+	if err != nil {
+		t.Fatalf("GetSessionByID: %v", err)
+	}
+	if updated.Initialized {
+		t.Error("expected initialized=false after clear")
+	}
+	if updated.TurnCount != 0 {
+		t.Errorf("expected turn_count=0, got %d", updated.TurnCount)
+	}
+	if updated.ActivityState != "idle" {
+		t.Errorf("expected activity_state='idle', got %q", updated.ActivityState)
+	}
+	if updated.ClaudeSessionID == oldSessionID {
+		t.Error("expected new claude_session_id after clear")
+	}
+	if updated.ClaudeSessionID == "" {
+		t.Error("expected non-empty claude_session_id after clear")
+	}
+
+	// Verify settings preserved
+	if updated.CWD != "/tmp/test-clear" {
+		t.Errorf("expected cwd preserved, got %q", updated.CWD)
+	}
+	if updated.AllowedTools != `["Bash"]` {
+		t.Errorf("expected allowed_tools preserved, got %q", updated.AllowedTools)
+	}
+	if updated.MaxTurns != 50 {
+		t.Errorf("expected max_turns preserved, got %d", updated.MaxTurns)
+	}
+}
+
 func TestResetStaleActivityStates(t *testing.T) {
 	store := newTestStore(t)
 	s1, _ := store.CreateManagedSession("/tmp/stale1", `["Bash"]`, 50, 5.0, 0)
