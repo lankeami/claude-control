@@ -71,7 +71,6 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath str
 	apiMux.HandleFunc("GET /api/sessions/{id}/filetree", s.handleFileTree)
 	apiMux.HandleFunc("GET /api/files/content", s.handleGetFileContent)
 	apiMux.HandleFunc("GET /api/files/diff", s.handleFileDiff)
-	apiMux.HandleFunc("GET /api/files/raw", s.handleGetFileRaw)
 
 	// GitHub endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues", s.handleListGithubIssues)
@@ -108,6 +107,17 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath str
 	// Per-session SSE stream — handles its own auth via query param
 	root.HandleFunc("GET /api/sessions/{id}/stream", func(w http.ResponseWriter, r *http.Request) {
 		s.handleSessionStream(w, r, apiKey)
+	})
+
+	// Raw file endpoint — handles its own auth via query param
+	// (HTML <video>/<audio>/<img> tags can't send Authorization headers)
+	root.HandleFunc("GET /api/files/raw", func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Query().Get("key")
+		if key == "" || key != apiKey {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		s.handleGetFileRaw(w, r)
 	})
 
 	// All other /api/ routes — through auth middleware

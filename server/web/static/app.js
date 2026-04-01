@@ -2647,7 +2647,7 @@ Please review this PR and provide feedback.`;
       }
 
       // All other images: use raw endpoint
-      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId });
+      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId, key: this.apiKey });
       const src = '/api/files/raw?' + params.toString();
       return '<div class="image-preview">' +
         '<img src="' + this.escapeHtml(src) + '" alt="' + this.escapeHtml(fileName) + '">' +
@@ -2657,7 +2657,7 @@ Please review this PR and provide feedback.`;
 
     renderVideo(filePath) {
       const fileName = filePath.split('/').pop();
-      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId });
+      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId, key: this.apiKey });
       const src = '/api/files/raw?' + params.toString();
       return '<div class="video-preview">' +
         '<video controls preload="metadata" src="' + this.escapeHtml(src) + '">' +
@@ -2669,7 +2669,7 @@ Please review this PR and provide feedback.`;
 
     renderAudio(filePath) {
       const fileName = filePath.split('/').pop();
-      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId });
+      const params = new URLSearchParams({ path: filePath, session_id: this.selectedSessionId, key: this.apiKey });
       const src = '/api/files/raw?' + params.toString();
       return '<div class="audio-preview">' +
         '<audio controls preload="metadata" src="' + this.escapeHtml(src) + '">' +

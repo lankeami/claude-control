@@ -42,8 +42,8 @@ func TestHandleGetFileRaw(t *testing.T) {
 	os.WriteFile(txtPath, []byte("hello world"), 0644)
 
 	t.Run("serves image with correct content-type", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/files/raw?path="+pngPath+"&session_id="+sessID+"", nil)
-		req.Header.Set("Authorization", "Bearer test-key")
+		req := httptest.NewRequest("GET", "/api/files/raw?path="+pngPath+"&session_id="+sessID+"&key=test-key", nil)
+		// auth via query param (no Authorization header for <video>/<img> tags)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
@@ -59,20 +59,18 @@ func TestHandleGetFileRaw(t *testing.T) {
 		}
 	})
 
-	t.Run("missing params returns 400", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/files/raw?path="+pngPath, nil)
-		req.Header.Set("Authorization", "Bearer test-key")
+	t.Run("missing key returns 401", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/files/raw?path="+pngPath+"&session_id="+sessID, nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d", w.Code)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401, got %d", w.Code)
 		}
 	})
 
 	t.Run("file outside CWD returns 403", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/files/raw?path=/etc/passwd&session_id="+sessID+"", nil)
-		req.Header.Set("Authorization", "Bearer test-key")
+		req := httptest.NewRequest("GET", "/api/files/raw?path=/etc/passwd&session_id="+sessID+"&key=test-key", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
@@ -83,8 +81,7 @@ func TestHandleGetFileRaw(t *testing.T) {
 
 	t.Run("nonexistent file returns 404", func(t *testing.T) {
 		noFile := filepath.Join(dir, "nope.png")
-		req := httptest.NewRequest("GET", "/api/files/raw?path="+noFile+"&session_id="+sessID+"", nil)
-		req.Header.Set("Authorization", "Bearer test-key")
+		req := httptest.NewRequest("GET", "/api/files/raw?path="+noFile+"&session_id="+sessID+"&key=test-key", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
@@ -94,8 +91,7 @@ func TestHandleGetFileRaw(t *testing.T) {
 	})
 
 	t.Run("serves text file with correct content-type", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/files/raw?path="+txtPath+"&session_id="+sessID+"", nil)
-		req.Header.Set("Authorization", "Bearer test-key")
+		req := httptest.NewRequest("GET", "/api/files/raw?path="+txtPath+"&session_id="+sessID+"&key=test-key", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
