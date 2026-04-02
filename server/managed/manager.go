@@ -394,6 +394,22 @@ func (m *Manager) RunCompact(sessionID string, resumeID string, cwd string, time
 	}
 }
 
+// ShutdownAll gracefully shuts down all running processes.
+// Closes stdin and waits up to timeout for each to exit, then kills.
+func (m *Manager) ShutdownAll(timeout time.Duration) {
+	m.mu.Lock()
+	ids := make([]string, 0, len(m.procs))
+	for id := range m.procs {
+		ids = append(ids, id)
+	}
+	m.mu.Unlock()
+
+	for _, id := range ids {
+		log.Printf("shutting down process for session %s", id)
+		m.GracefulShutdown(id, timeout)
+	}
+}
+
 // GracefulShutdown closes stdin to let the process exit naturally, then waits
 // up to timeout for it to finish. Falls back to SIGKILL if it doesn't exit.
 // No-op if no process is running for the session.
