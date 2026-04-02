@@ -102,7 +102,8 @@ func main() {
 		}
 	}
 
-	router := api.NewRouter(store, apiKey, mgr, envPath, shutdownFunc)
+	serverID := fmt.Sprintf("%d", time.Now().UnixNano())
+	router := api.NewRouter(store, apiKey, mgr, envPath, shutdownFunc, serverID)
 
 	// Start local server
 	bindHost := "localhost"
@@ -118,12 +119,14 @@ func main() {
 	fmt.Printf("Local server listening on %s\n", addr)
 	fmt.Printf("API key: %s\n", apiKey)
 
-	// Start serving HTTP immediately
-	go http.Serve(localListener, router)
+	// Start serving HTTP with http.Server for graceful shutdown
+	httpServer := &http.Server{Handler: router}
+	go httpServer.Serve(localListener)
 
 	// Start ngrok tunnel (may block if no auth token)
 	ctx, cancel := context.WithCancel(context.Background())
 
+	var ngrokServer *http.Server
 	tun, err := tunnel.Start(ctx)
 	if err != nil {
 		log.Printf("Warning: ngrok tunnel failed: %v", err)
@@ -140,7 +143,8 @@ func main() {
 		displayQRCode(ngrokURL, apiKey)
 
 		// Serve on ngrok listener too
-		go http.Serve(tun.Listener(), router)
+		ngrokServer = &http.Server{Handler: router}
+		go ngrokServer.Serve(tun.Listener())
 	}
 
 	// Handle shutdown via signal or restart request
@@ -156,11 +160,18 @@ func main() {
 		restartRequested = true
 	}
 
-	// Graceful shutdown sequence
+	// Graceful shutdown: stop HTTP first so clients see the server as down
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	httpServer.Shutdown(shutdownCtx)
+	if ngrokServer != nil {
+		ngrokServer.Shutdown(shutdownCtx)
+	}
+	shutdownCancel()
+
+	// Then shut down background services
 	mgr.ShutdownAll(5 * time.Second)
 	sched.Stop()
 	cancel()
-	localListener.Close()
 	store.Close()
 
 	if restartRequested {

@@ -16,10 +16,11 @@ type Server struct {
 	permissions       *PermissionManager
 	shutdownFunc      func() // called to trigger server restart
 	restartInProgress atomic.Bool
+	serverID          string // unique ID per server instance, used by clients to detect restart
 }
 
-func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string, shutdownFunc func()) http.Handler {
-	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), shutdownFunc: shutdownFunc}
+func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string, shutdownFunc func(), serverID string) http.Handler {
+	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), shutdownFunc: shutdownFunc, serverID: serverID}
 
 	// API mux — all existing endpoints, behind auth middleware
 	apiMux := http.NewServeMux()
