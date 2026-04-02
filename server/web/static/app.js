@@ -523,24 +523,34 @@ document.addEventListener('alpine:init', () => {
           this.serverRestarting = false;
           return;
         }
+        const data = await resp.json();
         this.showSettingsModal = false;
         this.toast('Server restarting...', 10000, 'info');
-        this.pollForRestart();
+        this.pollForRestart(data.server_id);
       } catch (e) {
         this.showSettingsModal = false;
         this.toast('Server restarting...', 10000, 'info');
-        this.pollForRestart();
+        this.pollForRestart(null);
       }
     },
 
-    pollForRestart() {
+    pollForRestart(oldServerID) {
       let attempts = 0;
-      const maxAttempts = 30;
+      const maxAttempts = 60;
       const poll = setInterval(async () => {
         attempts++;
         try {
-          const resp = await fetch(`/api/events?token=${encodeURIComponent(this.apiKey)}`);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000);
+          const resp = await fetch('/api/status', {
+            headers: { 'Authorization': `Bearer ${this.apiKey}` },
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
           if (resp.ok) {
+            const data = await resp.json();
+            // Wait until we see a DIFFERENT server_id (new process)
+            if (oldServerID && data.server_id === oldServerID) return;
             clearInterval(poll);
             this.serverRestarting = false;
             this.toast('Server restarted successfully', 3000, 'info');

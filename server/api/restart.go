@@ -18,7 +18,7 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "restarting"})
+	json.NewEncoder(w).Encode(map[string]string{"status": "restarting", "server_id": s.serverID})
 
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()

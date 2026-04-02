@@ -20,7 +20,7 @@ func TestHandleGetFileRaw(t *testing.T) {
 	defer store.Close()
 
 	envPath := filepath.Join(dir, ".env")
-	router := NewRouter(store, "test-key", nil, envPath, nil)
+	router := NewRouter(store, "test-key", nil, envPath, nil, "test-server-id")
 
 	// Create a managed session with CWD set to dir
 	sess, err := store.CreateManagedSession(dir, "", 0, 0, 0)
