@@ -58,7 +58,7 @@ can catch this and restart the process.
 
 ### Restart Button
 
-Add a restart button to the web UI settings/header area. Simple icon button with confirmation.
+Add an "Actions" section to the bottom of the settings modal, near the save button. This section contains a "Restart Server" button with a confirmation prompt ("Are you sure? This will restart the server and briefly disconnect all sessions.").
 
 ### Restart Flow
 
