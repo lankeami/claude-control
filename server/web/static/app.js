@@ -125,6 +125,7 @@ document.addEventListener('alpine:init', () => {
     settingsError: '',
     settingsSaving: false,
     settingsRestartRequired: false,
+    serverRestarting: false,
 
     // Usage tracking
     lastTurnThreshold: 0,
@@ -506,6 +507,57 @@ document.addEventListener('alpine:init', () => {
         this.settingsError = 'Error: ' + e.message;
       }
       this.settingsSaving = false;
+    },
+
+    async restartServer() {
+      if (!confirm('Restart the server? All sessions will be briefly disconnected.')) return;
+      this.serverRestarting = true;
+      try {
+        const resp = await fetch('/api/restart', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          this.toast(text || 'Restart failed', 4000, 'error');
+          this.serverRestarting = false;
+          return;
+        }
+        this.showSettingsModal = false;
+        this.toast('Server restarting...', 10000, 'info');
+        this.pollForRestart();
+      } catch (e) {
+        this.showSettingsModal = false;
+        this.toast('Server restarting...', 10000, 'info');
+        this.pollForRestart();
+      }
+    },
+
+    pollForRestart() {
+      let attempts = 0;
+      const maxAttempts = 30;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const resp = await fetch(`/api/events?token=${encodeURIComponent(this.apiKey)}`);
+          if (resp.ok) {
+            clearInterval(poll);
+            this.serverRestarting = false;
+            this.toast('Server restarted successfully', 3000, 'info');
+            this.startSSE();
+            if (this.selectedSessionId) {
+              this.startSessionSSE(this.selectedSessionId);
+            }
+          }
+        } catch (e) {
+          // Server still down, keep polling
+        }
+        if (attempts >= maxAttempts) {
+          clearInterval(poll);
+          this.serverRestarting = false;
+          this.toast('Could not reconnect to server', 5000, 'error');
+        }
+      }, 1000);
     },
 
     // Browser notifications

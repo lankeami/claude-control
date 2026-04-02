@@ -322,6 +322,12 @@ func TestGracefulShutdownNoProcess(t *testing.T) {
 	}
 }
 
+func TestShutdownAll_NoProcesses(t *testing.T) {
+	mgr := NewManager(Config{})
+	mgr.ShutdownAll(5 * time.Second)
+	// Should not panic or hang
+}
+
 func TestUpdateConfig(t *testing.T) {
 	mgr := NewManager(Config{ClaudeBin: "old-bin", ClaudeArgs: []string{"--old"}, ClaudeEnv: []string{"OLD=1"}})
 

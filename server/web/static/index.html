@@ -1131,6 +1131,17 @@
 
       <p class="error-msg" x-show="settingsError" x-text="settingsError" style="margin-top:8px;"></p>
 
+      <!-- Actions -->
+      <div x-show="!settingsFirstRun" style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+        <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:8px;">ACTIONS</label>
+        <button class="btn btn-sm" @click="restartServer()" :disabled="serverRestarting"
+                style="background:var(--red); color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-size:13px;">
+          <span x-show="!serverRestarting">Restart Server</span>
+          <span x-show="serverRestarting">Restarting...</span>
+        </button>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Gracefully restarts the server, preserving all session state</div>
+      </div>
+
       <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
         <button class="btn btn-sm" @click="showSettingsModal = false; settingsFirstRun = false;" x-text="settingsFirstRun ? 'Skip' : 'Cancel'"></button>
         <button class="btn btn-sm btn-primary" @click="saveSettings()" :disabled="settingsSaving">

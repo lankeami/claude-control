@@ -19,7 +19,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *db.Store) {
 	}
 	t.Cleanup(func() { store.Close() })
 
-	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"))
+	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"), nil)
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 	return ts, store

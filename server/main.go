@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
 
@@ -68,7 +70,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
-	defer store.Close()
 
 	if err := store.ResetStaleActivityStates(); err != nil {
 		log.Printf("Warning: failed to reset stale activity states: %v", err)
@@ -77,7 +78,6 @@ func main() {
 	sched := scheduler.New(store)
 	sched.Reconcile()
 	sched.Start()
-	defer sched.Stop()
 
 	apiKey := loadOrCreateAPIKey(*dbPath)
 
@@ -94,7 +94,15 @@ func main() {
 	mgr := managed.NewManager(managedCfg)
 	mgr.StartReaper()
 
-	router := api.NewRouter(store, apiKey, mgr, envPath)
+	restartCh := make(chan struct{}, 1)
+	shutdownFunc := func() {
+		select {
+		case restartCh <- struct{}{}:
+		default:
+		}
+	}
+
+	router := api.NewRouter(store, apiKey, mgr, envPath, shutdownFunc)
 
 	// Start local server
 	bindHost := "localhost"
@@ -115,7 +123,6 @@ func main() {
 
 	// Start ngrok tunnel (may block if no auth token)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	tun, err := tunnel.Start(ctx)
 	if err != nil {
@@ -136,13 +143,39 @@ func main() {
 		go http.Serve(tun.Listener(), router)
 	}
 
-	// Handle shutdown
+	// Handle shutdown via signal or restart request
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
-	<-sigCh
-	fmt.Println("\nShutting down...")
+
+	restartRequested := false
+	select {
+	case <-sigCh:
+		fmt.Println("\nShutting down...")
+	case <-restartCh:
+		fmt.Println("\nRestarting server...")
+		restartRequested = true
+	}
+
+	// Graceful shutdown sequence
+	mgr.ShutdownAll(5 * time.Second)
+	sched.Stop()
 	cancel()
 	localListener.Close()
+	store.Close()
+
+	if restartRequested {
+		exe, err := os.Executable()
+		if err != nil {
+			log.Printf("Failed to find executable path: %v", err)
+			os.Exit(0)
+		}
+		log.Printf("Re-execing %s %v", exe, os.Args)
+		execErr := syscall.Exec(exe, os.Args, os.Environ())
+		if execErr != nil {
+			log.Printf("syscall.Exec failed: %v — exiting for wrapper to restart", execErr)
+			os.Exit(0)
+		}
+	}
 }
 
 func findAvailablePort(preferred int) int {
