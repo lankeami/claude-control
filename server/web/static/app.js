@@ -1595,6 +1595,10 @@ document.addEventListener('alpine:init', () => {
           }
 
           if (data.type === 'done' || data.type === 'result') {
+            // Skip result events from compact process — they'd pollute cost/pill state
+            if (data.type === 'result' && this.isCompacting) {
+              return;
+            }
             // Track cost from result events
             if (data.type === 'result' && data.cost != null) {
               this.sessionCost = (this.sessionCost || 0) + data.cost;
@@ -1707,8 +1711,8 @@ document.addEventListener('alpine:init', () => {
       // Don't reconnect if we've switched sessions
       if (sessionId !== this.selectedSessionId) return;
 
-      // Cap reconnect attempts
-      if (this.sseReconnectAttempts >= 10) {
+      // Cap reconnect attempts — higher limit to survive long compacts
+      if (this.sseReconnectAttempts >= 20) {
         this.addActivityPill('Connection lost — reconnect failed', 'disconnected');
         this.sseReconnectAttempts = 0;
         return;
@@ -1719,7 +1723,7 @@ document.addEventListener('alpine:init', () => {
       this.sseReconnectAttempts++;
 
       this.sseReconnectTimer = setTimeout(async () => {
-        // Check if session is still working before reconnecting
+        // Check session state to decide reconnect strategy
         try {
           const resp = await fetch(`/api/sessions/${sessionId}`, {
             headers: { 'Authorization': `Bearer ${this.apiKey}` }
@@ -1727,9 +1731,11 @@ document.addEventListener('alpine:init', () => {
           if (!resp.ok) return;
           const session = await resp.json();
           if (session.activity_state !== 'working') {
-            // Session finished while we were disconnected — reload messages
-            this.sseReconnectAttempts = 0;
+            // Session not currently working — reload messages to catch anything missed
             await this.fetchManagedMessages(sessionId);
+            // Still reconnect SSE so we're listening if the session resumes
+            // (e.g., after compact finishes and new process starts)
+            this.startSessionSSE(sessionId);
             return;
           }
         } catch (e) {
