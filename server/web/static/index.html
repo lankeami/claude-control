@@ -278,6 +278,19 @@
                       :class="{ active: shellMode }"
                       @click="shellMode = !shellMode"
                       :title="shellMode ? 'Switch to chat mode' : 'Switch to shell mode'">$</button>
+              <button class="image-upload-btn"
+                      x-show="currentSession?.mode === 'managed' && !shellMode"
+                      @click="$refs.imageInput.click()"
+                      :disabled="imageUploading"
+                      title="Attach screenshot">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="1" y="2" width="14" height="12" rx="2"/>
+                  <circle cx="5" cy="6.5" r="1.5"/>
+                  <path d="M1 11l3.5-3.5L7 10l3-4 5 5.5V12a2 2 0 01-2 2H3a2 2 0 01-2-2z"/>
+                </svg>
+              </button>
+              <input type="file" x-ref="imageInput" accept="image/*" capture="environment"
+                     @change="uploadImage($event)" style="display:none">
 
               <!-- Slash command autocomplete -->
               <div class="slash-menu" x-show="showSlashMenu && filteredSlashCommands.length > 0" x-cloak
@@ -293,6 +306,13 @@
                 </template>
               </div>
 
+              <!-- Image preview -->
+              <div class="image-preview-strip" x-show="pendingImagePreview" x-cloak>
+                <img :src="pendingImagePreview" class="image-preview-thumb">
+                <span class="image-preview-name" x-text="pendingImageFilename"></span>
+                <button class="image-preview-remove" @click="clearPendingImage()" title="Remove image">&times;</button>
+              </div>
+
               <textarea x-model="inputText" rows="1"
                      :placeholder="shellMode ? 'Run a command...' : (currentSession?.mode === 'managed' ? 'Send a message... (/ for commands)' : 'Send instruction (delivered on next stop)...')"
                      :class="{ 'shell-input': shellMode }"
@@ -300,7 +320,7 @@
                      @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 150) + 'px'; onSlashInput()"
                      @blur="setTimeout(() => showSlashMenu = false, 150)"
                      :disabled="inputSending"></textarea>
-              <button class="btn btn-primary btn-sm" :disabled="!inputText.trim() || inputSending"
+              <button class="btn btn-primary btn-sm" :disabled="(!inputText.trim() && !pendingImageId) || inputSending"
                       @click="handleInput()" style="width:auto">
                 <span x-show="!inputSuccess">Send</span>
                 <span x-show="inputSuccess" style="color:#16a34a">Sent!</span>

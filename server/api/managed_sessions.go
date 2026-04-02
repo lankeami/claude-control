@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -135,13 +136,14 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Message string `json:"message"`
+		ImageID string `json:"image_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
-	if req.Message == "" {
-		http.Error(w, "message is required", http.StatusBadRequest)
+	if req.Message == "" && req.ImageID == "" {
+		http.Error(w, "message or image_id is required", http.StatusBadRequest)
 		return
 	}
 
@@ -173,7 +175,28 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.UpdateActivityState(sessionID, "waiting")
 	}
 
-	_, _ = s.store.CreateMessage(sessionID, "user", req.Message)
+	// Load uploaded image if provided
+	var imageBase64, imageMediaType string
+	if req.ImageID != "" {
+		imgPath, mediaType := findUploadedImage(sess.CWD, sessionID, req.ImageID)
+		if imgPath != "" {
+			imgData, readErr := os.ReadFile(imgPath)
+			if readErr == nil {
+				imageBase64 = base64.StdEncoding.EncodeToString(imgData)
+				imageMediaType = mediaType
+			} else {
+				log.Printf("session %s: failed to read image %s: %v", sessionID, req.ImageID, readErr)
+			}
+		} else {
+			log.Printf("session %s: uploaded image %s not found", sessionID, req.ImageID)
+		}
+	}
+
+	displayMsg := req.Message
+	if imageBase64 != "" {
+		displayMsg = formatImageUploadMessage(req.Message, req.ImageID)
+	}
+	_, _ = s.store.CreateMessage(sessionID, "user", displayMsg)
 	_ = s.store.UpdateActivityState(sessionID, "working")
 
 	broadcaster := s.manager.GetBroadcaster(sessionID)
@@ -312,7 +335,13 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Send the user message via stdin
-			userTurn := formatUserTurn(currentMessage)
+			var userTurn string
+			if imageBase64 != "" {
+				userTurn = formatUserTurnWithImage(currentMessage, imageBase64, imageMediaType)
+				imageBase64 = "" // Only include image on the first turn, not auto-continues
+			} else {
+				userTurn = formatUserTurn(currentMessage)
+			}
 			if err := s.manager.SendTurn(sessionID, userTurn); err != nil {
 				log.Printf("send turn error for session %s: %v", sessionID, err)
 				errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to send message: %s"}`, err.Error())

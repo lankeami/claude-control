@@ -85,6 +85,13 @@ func (s *Server) handleUpdateSessionName(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+
+	// Clean up uploaded images before deleting session
+	sess, err := s.store.GetSessionByID(id)
+	if err == nil && sess != nil && sess.Mode == "managed" && sess.CWD != "" {
+		cleanupSessionUploads(sess.CWD, id)
+	}
+
 	// Teardown managed process if running
 	if s.manager != nil {
 		s.manager.Teardown(id, 5*time.Second)
