@@ -407,6 +407,11 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				turnDone = make(chan struct{}, 4)
 				streamDone = make(chan struct{})
 
+				// Send heartbeat to keep SSE clients alive during the gap between
+				// the old process dying and the next process (or compact) starting.
+				hb := fmt.Sprintf(`{"type":"heartbeat","ts":%d}`, time.Now().UnixMilli())
+				broadcaster.Send(hb)
+
 			default:
 				// Process still alive — turn completed normally
 				if !interrupted {
@@ -477,6 +482,11 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				}
 				compactCompleteMsg := fmt.Sprintf(`{"type":"compact_complete","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(compactCompleteMsg)
+
+				// Send a heartbeat after compact to keep SSE clients alive during the
+				// gap between compact finishing and the new process starting.
+				hb := fmt.Sprintf(`{"type":"heartbeat","ts":%d}`, time.Now().UnixMilli())
+				broadcaster.Send(hb)
 			}
 
 			currentMessage = "You were interrupted due to turn limits. Continue where you left off."
