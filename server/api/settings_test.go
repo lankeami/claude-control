@@ -24,7 +24,7 @@ func newTestServerWithManager(t *testing.T) (*httptest.Server, *db.Store, *manag
 
 	mgr := managed.NewManager(managed.Config{ClaudeBin: "claude"})
 	envPath := filepath.Join(tmpDir, ".env")
-	router := NewRouter(store, "test-key", mgr, envPath)
+	router := NewRouter(store, "test-key", mgr, envPath, nil)
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 	return ts, store, mgr, envPath

@@ -225,6 +225,13 @@ func (s *Store) ResetStaleActivityStates() error {
 	return err
 }
 
+// SetWorkingToWaiting updates all sessions with activity_state='working' to 'waiting'.
+// Used during graceful restart to preserve conversation continuity.
+func (s *Store) SetWorkingToWaiting() error {
+	_, err := s.db.Exec("UPDATE sessions SET activity_state = 'waiting' WHERE activity_state = 'working'")
+	return err
+}
+
 func (s *Store) IncrementTurnCount(id string) (int, error) {
 	var count int
 	err := s.db.QueryRow(

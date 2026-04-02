@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sync/atomic"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
@@ -9,11 +10,12 @@ import (
 )
 
 type Server struct {
-	store        *db.Store
-	manager      *managed.Manager
-	envPath      string
-	permissions  *PermissionManager
-	shutdownFunc func() // called to trigger server restart
+	store             *db.Store
+	manager           *managed.Manager
+	envPath           string
+	permissions       *PermissionManager
+	shutdownFunc      func() // called to trigger server restart
+	restartInProgress atomic.Bool
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string, shutdownFunc func()) http.Handler {
@@ -84,6 +86,9 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath str
 	apiMux.HandleFunc("GET /api/settings/exists", s.handleSettingsExists)
 	apiMux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	apiMux.HandleFunc("PUT /api/settings", s.handlePutSettings)
+
+	// Server management
+	apiMux.HandleFunc("POST /api/restart", s.handleRestart)
 
 	// Scheduled task endpoints
 	apiMux.HandleFunc("POST /api/tasks", s.handleCreateTask)
