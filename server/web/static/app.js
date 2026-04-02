@@ -132,6 +132,12 @@ document.addEventListener('alpine:init', () => {
     continuationCount: 0,
     isCompacting: false,
 
+    // Image upload state
+    pendingImageId: null,
+    pendingImagePreview: null,
+    pendingImageFilename: null,
+    imageUploading: false,
+
     // Shell mode
     shellMode: false,
     activeShellId: null,
@@ -1284,22 +1290,82 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    async uploadImage(event) {
+      const file = event.target.files?.[0];
+      if (!file || !this.selectedSessionId) return;
+
+      if (!file.type.startsWith('image/')) {
+        this.toast('Please select an image file');
+        event.target.value = '';
+        return;
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        this.toast('Image must be under 20MB');
+        event.target.value = '';
+        return;
+      }
+
+      this.imageUploading = true;
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const res = await fetch(`/api/sessions/${this.selectedSessionId}/upload`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + this.apiKey },
+          body: formData
+        });
+        if (!res.ok) throw new Error(await res.text());
+
+        const data = await res.json();
+        this.pendingImageId = data.image_id;
+        this.pendingImageFilename = data.filename;
+
+        const reader = new FileReader();
+        reader.onload = (e) => { this.pendingImagePreview = e.target.result; };
+        reader.readAsDataURL(file);
+      } catch (e) {
+        this.toast('Upload failed: ' + e.message);
+      }
+      this.imageUploading = false;
+      event.target.value = '';
+    },
+
+    clearPendingImage() {
+      this.pendingImageId = null;
+      this.pendingImagePreview = null;
+      this.pendingImageFilename = null;
+    },
+
     async sendManagedMessage() {
-      if (!this.inputText.trim() || !this.selectedSessionId) return;
+      if ((!this.inputText.trim() && !this.pendingImageId) || !this.selectedSessionId) return;
       const msg = this.inputText.trim();
       this.inputText = '';
       this.inputSending = true;
 
+      const imageId = this.pendingImageId;
+      const imagePreview = this.pendingImagePreview;
+      const imageFilename = this.pendingImageFilename;
+      this.clearPendingImage();
+
       try {
+        const body = { message: msg };
+        if (imageId) body.image_id = imageId;
+
         const res = await fetch(`/api/sessions/${this.selectedSessionId}/message`, {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg })
+          body: JSON.stringify(body)
         });
         if (!res.ok) throw new Error(await res.text());
 
         // Add user message to chat immediately
-        this.chatMessages.push({ role: 'user', content: msg, msg_type: 'text', timestamp: new Date().toISOString() });
+        const userMsg = { role: 'user', content: msg || `[Screenshot: ${imageFilename}]`, msg_type: 'text', timestamp: new Date().toISOString() };
+        if (imagePreview) {
+          userMsg.imagePreview = imagePreview;
+          userMsg.imageFilename = imageFilename;
+        }
+        this.chatMessages.push(userMsg);
         this.$nextTick(() => this.scrollToBottom(true));
 
         // Start activity pills
@@ -2355,6 +2421,10 @@ Please review this PR and provide feedback.`;
       const time = `<span class="bubble-time">${esc(this.timeAgo(msg.timestamp))}</span>`;
 
       if (msg.msg_type === 'text') {
+        let imgHtml = '';
+        if (msg.imagePreview) {
+          imgHtml = `<img src="${msg.imagePreview}" style="max-width:200px;max-height:150px;border-radius:6px;margin-bottom:4px;cursor:pointer;display:block" onclick="window.open(this.src,'_blank')">`;
+        }
         if ((msg.role === 'assistant' || msg.role === 'user' || msg.command) && typeof marked !== 'undefined') {
           const r = new marked.Renderer();
           r.link = function(href, title, text) {
@@ -2366,9 +2436,9 @@ Please review this PR and provide feedback.`;
           };
           const html = marked.parse(msg.content || '', { renderer: r, breaks: true });
           const eyebrow = msg.command ? `<div class="command-label">${esc(msg.command)}</div>` : '';
-          return `${eyebrow}<div class="markdown-content">${html}</div>${time}`;
+          return `${imgHtml}${eyebrow}<div class="markdown-content">${html}</div>${time}`;
         }
-        return `${esc(msg.content)}${time}`;
+        return `${imgHtml}${esc(msg.content)}${time}`;
       }
       if (msg.msg_type === 'edit') {
         let diff = '';

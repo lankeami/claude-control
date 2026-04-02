@@ -171,39 +171,36 @@ func findUploadedImage(sessionCWD, sessionID, imageID string) (string, string) {
 	return "", ""
 }
 
-// formatUserTurnWithImage builds a stream-json content array with an image block
-// and an optional text block.
+// formatUserTurnWithImage builds a stream-json user turn with an image content block
+// and an optional text block, matching the structure of formatUserTurn.
 func formatUserTurnWithImage(message, imageBase64, mediaType string) string {
-	type imageSource struct {
-		Type      string `json:"type"`
-		MediaType string `json:"media_type"`
-		Data      string `json:"data"`
-	}
-	type imageBlock struct {
-		Type   string      `json:"type"`
-		Source imageSource `json:"source"`
-	}
-	type textBlock struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+	var content []interface{}
+
+	content = append(content, map[string]interface{}{
+		"type": "image",
+		"source": map[string]string{
+			"type":       "base64",
+			"media_type": mediaType,
+			"data":       imageBase64,
+		},
+	})
+
+	if message != "" {
+		content = append(content, map[string]string{
+			"type": "text",
+			"text": message,
+		})
 	}
 
-	blocks := []interface{}{
-		imageBlock{
-			Type: "image",
-			Source: imageSource{
-				Type:      "base64",
-				MediaType: mediaType,
-				Data:      imageBase64,
-			},
+	turn := map[string]interface{}{
+		"type": "user",
+		"message": map[string]interface{}{
+			"role":    "user",
+			"content": content,
 		},
 	}
-	if message != "" {
-		blocks = append(blocks, textBlock{Type: "text", Text: message})
-	}
-
-	data, _ := json.Marshal(blocks)
-	return string(data)
+	b, _ := json.Marshal(turn)
+	return string(b)
 }
 
 // formatImageUploadMessage returns the display string for chat history.
