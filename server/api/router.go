@@ -9,14 +9,15 @@ import (
 )
 
 type Server struct {
-	store       *db.Store
-	manager     *managed.Manager
-	envPath     string
-	permissions *PermissionManager
+	store        *db.Store
+	manager      *managed.Manager
+	envPath      string
+	permissions  *PermissionManager
+	shutdownFunc func() // called to trigger server restart
 }
 
-func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string) http.Handler {
-	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager()}
+func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string, shutdownFunc func()) http.Handler {
+	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), shutdownFunc: shutdownFunc}
 
 	// API mux — all existing endpoints, behind auth middleware
 	apiMux := http.NewServeMux()
