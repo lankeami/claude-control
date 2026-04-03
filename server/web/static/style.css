@@ -1796,6 +1796,37 @@ body {
   cursor: not-allowed;
 }
 
+/* Voice chat toggle button */
+.voice-chat-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  position: relative;
+}
+.voice-chat-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.voice-chat-btn.active {
+  color: #dc2626;
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+.voice-chat-btn.active.listening {
+  animation: voice-pulse 1.5s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
 /* Image preview strip */
 .image-preview-strip {
   display: flex;

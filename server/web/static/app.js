@@ -143,6 +143,15 @@ document.addEventListener('alpine:init', () => {
     shellMode: false,
     activeShellId: null,
 
+    // Voice chat mode
+    voiceChatActive: false,
+    voiceChatSupported: false,
+    speechRecognition: null,
+    isListening: false,
+    interimTranscript: '',
+    ttsQueue: [],
+    ttsSpeaking: false,
+
     // Slash commands
     slashCommands: [],
     slashCommandsLoaded: false,
@@ -221,6 +230,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     async init() {
+      // Detect Web Speech API support
+      this.voiceChatSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
