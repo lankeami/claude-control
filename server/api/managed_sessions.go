@@ -328,10 +328,10 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			// Start the stdout reader only once per process
 			if !procStarted {
 				procStarted = true
-				go func() {
+				SafeGo("StreamNDJSON:"+sessionID, func() {
 					defer close(streamDone)
 					managed.StreamNDJSON(proc.Stdout, broadcaster, onLine, turnDone)
-				}()
+				})
 			}
 
 			// Send the user message via stdin
@@ -714,12 +714,12 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 		jsonString(req.Command), jsonString(commandID), jsonString(sess.CWD))
 	broadcaster.Send(startMsg)
 
-	go func() {
+	SafeGo("shell:"+commandID, func() {
 		var stdout, stderr strings.Builder
 		const maxOutput = 1024 * 1024
 
 		stdoutDone := make(chan struct{})
-		go func() {
+		SafeGo("shell-stdout:"+commandID, func() {
 			defer close(stdoutDone)
 			scanner := bufio.NewScanner(proc.Stdout)
 			scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -732,10 +732,10 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 					jsonString(line+"\n"), jsonString(commandID))
 				broadcaster.Send(msg)
 			}
-		}()
+		})
 
 		stderrDone := make(chan struct{})
-		go func() {
+		SafeGo("shell-stderr:"+commandID, func() {
 			defer close(stderrDone)
 			scanner := bufio.NewScanner(proc.Stderr)
 			scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -748,7 +748,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 					jsonString(line+"\n"), jsonString(commandID))
 				broadcaster.Send(msg)
 			}
-		}()
+		})
 
 		<-stdoutDone
 		<-stderrDone
@@ -778,7 +778,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 		} else {
 			_ = s.store.UpdateActivityState(sessionID, "idle")
 		}
-	}()
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"id": commandID})

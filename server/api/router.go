@@ -1,7 +1,11 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
+	"runtime/debug"
 	"sync/atomic"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
@@ -131,11 +135,42 @@ func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath str
 	// All other /api/ routes — through auth middleware
 	root.Handle("/api/", authedAPI)
 
+	// Health check — no auth required, used by Claude to verify server is alive
+	root.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "server_id": s.serverID})
+	})
+
 	// Visual file server — no auth required
 	root.HandleFunc("/visual/", s.handleVisual)
 
 	// Static files — no auth required
 	root.Handle("/", web.Handler())
 
-	return root
+	return RecoveryMiddleware(root)
+}
+
+// RecoveryMiddleware catches panics in HTTP handlers, logs the stack trace,
+// and returns a 500 response instead of crashing the server process.
+// Go's net/http already recovers handler panics, but this middleware provides
+// structured logging with full stack traces for debugging.
+func RecoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				stack := debug.Stack()
+				log.Printf("PANIC recovered in %s %s: %v\n%s", r.Method, r.URL.Path, err, stack)
+				if !headerWritten(w) {
+					http.Error(w, fmt.Sprintf("Internal Server Error: %v", err), http.StatusInternalServerError)
+				}
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// headerWritten is a best-effort check; ResponseWriter doesn't expose this directly.
+func headerWritten(w http.ResponseWriter) bool {
+	// If Content-Type is already set, headers were likely written
+	return w.Header().Get("Content-Type") != ""
 }
