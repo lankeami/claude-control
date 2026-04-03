@@ -143,6 +143,15 @@ document.addEventListener('alpine:init', () => {
     shellMode: false,
     activeShellId: null,
 
+    // Voice chat mode
+    voiceChatActive: false,
+    voiceChatSupported: false,
+    speechRecognition: null,
+    isListening: false,
+    interimTranscript: '',
+    ttsQueue: [],
+    ttsSpeaking: false,
+
     // Slash commands
     slashCommands: [],
     slashCommandsLoaded: false,
@@ -221,6 +230,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     async init() {
+      // Detect Web Speech API support
+      this.voiceChatSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
@@ -769,6 +780,10 @@ document.addEventListener('alpine:init', () => {
       if (this.selectedSessionId === id) return;
       this.selectedSessionId = id;
       this.stopSessionSSE();
+      // Stop voice chat when switching sessions
+      if (this.voiceChatActive) {
+        this.stopVoiceChat();
+      }
       this.clearActivityPills();
       this.closeFileViewer();
       this.slashCommands = [];
@@ -1403,6 +1418,7 @@ document.addEventListener('alpine:init', () => {
       if ((!this.inputText.trim() && !this.pendingImageId) || !this.selectedSessionId) return;
       const msg = this.inputText.trim();
       this.inputText = '';
+      this.interimTranscript = '';
       this.inputSending = true;
 
       const imageId = this.pendingImageId;
@@ -1485,6 +1501,153 @@ document.addEventListener('alpine:init', () => {
         this.toast('Error: ' + e.message);
       }
       this.inputSending = false;
+    },
+
+    toggleVoiceChat() {
+      if (this.voiceChatActive) {
+        this.stopVoiceChat();
+      } else {
+        this.startVoiceChat();
+      }
+    },
+
+    startVoiceChat() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        this.toast('Speech recognition not supported in this browser');
+        return;
+      }
+
+      this.speechRecognition = new SpeechRecognition();
+      this.speechRecognition.continuous = true;
+      this.speechRecognition.interimResults = true;
+      this.speechRecognition.lang = 'en-US';
+
+      this.speechRecognition.onstart = () => {
+        this.isListening = true;
+      };
+
+      this.speechRecognition.onend = () => {
+        this.isListening = false;
+        // Restart if voice chat is still active and not paused for TTS
+        if (this.voiceChatActive && !this.ttsSpeaking) {
+          try {
+            this.speechRecognition.start();
+          } catch (e) {
+            // Ignore — may already be started
+          }
+        }
+      };
+
+      this.speechRecognition.onresult = (event) => {
+        let interim = '';
+        let final = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            final += transcript;
+          } else {
+            interim += transcript;
+          }
+        }
+
+        // Show interim text in textarea as preview
+        if (interim) {
+          this.interimTranscript = interim;
+          this.inputText = interim;
+        }
+
+        // Auto-send final transcript
+        if (final.trim()) {
+          this.interimTranscript = '';
+          this.inputText = final.trim();
+          this.sendManagedMessage();
+        }
+      };
+
+      this.speechRecognition.onerror = (event) => {
+        if (event.error === 'no-speech') {
+          // Normal — just means silence, will restart via onend
+          return;
+        }
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          this.toast('Microphone access denied. Please allow microphone permissions.');
+          this.stopVoiceChat();
+          return;
+        }
+        if (event.error === 'audio-capture') {
+          this.toast('No microphone found. Please check your audio settings.');
+          this.stopVoiceChat();
+          return;
+        }
+        // For other errors, try to keep going
+        console.warn('Speech recognition error:', event.error);
+      };
+
+      this.voiceChatActive = true;
+      try {
+        this.speechRecognition.start();
+      } catch (e) {
+        this.toast('Failed to start speech recognition: ' + e.message);
+        this.voiceChatActive = false;
+      }
+    },
+
+    stopVoiceChat() {
+      this.voiceChatActive = false;
+      this.isListening = false;
+      const savedInterim = this.interimTranscript;
+      this.interimTranscript = '';
+      if (this.inputText === savedInterim) {
+        this.inputText = '';
+      }
+      if (this.speechRecognition) {
+        this.speechRecognition.onend = null; // Prevent restart loop
+        this.speechRecognition.abort();
+        this.speechRecognition = null;
+      }
+      // Stop any ongoing TTS
+      window.speechSynthesis.cancel();
+      this.ttsSpeaking = false;
+    },
+
+    speakText(text) {
+      if (!this.voiceChatActive || !text.trim()) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.onstart = () => {
+        this.ttsSpeaking = true;
+        // Pause recognition to prevent echo
+        if (this.speechRecognition && this.isListening) {
+          try {
+            this.speechRecognition.stop();
+          } catch (e) {
+            // Ignore
+          }
+        }
+      };
+      utterance.onend = () => {
+        this.ttsSpeaking = false;
+        // Resume recognition after TTS finishes
+        if (this.voiceChatActive && this.speechRecognition && !this.isListening) {
+          try {
+            this.speechRecognition.start();
+          } catch (e) {
+            // Ignore — may already be started
+          }
+        }
+      };
+      utterance.onerror = () => {
+        this.ttsSpeaking = false;
+        // Resume recognition even on TTS error
+        if (this.voiceChatActive && this.speechRecognition && !this.isListening) {
+          try {
+            this.speechRecognition.start();
+          } catch (e) {
+            // Ignore
+          }
+        }
+      };
+      window.speechSynthesis.speak(utterance);
     },
 
     startSessionSSE(sessionId) {
@@ -1666,6 +1829,10 @@ document.addEventListener('alpine:init', () => {
                 msg_type: 'text',
                 timestamp: new Date().toISOString()
               });
+              // Speak assistant text if voice chat is active
+              if (this.voiceChatActive) {
+                this.speakText(textParts.join('\n'));
+              }
               this.$nextTick(() => this.scrollToBottom());
             }
           } else if (data.type === 'system' && data.error) {
