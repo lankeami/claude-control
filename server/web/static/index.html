@@ -306,20 +306,22 @@
                 </template>
               </div>
 
-              <!-- Image preview -->
-              <div class="image-preview-strip" x-show="pendingImagePreview" x-cloak>
-                <img :src="pendingImagePreview" class="image-preview-thumb">
-                <span class="image-preview-name" x-text="pendingImageFilename"></span>
-                <button class="image-preview-remove" @click="clearPendingImage()" title="Remove image">&times;</button>
-              </div>
+              <div class="input-wrapper">
+                <!-- Image preview -->
+                <div class="image-preview-strip" x-show="pendingImagePreview" x-cloak>
+                  <img :src="pendingImagePreview" class="image-preview-thumb">
+                  <span class="image-preview-name" x-text="pendingImageFilename"></span>
+                  <button class="image-preview-remove" @click="clearPendingImage()" title="Remove image">&times;</button>
+                </div>
 
-              <textarea x-model="inputText" rows="1"
-                     :placeholder="shellMode ? 'Run a command...' : (currentSession?.mode === 'managed' ? 'Send a message... (/ for commands)' : 'Send instruction (delivered on next stop)...')"
-                     :class="{ 'shell-input': shellMode }"
-                     @keydown="handleSlashKeydown($event)"
-                     @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 150) + 'px'; onSlashInput()"
-                     @blur="setTimeout(() => showSlashMenu = false, 150)"
-                     :disabled="inputSending"></textarea>
+                <textarea x-model="inputText" rows="1"
+                       :placeholder="shellMode ? 'Run a command...' : (currentSession?.mode === 'managed' ? 'Send a message... (/ for commands)' : 'Send instruction (delivered on next stop)...')"
+                       :class="{ 'shell-input': shellMode }"
+                       @keydown="handleSlashKeydown($event)"
+                       @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 150) + 'px'; onSlashInput()"
+                       @blur="setTimeout(() => showSlashMenu = false, 150)"
+                       :disabled="inputSending"></textarea>
+              </div>
               <button class="btn btn-primary btn-sm" :disabled="(!inputText.trim() && !pendingImageId) || inputSending"
                       @click="handleInput()" style="width:auto">
                 <span x-show="!inputSuccess">Send</span>
