@@ -327,7 +327,7 @@
                 </div>
 
                 <textarea x-model="inputText" rows="1"
-                       :placeholder="shellMode ? 'Run a command...' : (currentSession?.mode === 'managed' ? 'Send a message... (/ for commands)' : 'Send instruction (delivered on next stop)...')"
+                       :placeholder="shellMode ? 'Run a command...' : (voiceChatActive ? (isListening ? 'Listening...' : 'Voice chat paused...') : (currentSession?.mode === 'managed' ? 'Send a message... (/ for commands)' : 'Send instruction (delivered on next stop)...'))"
                        :class="{ 'shell-input': shellMode }"
                        @keydown="handleSlashKeydown($event)"
                        @input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 150) + 'px'; onSlashInput()"

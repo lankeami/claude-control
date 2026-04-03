@@ -780,6 +780,10 @@ document.addEventListener('alpine:init', () => {
       if (this.selectedSessionId === id) return;
       this.selectedSessionId = id;
       this.stopSessionSSE();
+      // Stop voice chat when switching sessions
+      if (this.voiceChatActive) {
+        this.stopVoiceChat();
+      }
       this.clearActivityPills();
       this.closeFileViewer();
       this.slashCommands = [];
@@ -1414,6 +1418,7 @@ document.addEventListener('alpine:init', () => {
       if ((!this.inputText.trim() && !this.pendingImageId) || !this.selectedSessionId) return;
       const msg = this.inputText.trim();
       this.inputText = '';
+      this.interimTranscript = '';
       this.inputSending = true;
 
       const imageId = this.pendingImageId;
@@ -1606,6 +1611,45 @@ document.addEventListener('alpine:init', () => {
       this.ttsSpeaking = false;
     },
 
+    speakText(text) {
+      if (!this.voiceChatActive || !text.trim()) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.onstart = () => {
+        this.ttsSpeaking = true;
+        // Pause recognition to prevent echo
+        if (this.speechRecognition && this.isListening) {
+          try {
+            this.speechRecognition.stop();
+          } catch (e) {
+            // Ignore
+          }
+        }
+      };
+      utterance.onend = () => {
+        this.ttsSpeaking = false;
+        // Resume recognition after TTS finishes
+        if (this.voiceChatActive && this.speechRecognition && !this.isListening) {
+          try {
+            this.speechRecognition.start();
+          } catch (e) {
+            // Ignore — may already be started
+          }
+        }
+      };
+      utterance.onerror = () => {
+        this.ttsSpeaking = false;
+        // Resume recognition even on TTS error
+        if (this.voiceChatActive && this.speechRecognition && !this.isListening) {
+          try {
+            this.speechRecognition.start();
+          } catch (e) {
+            // Ignore
+          }
+        }
+      };
+      window.speechSynthesis.speak(utterance);
+    },
+
     startSessionSSE(sessionId) {
       this.stopSessionSSE();
       const url = `/api/sessions/${sessionId}/stream?token=${encodeURIComponent(this.apiKey)}`;
@@ -1785,6 +1829,10 @@ document.addEventListener('alpine:init', () => {
                 msg_type: 'text',
                 timestamp: new Date().toISOString()
               });
+              // Speak assistant text if voice chat is active
+              if (this.voiceChatActive) {
+                this.speakText(textParts.join('\n'));
+              }
               this.$nextTick(() => this.scrollToBottom());
             }
           } else if (data.type === 'system' && data.error) {
