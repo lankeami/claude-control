@@ -6,3 +6,4 @@ xcuserdata/
 server/claude-controller
 .playwright-mcp/
 .worktrees/
+shortcuts.json

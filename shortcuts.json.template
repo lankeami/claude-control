@@ -1,0 +1,18 @@
+[
+  {
+    "key": "🎱",
+    "value": "The server got disconnected. Please continue"
+  },
+  {
+    "key": "👍",
+    "value": "👍 Looks Good To Me"
+  },
+  {
+    "key": "🚀",
+    "value": "Commit and push up a new PR"
+  },
+  {
+    "key": "🛳️",
+    "value": "If a PR is open, merge it. If not, warn that we need a PR first."
+  }
+]
