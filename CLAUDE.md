@@ -78,3 +78,5 @@ docker compose down                             # Stop
 - SSE interrupt / auto-continue plan: `docs/superpowers/plans/2026-03-23-sse-interrupt-turns-management.md`
 - Session activity state spec: `docs/superpowers/specs/2026-03-23-session-activity-state-design.md`
 - Session activity state plan: `docs/superpowers/plans/2026-03-23-session-activity-state.md`
+- Shortcut creator spec: `docs/superpowers/specs/2026-04-03-shortcut-creator-design.md`
+- Shortcut creator plan: `docs/superpowers/plans/2026-04-03-shortcut-creator.md`
