@@ -121,11 +121,16 @@ document.addEventListener('alpine:init', () => {
     // Settings state
     showSettingsModal: false,
     settingsFirstRun: false,
-    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '' },
+    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', shortcuts: [] },
     settingsError: '',
     settingsSaving: false,
     settingsRestartRequired: false,
     serverRestarting: false,
+
+    // Shortcuts state
+    shortcuts: [],
+    showShortcutPicker: false,
+    settingsAccordion: { server: true, shortcuts: false },
 
     // Usage tracking
     lastTurnThreshold: 0,
@@ -236,6 +241,7 @@ document.addEventListener('alpine:init', () => {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
         await this.checkSettingsFirstRun();
+        this.loadShortcuts();
       }
       this.$watch('mobileMenuOpen', (open) => {
         document.body.style.overflow = open ? 'hidden' : '';
@@ -263,6 +269,7 @@ document.addEventListener('alpine:init', () => {
           localStorage.setItem('apiKey', key);
           this.authenticated = true;
           this.startSSE();
+          this.loadShortcuts();
           return true;
         }
       } catch (e) {}
@@ -485,9 +492,10 @@ document.addEventListener('alpine:init', () => {
           claude_env: data.claude_env || '',
           compact_every_n_continues: data.compact_every_n_continues || '',
           github_token: data.github_token || '',
+          shortcuts: data.shortcuts || [],
         };
       } catch (e) {
-        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '' };
+        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', shortcuts: [] };
       }
       this.showSettingsModal = true;
     },
@@ -514,10 +522,22 @@ document.addEventListener('alpine:init', () => {
         this.showSettingsModal = false;
         this.settingsFirstRun = false;
         this.toast('Settings saved');
+        this.shortcuts = this.settingsForm.shortcuts || [];
       } catch (e) {
         this.settingsError = 'Error: ' + e.message;
       }
       this.settingsSaving = false;
+    },
+
+    async loadShortcuts() {
+      try {
+        const res = await fetch('/api/settings', {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        this.shortcuts = data.shortcuts || [];
+      } catch (e) {}
     },
 
     async restartServer() {
@@ -1126,14 +1146,21 @@ document.addEventListener('alpine:init', () => {
 
     // --- End slash commands ---
 
-    sendLgtm() {
-      this.inputText = '\u{1F44D} Looks Good To Me';
+    sendShortcut(value) {
+      this.showShortcutPicker = false;
+      this.inputText = value;
       this.handleInput();
     },
 
     async handleInput() {
       if (!this.selectedSessionId || !this.inputText.trim()) return;
       this.showSlashMenu = false;
+      // Resolve shortcuts: if full message matches a shortcut key, replace with value
+      const trimmed = this.inputText.trim();
+      const match = this.shortcuts.find(s => s.key === trimmed);
+      if (match) {
+        this.inputText = match.value;
+      }
       const sess = this.currentSession;
 
       if (sess && sess.mode === 'managed' && this.inputText.trim().startsWith('/')) {

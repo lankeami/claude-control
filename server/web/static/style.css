@@ -1780,23 +1780,111 @@ body {
     font-size: 10px;
 }
 
-/* LGTM quick-send button */
-.lgtm-btn {
+/* Shortcut picker trigger button */
+.shortcut-picker-btn {
   background: var(--bg-secondary, #f3f4f6);
   border: 1px solid var(--border, #d1d5db);
   border-radius: 4px;
   padding: 4px 8px;
-  font-size: 14px;
   cursor: pointer;
+  font-size: 14px;
   flex-shrink: 0;
   line-height: 1;
 }
-.lgtm-btn:hover {
+.shortcut-picker-btn:hover {
   background: var(--bg-tertiary, #e5e7eb);
 }
-.lgtm-btn:disabled {
+.shortcut-picker-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Shortcut picker popup */
+.shortcut-picker-popup {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 50;
+  padding: 4px;
+}
+.shortcut-picker-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.shortcut-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-size: 13px;
+}
+.shortcut-picker-item:hover {
+  background: var(--bg-secondary);
+}
+.shortcut-picker-key {
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 28px;
+  text-align: center;
+}
+.shortcut-picker-value {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Settings accordion */
+.settings-accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.settings-accordion-header:hover {
+  color: var(--accent);
+}
+.settings-accordion-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.settings-accordion-chevron {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+.settings-accordion-chevron.open {
+  transform: rotate(90deg);
+}
+.settings-accordion-body {
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* Image upload button */
