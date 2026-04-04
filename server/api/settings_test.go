@@ -13,6 +13,11 @@ import (
 	"github.com/jaychinthrajah/claude-controller/server/managed"
 )
 
+// shortcutsFilePath returns the shortcuts.json path for a given envPath.
+func shortcutsFilePath(envPath string) string {
+	return strings.TrimSuffix(envPath, ".env") + "shortcuts.json"
+}
+
 func newTestServerWithManager(t *testing.T) (*httptest.Server, *db.Store, *managed.Manager, string) {
 	t.Helper()
 	tmpDir := t.TempDir()
@@ -231,5 +236,97 @@ func TestPutThenGetSettings_RoundTrip(t *testing.T) {
 	}
 	if body["claude_env"] != "FOO=bar,BAZ=qux" {
 		t.Errorf("expected claude_env, got %s", body["claude_env"])
+	}
+}
+
+func TestPutSettings_WithShortcuts(t *testing.T) {
+	ts, _, _, envPath := newTestServerWithManager(t)
+
+	body := `{"port":"8080","shortcuts":[{"key":"/deploy","value":"Deploy to production"},{"key":"/test","value":"Run all tests"}]}`
+	req, _ := http.NewRequest("PUT", ts.URL+"/api/settings", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	scPath := shortcutsFilePath(envPath)
+	data, err := os.ReadFile(scPath)
+	if err != nil {
+		t.Fatalf("shortcuts.json not created: %v", err)
+	}
+	var shortcuts []Shortcut
+	if err := json.Unmarshal(data, &shortcuts); err != nil {
+		t.Fatalf("invalid shortcuts.json: %v", err)
+	}
+	if len(shortcuts) != 2 {
+		t.Fatalf("expected 2 shortcuts, got %d", len(shortcuts))
+	}
+	if shortcuts[0].Key != "/deploy" || shortcuts[0].Value != "Deploy to production" {
+		t.Errorf("unexpected first shortcut: %+v", shortcuts[0])
+	}
+	if shortcuts[1].Key != "/test" || shortcuts[1].Value != "Run all tests" {
+		t.Errorf("unexpected second shortcut: %+v", shortcuts[1])
+	}
+}
+
+func TestGetSettings_IncludesShortcuts(t *testing.T) {
+	ts, _, _, envPath := newTestServerWithManager(t)
+
+	scPath := shortcutsFilePath(envPath)
+	scData := `[{"key":"/hello","value":"Hello world"}]`
+	if err := os.WriteFile(scPath, []byte(scData), 0600); err != nil {
+		t.Fatalf("failed to write shortcuts.json: %v", err)
+	}
+
+	req := authReq("GET", ts.URL+"/api/settings", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var result settingsPayload
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(result.Shortcuts) != 1 {
+		t.Fatalf("expected 1 shortcut, got %d", len(result.Shortcuts))
+	}
+	if result.Shortcuts[0].Key != "/hello" || result.Shortcuts[0].Value != "Hello world" {
+		t.Errorf("unexpected shortcut: %+v", result.Shortcuts[0])
+	}
+}
+
+func TestGetSettings_NoShortcutsFile_ReturnsEmptyArray(t *testing.T) {
+	ts, _, _, _ := newTestServerWithManager(t)
+
+	req := authReq("GET", ts.URL+"/api/settings", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var result settingsPayload
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if result.Shortcuts == nil {
+		t.Error("expected empty array for shortcuts, got nil")
+	}
+	if len(result.Shortcuts) != 0 {
+		t.Errorf("expected 0 shortcuts, got %d", len(result.Shortcuts))
 	}
 }
