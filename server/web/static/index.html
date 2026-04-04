@@ -310,10 +310,24 @@
                 </button>
               </div>
               <div class="shortcut-buttons">
-                <button class="lgtm-btn"
-                        @click="sendLgtm()"
-                        :disabled="inputSending"
-                        title="Send 👍 Looks Good To Me">👍</button>
+                <div style="position:relative;">
+                  <button class="shortcut-picker-btn"
+                          @click="showShortcutPicker = !showShortcutPicker"
+                          :disabled="inputSending"
+                          title="Shortcuts">😁</button>
+                  <div class="shortcut-picker-popup" x-show="showShortcutPicker" x-cloak
+                       @click.outside="showShortcutPicker = false">
+                    <template x-if="shortcuts.length === 0">
+                      <div class="shortcut-picker-empty">No shortcuts configured &mdash; add them in Settings</div>
+                    </template>
+                    <template x-for="(sc, idx) in shortcuts" :key="idx">
+                      <button class="shortcut-picker-item" @click="sendShortcut(sc.value)" :title="sc.value">
+                        <span class="shortcut-picker-key" x-text="sc.key"></span>
+                        <span class="shortcut-picker-value" x-text="sc.value"></span>
+                      </button>
+                    </template>
+                  </div>
+                </div>
                 <button class="shell-toggle-btn"
                         x-show="currentSession?.mode === 'managed'"
                         :class="{ active: shellMode }"
@@ -1096,54 +1110,86 @@
       </div>
       <h3 class="desktop-modal-title" style="margin-top:0; margin-bottom:16px;" x-text="settingsFirstRun ? 'Welcome \u2014 Configure Claude Controller' : 'Settings'"></h3>
 
-      <div style="display:flex; flex-direction:column; gap:12px;">
-        <div>
-          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">PORT</label>
-          <input x-model="settingsForm.port" type="text" placeholder="8080"
-                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Server port (requires restart)</div>
+      <!-- Server Configuration accordion -->
+      <div>
+        <div class="settings-accordion-header" @click="settingsAccordion.server = !settingsAccordion.server">
+          <h4>Server Configuration</h4>
+          <span class="settings-accordion-chevron" :class="{ open: settingsAccordion.server }">&#9654;</span>
         </div>
+        <div class="settings-accordion-body" x-show="settingsAccordion.server">
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">PORT</label>
+            <input x-model="settingsForm.port" type="text" placeholder="8080"
+                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Server port (requires restart)</div>
+          </div>
 
-        <div>
-          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">NGROK_AUTHTOKEN</label>
-          <input x-model="settingsForm.ngrok_authtoken" type="password" placeholder="ngrok auth token"
-                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">For remote access via ngrok tunnel (requires restart)</div>
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">NGROK_AUTHTOKEN</label>
+            <input x-model="settingsForm.ngrok_authtoken" type="password" placeholder="ngrok auth token"
+                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">For remote access via ngrok tunnel (requires restart)</div>
+          </div>
+
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_BIN</label>
+            <input x-model="settingsForm.claude_bin" type="text" placeholder="claude"
+                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Path to Claude CLI binary</div>
+          </div>
+
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_ARGS</label>
+            <input x-model="settingsForm.claude_args" type="text" placeholder="--dangerously-skip-permissions"
+                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Space-separated CLI flags for managed sessions</div>
+          </div>
+
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_ENV</label>
+            <input x-model="settingsForm.claude_env" type="text" placeholder="CLAUDE_CONFIG_DIR=/path"
+                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Comma-separated KEY=VALUE pairs for managed session environment</div>
+          </div>
+
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">COMPACT_EVERY_N_CONTINUES</label>
+            <input x-model="settingsForm.compact_every_n_continues" type="number" min="0" placeholder="0"
+                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Run /compact every N auto-continues to reduce token usage. 0 = disabled.</div>
+          </div>
+
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">GITHUB_TOKEN</label>
+            <input x-model="settingsForm.github_token" type="password" placeholder="ghp_..."
+                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Personal access token for GitHub issue tracking (needs repo scope)</div>
+          </div>
         </div>
+      </div>
 
-        <div>
-          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_BIN</label>
-          <input x-model="settingsForm.claude_bin" type="text" placeholder="claude"
-                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Path to Claude CLI binary</div>
+      <!-- Shortcuts accordion -->
+      <div>
+        <div class="settings-accordion-header" @click="settingsAccordion.shortcuts = !settingsAccordion.shortcuts">
+          <h4>Shortcuts</h4>
+          <span class="settings-accordion-chevron" :class="{ open: settingsAccordion.shortcuts }">&#9654;</span>
         </div>
-
-        <div>
-          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_ARGS</label>
-          <input x-model="settingsForm.claude_args" type="text" placeholder="--dangerously-skip-permissions"
-                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Space-separated CLI flags for managed sessions</div>
-        </div>
-
-        <div>
-          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_ENV</label>
-          <input x-model="settingsForm.claude_env" type="text" placeholder="CLAUDE_CONFIG_DIR=/path"
-                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Comma-separated KEY=VALUE pairs for managed session environment</div>
-        </div>
-
-        <div>
-          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">COMPACT_EVERY_N_CONTINUES</label>
-          <input x-model="settingsForm.compact_every_n_continues" type="number" min="0" placeholder="0"
-                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Run /compact every N auto-continues to reduce token usage. 0 = disabled.</div>
-        </div>
-
-        <div>
-          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">GITHUB_TOKEN</label>
-          <input x-model="settingsForm.github_token" type="password" placeholder="ghp_..."
-                 style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Personal access token for GitHub issue tracking (needs repo scope)</div>
+        <div class="settings-accordion-body" x-show="settingsAccordion.shortcuts">
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">
+            Define shortcuts that map a key (emoji or text) to a message sent in chat.
+          </div>
+          <template x-for="(shortcut, idx) in settingsForm.shortcuts" :key="idx">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input x-model="shortcut.key" type="text" maxlength="20" placeholder="Key (e.g. 👍)"
+                     style="width:80px; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box; flex-shrink:0;">
+              <input x-model="shortcut.value" type="text" placeholder="Message to send..."
+                     style="flex:1; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
+              <button @click="settingsForm.shortcuts.splice(idx, 1)" class="btn btn-sm"
+                      style="padding:4px 8px; flex-shrink:0; color:var(--red);" title="Remove shortcut">&times;</button>
+            </div>
+          </template>
+          <button @click="settingsForm.shortcuts.push({key:'', value:''})" class="btn btn-sm"
+                  style="align-self:flex-start; font-size:12px;">+ Add Shortcut</button>
         </div>
       </div>
 

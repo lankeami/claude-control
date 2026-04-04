@@ -132,6 +132,35 @@ curl -X PUT http://localhost:8080/api/sessions/<id>/name \
 
 When no custom name is set, sessions display a computed fallback: `computer_name / project` for hook-mode sessions, or the working directory name for managed sessions.
 
+### Shortcuts
+
+Configurable shortcuts map short keys (emoji or text abbreviations) to full messages. Useful for common responses you send frequently.
+
+**Setting up shortcuts:**
+1. Open Settings (gear icon in the sidebar)
+2. Expand the **Shortcuts** accordion section
+3. Add shortcuts with a key (max 20 characters) and the full message value
+4. Save — shortcuts are stored server-side and available across all devices
+
+**Using shortcuts:**
+- Click the **😁** button in the chat input to open the shortcut picker, then click a shortcut to send it
+- Or type the shortcut key directly in the text area and press Enter — if the entire message matches a shortcut key, the full value is sent instead
+
+A default shortcut (👍 → "👍 Looks Good To Me") is available on first use and can be customized or removed.
+
+**Shortcuts via API:**
+```bash
+# Get current shortcuts (included in settings response)
+curl http://localhost:8080/api/settings \
+  -H "Authorization: Bearer <api-key>"
+
+# Update shortcuts
+curl -X PUT http://localhost:8080/api/settings \
+  -H "Authorization: Bearer <api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"shortcuts": [{"key": "👍", "value": "👍 Looks Good To Me"}, {"key": "🚀", "value": "Ship it!"}]}'
+```
+
 ## Server
 
 ```bash
@@ -175,6 +204,8 @@ cd server && go run . --port 9090              # Custom port
 | POST | `/api/prompts/:id/respond` | Web UI / iOS | Send a response |
 | POST | `/api/sessions/:id/instruct` | Web UI / iOS | Queue an instruction |
 | GET | `/api/events` | Web UI | SSE stream for global state updates |
+| GET | `/api/settings` | Web UI / iOS | Get server settings (includes shortcuts) |
+| PUT | `/api/settings` | Web UI / iOS | Update server settings (includes shortcuts) |
 | GET | `/api/pairing` | iOS | Validate pairing |
 | GET | `/api/status` | Any | Health check |
 

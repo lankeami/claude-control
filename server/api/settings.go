@@ -11,14 +11,47 @@ import (
 	"github.com/jaychinthrajah/claude-controller/server/managed"
 )
 
+type Shortcut struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 type settingsPayload struct {
-	Port                   string `json:"port"`
-	NgrokAuthtoken         string `json:"ngrok_authtoken"`
-	ClaudeBin              string `json:"claude_bin"`
-	ClaudeArgs             string `json:"claude_args"`
-	ClaudeEnv              string `json:"claude_env"`
-	CompactEveryNContinues string `json:"compact_every_n_continues"`
-	GithubToken            string `json:"github_token"`
+	Port                   string     `json:"port"`
+	NgrokAuthtoken         string     `json:"ngrok_authtoken"`
+	ClaudeBin              string     `json:"claude_bin"`
+	ClaudeArgs             string     `json:"claude_args"`
+	ClaudeEnv              string     `json:"claude_env"`
+	CompactEveryNContinues string     `json:"compact_every_n_continues"`
+	GithubToken            string     `json:"github_token"`
+	Shortcuts              []Shortcut `json:"shortcuts"`
+}
+
+func shortcutsPath(envPath string) string {
+	return strings.TrimSuffix(envPath, ".env") + "shortcuts.json"
+}
+
+func readShortcuts(envPath string) []Shortcut {
+	data, err := os.ReadFile(shortcutsPath(envPath))
+	if err != nil {
+		return []Shortcut{}
+	}
+	var shortcuts []Shortcut
+	if err := json.Unmarshal(data, &shortcuts); err != nil {
+		return []Shortcut{}
+	}
+	return shortcuts
+}
+
+func writeShortcuts(envPath string, shortcuts []Shortcut) error {
+	if shortcuts == nil {
+		shortcuts = []Shortcut{}
+	}
+	data, err := json.MarshalIndent(shortcuts, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(shortcutsPath(envPath), data, 0600)
 }
 
 func (s *Server) handleSettingsExists(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +81,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		CompactEveryNContinues: vals["COMPACT_EVERY_N_CONTINUES"],
 		GithubToken:            vals["GITHUB_TOKEN"],
 	}
+	resp.Shortcuts = readShortcuts(s.envPath)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
@@ -92,6 +126,10 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := os.Rename(tmpPath, s.envPath); err != nil {
 		http.Error(w, fmt.Sprintf("rename error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if err := writeShortcuts(s.envPath, payload.Shortcuts); err != nil {
+		http.Error(w, fmt.Sprintf("shortcuts write error: %v", err), http.StatusInternalServerError)
 		return
 	}
 
