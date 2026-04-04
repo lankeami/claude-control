@@ -123,18 +123,22 @@ func main() {
 	httpServer := &http.Server{Handler: router}
 	go httpServer.Serve(localListener)
 
-	// Start ngrok tunnel (may block if no auth token)
+	// Start ngrok tunnel in a goroutine so it doesn't block signal handling
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var ngrokServer *http.Server
-	tun, err := tunnel.Start(ctx)
-	if err != nil {
-		log.Printf("Warning: ngrok tunnel failed: %v", err)
-		log.Printf("Server is running locally only at http://%s", addr)
-		log.Printf("To expose via ngrok, set NGROK_AUTHTOKEN environment variable")
-	} else {
-		defer tun.Close()
-		// ngrok-go's Addr().String() may or may not include scheme
+	var tun *tunnel.Tunnel
+	ngrokDone := make(chan struct{})
+	go func() {
+		defer close(ngrokDone)
+		var err error
+		tun, err = tunnel.Start(ctx)
+		if err != nil {
+			log.Printf("Warning: ngrok tunnel failed: %v", err)
+			log.Printf("Server is running locally only at http://%s", addr)
+			log.Printf("To expose via ngrok, set NGROK_AUTHTOKEN environment variable")
+			return
+		}
 		ngrokURL := tun.URL()
 		if !strings.HasPrefix(ngrokURL, "https://") {
 			ngrokURL = "https://" + ngrokURL
@@ -142,10 +146,9 @@ func main() {
 		fmt.Printf("ngrok tunnel: %s\n", ngrokURL)
 		displayQRCode(ngrokURL, apiKey)
 
-		// Serve on ngrok listener too
 		ngrokServer = &http.Server{Handler: router}
 		go ngrokServer.Serve(tun.Listener())
-	}
+	}()
 
 	// Handle shutdown via signal or restart request
 	sigCh := make(chan os.Signal, 1)
@@ -167,11 +170,15 @@ func main() {
 		ngrokServer.Shutdown(shutdownCtx)
 	}
 	shutdownCancel()
+	cancel() // cancel ngrok context early so tunnel.Start unblocks if still running
+	<-ngrokDone
+	if tun != nil {
+		tun.Close()
+	}
 
 	// Then shut down background services
 	mgr.ShutdownAll(5 * time.Second)
 	sched.Stop()
-	cancel()
 	store.Close()
 
 	if restartRequested {
