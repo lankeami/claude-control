@@ -269,7 +269,7 @@
 
             <!-- Input bar (managed mode messages OR hook-mode instructions) -->
             <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt" style="position:relative">
-              <input type="file" x-ref="imageInput" accept="image/*" capture="environment"
+              <input type="file" x-ref="imageInput" accept="image/*"
                      @change="uploadImage($event)" style="display:none">
 
               <!-- Slash command autocomplete -->
