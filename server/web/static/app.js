@@ -327,6 +327,7 @@ document.addEventListener('alpine:init', () => {
           }
           this.connected = true;
           this.sseFailCount = 0;
+          this.serverRestarting = false;
           this.checkActivityStateNotifications(data.sessions || []);
           if (!hadPending && this.currentPendingPrompt) {
             this.toast('Respond here or in the CLI \u2014 one per turn, not both.');

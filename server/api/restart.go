@@ -27,5 +27,8 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		s.shutdownFunc()
+		// Safety net: if shutdown didn't kill the process within 10s, reset flag
+		time.Sleep(10 * time.Second)
+		s.restartInProgress.Store(false)
 	}()
 }
