@@ -130,7 +130,7 @@ document.addEventListener('alpine:init', () => {
     // Shortcuts state
     shortcuts: [],
     showShortcutPicker: false,
-    settingsAccordion: { server: true, shortcuts: false },
+    settingsAccordion: { server: false, shortcuts: false },
 
     // Usage tracking
     lastTurnThreshold: 0,
