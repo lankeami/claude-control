@@ -9,13 +9,12 @@ import (
 	"sync/atomic"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
-	"github.com/jaychinthrajah/claude-controller/server/managed"
 	"github.com/jaychinthrajah/claude-controller/server/web"
 )
 
 type Server struct {
 	store             *db.Store
-	manager           *managed.Manager
+	manager           SessionManager
 	envPath           string
 	permissions       *PermissionManager
 	shutdownFunc      func() // called to trigger server restart
@@ -23,7 +22,7 @@ type Server struct {
 	serverID          string // unique ID per server instance, used by clients to detect restart
 }
 
-func NewRouter(store *db.Store, apiKey string, mgr *managed.Manager, envPath string, shutdownFunc func(), serverID string) http.Handler {
+func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string) http.Handler {
 	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), shutdownFunc: shutdownFunc, serverID: serverID}
 
 	// API mux — all existing endpoints, behind auth middleware
