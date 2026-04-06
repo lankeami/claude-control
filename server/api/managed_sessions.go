@@ -82,6 +82,10 @@ func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
 
 	args = append(args, "--output-format", "stream-json", "--input-format", "stream-json", "--verbose")
 
+	if sess.MaxTurns > 0 {
+		args = append(args, "--max-turns", fmt.Sprintf("%d", sess.MaxTurns))
+	}
+
 	if sess.AllowedTools != "" {
 		var tools []string
 		json.Unmarshal([]byte(sess.AllowedTools), &tools)
