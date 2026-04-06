@@ -217,15 +217,13 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 		ctx := context.Background()
 		continuationCount := 0
-		threshold := int(sess.AutoContinueThreshold * float64(sess.MaxTurns))
 		currentMessage := req.Message
 
 		// --- Per-turn mutable state, shared with onLine callback ---
 		// onLine runs in the StreamNDJSON goroutine, which lives for the
 		// process lifetime. These vars are reset at the top of each turn.
 		var mu sync.Mutex
-		var turnsSinceLastContinue int
-		var autoInterrupting bool
+		var assistantEventCount int
 		var executionErrored bool
 
 		// turnDone is signaled by StreamNDJSON on each "result" message.
@@ -266,18 +264,8 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 					_, _ = s.store.CreateMessage(sessionID, "activity", toolName)
 				}
 				mu.Lock()
-				turnsSinceLastContinue++
+				assistantEventCount++
 				mu.Unlock()
-				count, _ := s.store.IncrementTurnCount(sessionID)
-				mu.Lock()
-				if count >= threshold && !autoInterrupting {
-					autoInterrupting = true
-					mu.Unlock()
-					log.Printf("session %s hit auto-continue threshold (%d/%d), interrupting", sessionID, count, sess.MaxTurns)
-					_ = s.manager.Interrupt(sessionID)
-				} else {
-					mu.Unlock()
-				}
 			}
 			extractSessionFiles(line, sessionID, s.store)
 		}
@@ -298,10 +286,8 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Reset per-turn state
-			_ = s.store.ResetTurnCount(sessionID)
 			mu.Lock()
-			turnsSinceLastContinue = 0
-			autoInterrupting = false
+			assistantEventCount = 0
 			executionErrored = false
 			mu.Unlock()
 
@@ -354,18 +340,19 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
-			// Wait for either turn completion or process death
+			// Wait for turn completion (result event) or process death.
+			// With --max-turns, Claude finishes its current turn gracefully
+			// and emits a "result" event — no SIGINT needed.
 			select {
 			case <-turnDone:
-				// Turn completed normally
+				// Turn completed — Claude emitted a "result" event
 			case <-proc.Done:
-				// Process died — fall through to recovery
+				// Process died unexpectedly
 			}
 
 			mu.Lock()
 			errored := executionErrored
-			interrupted := autoInterrupting
-			turns := turnsSinceLastContinue
+			events := assistantEventCount
 			mu.Unlock()
 
 			if !sess.Initialized && !errored {
@@ -391,52 +378,45 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 					broadcaster.Send(errMsg)
 				}
 
-				if proc.ExitCode == 0 && !interrupted {
-					_ = s.store.UpdateActivityState(sessionID, "waiting")
-					doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
-					broadcaster.Send(doneMsg)
-					return
+				// Process died — don't auto-continue on unexpected exits
+				state := "waiting"
+				if proc.ExitCode != 0 {
+					state = "idle"
 				}
-
-				if !interrupted {
-					_ = s.store.UpdateActivityState(sessionID, "idle")
-					doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
-					broadcaster.Send(doneMsg)
-					return
-				}
-
-				// Process died during auto-interrupt — need fresh process for next turn.
-				// Reset stream state so next EnsureProcess starts a new reader.
-				procStarted = false
-				turnDone = make(chan struct{}, 4)
-				streamDone = make(chan struct{})
-
-				// Send heartbeat to keep SSE clients alive during the gap between
-				// the old process dying and the next process (or compact) starting.
-				hb := fmt.Sprintf(`{"type":"heartbeat","ts":%d}`, time.Now().UnixMilli())
-				broadcaster.Send(hb)
+				_ = s.store.UpdateActivityState(sessionID, state)
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+				broadcaster.Send(doneMsg)
+				return
 
 			default:
-				// Process still alive — turn completed normally
-				if !interrupted {
-					// Shut down warm process so next message spawns fresh.
-					// This prevents duplicate stdout readers across handleSendMessage calls.
-					_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
-					<-streamDone
-					_ = s.store.UpdateActivityState(sessionID, "waiting")
-					doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
-					broadcaster.Send(doneMsg)
-					return
-				}
+				// Process still alive — turn completed normally via result event.
+				// This is the graceful path: Claude hit --max-turns and emitted
+				// a result, but the process stays alive in persistent mode.
 			}
 
-			// --- Auto-continue logic ---
+			// --- Auto-continue decision ---
+			// The process is still alive. Claude completed a turn (hit --max-turns
+			// or finished naturally). If auto-continuations are configured, we
+			// continue by sending another message via stdin on the warm process.
 
-			if turns < 2 {
-				log.Printf("session %s not making progress (%d turns), stopping auto-continue", sessionID, turns)
+			// First turn (user's original message) — if max_continuations is 0, just finish
+			if continuationCount == 0 && sess.MaxContinuations <= 0 {
+				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
+				<-streamDone
+				_ = s.store.UpdateActivityState(sessionID, "waiting")
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
+				broadcaster.Send(doneMsg)
+				return
+			}
+
+			// Progress guard: if Claude produced < 2 assistant events, it's done or stuck
+			if continuationCount > 0 && events < 2 {
+				log.Printf("session %s not making progress (%d events), stopping auto-continue", sessionID, events)
 				_, _ = s.store.CreateMessage(sessionID, "system", "Auto-continue stopped: not making progress")
 				noProgressMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d,"reason":"no_progress"}`, continuationCount)
 				broadcaster.Send(noProgressMsg)
+				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
+				<-streamDone
 				_ = s.store.UpdateActivityState(sessionID, "waiting")
 				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
 				broadcaster.Send(doneMsg)
@@ -451,48 +431,51 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				broadcaster.Send(exhaustedMsg)
 				_, _ = s.store.CreateMessage(sessionID, "system",
 					fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations))
+				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
+				<-streamDone
 				_ = s.store.UpdateActivityState(sessionID, "waiting")
 				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
 				broadcaster.Send(doneMsg)
 				return
 			}
 
-			// Auto-continue
+			// Auto-continue: notify via SSE
 			continuingMsg := fmt.Sprintf(`{"type":"auto_continuing","continuation_count":%d,"max_continuations":%d}`,
 				continuationCount, sess.MaxContinuations)
 			broadcaster.Send(continuingMsg)
 			_, _ = s.store.CreateMessage(sessionID, "system",
 				fmt.Sprintf("Auto-continuing (%d/%d)...", continuationCount, sess.MaxContinuations))
 
-			// Compact step — spawn a separate one-shot `claude -p "/compact" --resume <id>`
-			// process. The warm process is already dead from the SIGINT, so we can't
-			// SendTurn to it. The one-shot process compacts the session context on disk,
-			// and the next --resume picks up the compacted context.
+			// Compact step — send /compact as a user turn via stdin on the warm process.
+			// No need to spawn a separate process since the warm process is still alive.
 			if sess.CompactEveryNContinues > 0 && continuationCount%sess.CompactEveryNContinues == 0 {
 				compactingMsg := fmt.Sprintf(`{"type":"compacting","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(compactingMsg)
 				_, _ = s.store.CreateMessage(sessionID, "system", "Running /compact to reduce context size...")
 
-				resumeID := sess.ID
-				if sess.ClaudeSessionID != "" {
-					resumeID = sess.ClaudeSessionID
-				}
-				if err := s.manager.RunCompact(sessionID, resumeID, sess.CWD, 2*time.Minute); err != nil {
-					log.Printf("session %s: compact failed: %v", sessionID, err)
+				compactTurn := formatUserTurn("/compact")
+				if err := s.manager.SendTurn(sessionID, compactTurn); err != nil {
+					log.Printf("session %s: compact send failed: %v", sessionID, err)
 					_, _ = s.store.CreateMessage(sessionID, "system", fmt.Sprintf("Compact failed: %v, continuing without it.", err))
 				} else {
-					log.Printf("session %s: compact completed", sessionID)
-					_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.")
+					// Wait for compact to complete (result event)
+					select {
+					case <-turnDone:
+						log.Printf("session %s: compact completed", sessionID)
+						_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.")
+					case <-proc.Done:
+						log.Printf("session %s: process died during compact", sessionID)
+						_ = s.store.UpdateActivityState(sessionID, "idle")
+						doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode)
+						broadcaster.Send(doneMsg)
+						return
+					}
 				}
 				compactCompleteMsg := fmt.Sprintf(`{"type":"compact_complete","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(compactCompleteMsg)
-
-				// Send a heartbeat after compact to keep SSE clients alive during the
-				// gap between compact finishing and the new process starting.
-				hb := fmt.Sprintf(`{"type":"heartbeat","ts":%d}`, time.Now().UnixMilli())
-				broadcaster.Send(hb)
 			}
 
+			// Send continuation prompt via stdin on the same warm process
 			currentMessage = "You were interrupted due to turn limits. Continue where you left off."
 		}
 	}()
