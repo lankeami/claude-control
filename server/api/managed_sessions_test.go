@@ -475,3 +475,50 @@ func TestRecentDirsAPI(t *testing.T) {
 		t.Errorf("first name = %s, want project-b", result.Directories[0].Name)
 	}
 }
+
+func TestStaleState_ServerRestart(t *testing.T) {
+	dir := t.TempDir()
+	store, err := db.Open(dir + "/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// Create sessions in various states
+	s1, _ := store.CreateManagedSession("/tmp/stale-working1", `["Bash"]`, 50, 5.0, 0)
+	s2, _ := store.CreateManagedSession("/tmp/stale-working2", `["Bash"]`, 50, 5.0, 0)
+	s3, _ := store.CreateManagedSession("/tmp/stale-waiting", `["Bash"]`, 50, 5.0, 0)
+	s4, _ := store.CreateManagedSession("/tmp/stale-idle", `["Bash"]`, 50, 5.0, 0)
+
+	store.UpdateActivityState(s1.ID, "working")
+	store.UpdateActivityState(s2.ID, "working")
+	store.UpdateActivityState(s3.ID, "waiting")
+	store.UpdateActivityState(s4.ID, "idle")
+
+	// Simulate server restart: reset stale states
+	if err := store.ResetStaleActivityStates(); err != nil {
+		t.Fatalf("ResetStaleActivityStates: %v", err)
+	}
+
+	// Verify "working" sessions became "idle"
+	got1, _ := store.GetSessionByID(s1.ID)
+	if got1.ActivityState != "idle" {
+		t.Errorf("s1 activity_state = %q, want idle", got1.ActivityState)
+	}
+	got2, _ := store.GetSessionByID(s2.ID)
+	if got2.ActivityState != "idle" {
+		t.Errorf("s2 activity_state = %q, want idle", got2.ActivityState)
+	}
+
+	// Verify "waiting" sessions are NOT changed
+	got3, _ := store.GetSessionByID(s3.ID)
+	if got3.ActivityState != "waiting" {
+		t.Errorf("s3 activity_state = %q, want waiting (should not be changed)", got3.ActivityState)
+	}
+
+	// Verify "idle" sessions are NOT changed
+	got4, _ := store.GetSessionByID(s4.ID)
+	if got4.ActivityState != "idle" {
+		t.Errorf("s4 activity_state = %q, want idle", got4.ActivityState)
+	}
+}
