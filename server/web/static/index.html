@@ -315,6 +315,8 @@
                           @click="showShortcutPicker = !showShortcutPicker"
                           :disabled="inputSending"
                           title="Shortcuts">😁</button>
+                  <div class="shortcut-picker-backdrop" x-show="showShortcutPicker" x-cloak
+                       @click="showShortcutPicker = false"></div>
                   <div class="shortcut-picker-popup" x-show="showShortcutPicker" x-cloak
                        @click.outside="showShortcutPicker = false">
                     <template x-if="shortcuts.length === 0">
