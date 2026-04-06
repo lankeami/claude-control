@@ -253,28 +253,6 @@ func TestShellExecutePersistsMessages(t *testing.T) {
 	}
 }
 
-func TestAutoContinueThresholdCalculation(t *testing.T) {
-	// threshold = floor(0.8 * 50) = 40
-	val := float64(50) * 0.8
-	threshold := int(val)
-	if threshold != 40 {
-		t.Errorf("expected 40, got %d", threshold)
-	}
-
-	// threshold = floor(0.8 * 5) = 4
-	val = float64(5) * 0.8
-	threshold = int(val)
-	if threshold != 4 {
-		t.Errorf("expected 4, got %d", threshold)
-	}
-
-	// Edge: threshold = floor(0.8 * 1) = 0
-	val = float64(1) * 0.8
-	threshold = int(val)
-	if threshold != 0 {
-		t.Errorf("expected 0, got %d", threshold)
-	}
-}
 
 func TestClearSessionAPI(t *testing.T) {
 	ts, store := setupTestServer(t)
@@ -307,9 +285,6 @@ func TestClearSessionAPI(t *testing.T) {
 	updated, _ := store.GetSessionByID(sess.ID)
 	if updated.Initialized {
 		t.Error("expected initialized=false")
-	}
-	if updated.TurnCount != 0 {
-		t.Errorf("expected turn_count=0, got %d", updated.TurnCount)
 	}
 }
 

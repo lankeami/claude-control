@@ -1008,7 +1008,7 @@ document.addEventListener('alpine:init', () => {
             `**Allowed Tools:** ${sess?.allowed_tools || 'default'}`,
             `**Max Turns:** ${sess?.max_turns || 'unlimited'}`,
             `**Max Budget:** ${sess?.max_budget_usd ? '$' + sess.max_budget_usd.toFixed(2) : 'unlimited'}`,
-            `**Auto-continue:** ${sess?.auto_continue_threshold || 'off'}`,
+            `**Auto-continue:** ${sess?.max_continuations > 0 ? sess.max_continuations + ' continuations' : 'off'}`,
             `**Activity:** ${sess?.activity_state || 'unknown'}`,
           ];
           this.chatMessages.push({ role: 'system', command: '/config', content: lines.join('\n'), msg_type: 'text', timestamp: new Date().toISOString() });
