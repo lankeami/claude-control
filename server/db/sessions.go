@@ -25,15 +25,13 @@ type Session struct {
 	MaxBudgetUSD   float64   `json:"max_budget_usd"`
 	Initialized     bool   `json:"initialized"`
 	ClaudeSessionID       string  `json:"claude_session_id,omitempty"`
-	TurnCount             int     `json:"turn_count"`
-	AutoContinueThreshold float64 `json:"auto_continue_threshold"`
 	MaxContinuations      int     `json:"max_continuations"`
 	ActivityState         string  `json:"activity_state"`
 	Name                  string  `json:"name"`
 	CompactEveryNContinues int    `json:"compact_every_n_continues"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), turn_count, auto_continue_threshold, max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,''), compact_every_n_continues`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,''), compact_every_n_continues`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -42,7 +40,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.ID, &sess.ComputerName, &sess.ProjectPath, &sess.TranscriptPath,
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
-		&sess.ClaudeSessionID, &sess.TurnCount, &sess.AutoContinueThreshold, &sess.MaxContinuations, &sess.ActivityState,
+		&sess.ClaudeSessionID, &sess.MaxContinuations, &sess.ActivityState,
 		&sess.Name, &sess.CompactEveryNContinues,
 	)
 	if err != nil {
@@ -140,7 +138,7 @@ func (s *Store) ResumeSession(id, claudeSessionID string) error {
 		return fmt.Errorf("begin resume transaction: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 1, status = 'idle', turn_count = 0 WHERE id = ?`, claudeSessionID, id); err != nil {
+	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 1, status = 'idle' WHERE id = ?`, claudeSessionID, id); err != nil {
 		return fmt.Errorf("set claude_session_id: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
@@ -159,7 +157,7 @@ func (s *Store) ClearSession(id string) error {
 	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
 		return fmt.Errorf("delete messages: %w", err)
 	}
-	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 0, turn_count = 0, activity_state = 'idle' WHERE id = ?`, newClaudeSessionID, id); err != nil {
+	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 0, activity_state = 'idle' WHERE id = ?`, newClaudeSessionID, id); err != nil {
 		return fmt.Errorf("reset session state: %w", err)
 	}
 	return tx.Commit()
@@ -232,21 +230,6 @@ func (s *Store) SetWorkingToWaiting() error {
 	return err
 }
 
-func (s *Store) IncrementTurnCount(id string) (int, error) {
-	var count int
-	err := s.db.QueryRow(
-		`UPDATE sessions SET turn_count = turn_count + 1 WHERE id = ? RETURNING turn_count`, id,
-	).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("increment turn count: %w", err)
-	}
-	return count, nil
-}
-
-func (s *Store) ResetTurnCount(id string) error {
-	_, err := s.db.Exec(`UPDATE sessions SET turn_count = 0 WHERE id = ?`, id)
-	return err
-}
 
 func (s *Store) DeleteSession(id string) error {
 	tx, err := s.db.Begin()
