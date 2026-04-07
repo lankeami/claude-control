@@ -4,7 +4,8 @@
 # Install with: git config core.hooksPath .githooks
 
 echo "Running server tests before push..."
-cd server && go test ./... -count=1 -timeout 120s
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT/server" && go test ./... -count=1 -timeout 120s
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
