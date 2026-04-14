@@ -721,6 +721,86 @@ body {
 .git-clean { color: var(--text-muted); font-size: 11px; }
 .git-clean-text { font-style: italic; }
 
+/* Provider Tab Bar */
+.provider-tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.provider-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s;
+  position: relative;
+}
+
+.provider-tab:hover {
+  opacity: 0.8;
+  background: var(--bg-secondary);
+}
+
+.provider-tab.active {
+  opacity: 1;
+  background: var(--bg-secondary);
+}
+
+.provider-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+/* Provider Placeholder */
+.provider-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  text-align: center;
+  gap: 8px;
+}
+
+.provider-placeholder-icon {
+  opacity: 0.6;
+}
+
+.provider-placeholder-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.provider-placeholder-url {
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.provider-placeholder-msg {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* GitHub Issues Section */
 .issues-section {
   padding: 8px 12px;

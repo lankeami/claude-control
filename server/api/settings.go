@@ -24,6 +24,11 @@ type settingsPayload struct {
 	ClaudeEnv              string     `json:"claude_env"`
 	CompactEveryNContinues string     `json:"compact_every_n_continues"`
 	GithubToken            string     `json:"github_token"`
+	JiraURL                string     `json:"jira_url"`
+	JiraToken              string     `json:"jira_token"`
+	JiraEmail              string     `json:"jira_email"`
+	AsanaToken             string     `json:"asana_token"`
+	GoogleTasksToken       string     `json:"google_tasks_token"`
 	Shortcuts              []Shortcut `json:"shortcuts"`
 }
 
@@ -64,7 +69,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	vals := readEnvFile(s.envPath)
 
 	// Mask secrets
-	for _, key := range []string{"NGROK_AUTHTOKEN", "GITHUB_TOKEN"} {
+	for _, key := range []string{"NGROK_AUTHTOKEN", "GITHUB_TOKEN", "JIRA_TOKEN", "ASANA_TOKEN", "GOOGLE_TASKS_TOKEN"} {
 		if tok := vals[key]; len(tok) > 4 {
 			vals[key] = "****" + tok[len(tok)-4:]
 		} else if tok != "" {
@@ -80,6 +85,11 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		ClaudeEnv:              vals["CLAUDE_ENV"],
 		CompactEveryNContinues: vals["COMPACT_EVERY_N_CONTINUES"],
 		GithubToken:            vals["GITHUB_TOKEN"],
+		JiraURL:                vals["JIRA_URL"],
+		JiraToken:              vals["JIRA_TOKEN"],
+		JiraEmail:              vals["JIRA_EMAIL"],
+		AsanaToken:             vals["ASANA_TOKEN"],
+		GoogleTasksToken:       vals["GOOGLE_TASKS_TOKEN"],
 	}
 	resp.Shortcuts = readShortcuts(s.envPath)
 	w.Header().Set("Content-Type", "application/json")
@@ -111,6 +121,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(payload.GithubToken, "****") {
 		payload.GithubToken = current["GITHUB_TOKEN"]
+	}
+	if strings.HasPrefix(payload.JiraToken, "****") {
+		payload.JiraToken = current["JIRA_TOKEN"]
+	}
+	if strings.HasPrefix(payload.AsanaToken, "****") {
+		payload.AsanaToken = current["ASANA_TOKEN"]
+	}
+	if strings.HasPrefix(payload.GoogleTasksToken, "****") {
+		payload.GoogleTasksToken = current["GOOGLE_TASKS_TOKEN"]
 	}
 
 	// Check if restart-requiring fields changed
@@ -197,6 +216,24 @@ func formatEnvFile(p settingsPayload) string {
 	b.WriteString("\n# GitHub\n")
 	if p.GithubToken != "" {
 		b.WriteString("GITHUB_TOKEN=" + p.GithubToken + "\n")
+	}
+	b.WriteString("\n# Jira\n")
+	if p.JiraURL != "" {
+		b.WriteString("JIRA_URL=" + p.JiraURL + "\n")
+	}
+	if p.JiraToken != "" {
+		b.WriteString("JIRA_TOKEN=" + p.JiraToken + "\n")
+	}
+	if p.JiraEmail != "" {
+		b.WriteString("JIRA_EMAIL=" + p.JiraEmail + "\n")
+	}
+	b.WriteString("\n# Asana\n")
+	if p.AsanaToken != "" {
+		b.WriteString("ASANA_TOKEN=" + p.AsanaToken + "\n")
+	}
+	b.WriteString("\n# Google Tasks\n")
+	if p.GoogleTasksToken != "" {
+		b.WriteString("GOOGLE_TASKS_TOKEN=" + p.GoogleTasksToken + "\n")
 	}
 	return b.String()
 }
