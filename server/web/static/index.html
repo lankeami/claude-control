@@ -525,8 +525,32 @@
           </div>
         </div>
 
+        <!-- Provider Tab Bar -->
+        <div class="provider-tab-bar" x-show="sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+          <button class="provider-tab" :class="{ active: issuesProvider === 'github' }"
+                  @click="issuesProvider = 'github'" title="GitHub"
+                  x-show="settingsForm.github_token">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          </button>
+          <button class="provider-tab" :class="{ active: issuesProvider === 'jira' }"
+                  @click="issuesProvider = 'jira'" title="Jira"
+                  x-show="settingsForm.jira_url && settingsForm.jira_token">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M15.09 7.39L8.61.91 8 .3l-5.09 5.1a.5.5 0 000 .7L7.65 10.84a.5.5 0 00.7 0l6.74-6.74a.5.5 0 000-.71zM8 10.13L5.17 7.3 8 4.47l2.83 2.83L8 10.13z" fill="#2684FF"/><path d="M8 4.47a3.93 3.93 0 01-.01-5.56l-5.08 5.1 2.83 2.83L8 4.47z" fill="url(#jira-grad-a)"/><path d="M10.84 7.29L8 10.13a3.93 3.93 0 010 5.56l5.1-5.1-2.84-2.83-.42.53z" fill="url(#jira-grad-b)"/><defs><linearGradient id="jira-grad-a" x1="7.53" y1="2.56" x2="4.28" y2="5.62" gradientUnits="userSpaceOnUse"><stop stop-color="#0052CC" stop-opacity=".4"/><stop offset="1" stop-color="#2684FF"/></linearGradient><linearGradient id="jira-grad-b" x1="8.49" y1="10.05" x2="11.74" y2="6.99" gradientUnits="userSpaceOnUse"><stop stop-color="#0052CC" stop-opacity=".4"/><stop offset="1" stop-color="#2684FF"/></linearGradient></defs></svg>
+          </button>
+          <button class="provider-tab" :class="{ active: issuesProvider === 'asana' }"
+                  @click="issuesProvider = 'asana'" title="Asana"
+                  x-show="settingsForm.asana_token">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="4.5" r="2.8" fill="#F06A6A"/><circle cx="3.5" cy="11.5" r="2.8" fill="#F06A6A"/><circle cx="12.5" cy="11.5" r="2.8" fill="#F06A6A"/></svg>
+          </button>
+          <button class="provider-tab" :class="{ active: issuesProvider === 'google_tasks' }"
+                  @click="issuesProvider = 'google_tasks'" title="Google Tasks"
+                  x-show="settingsForm.google_tasks_token">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4285F4" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          </button>
+        </div>
+
         <!-- GitHub Issues Section -->
-        <div class="issues-section" x-show="gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+        <div class="issues-section" x-show="issuesProvider === 'github' && gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
           <div class="issues-header" @click="issuesExpanded = !issuesExpanded" style="cursor:pointer">
             <span class="issues-title">
               <span class="issues-toggle" x-text="issuesExpanded ? '▼' : '▶'"></span>
@@ -567,7 +591,7 @@
         </div>
 
         <!-- GitHub Pull Requests Section -->
-        <div class="issues-section" x-show="gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+        <div class="issues-section" x-show="issuesProvider === 'github' && gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
           <div class="issues-header" @click="pullsExpanded = !pullsExpanded" style="cursor:pointer">
             <span class="issues-title">
               <span class="issues-toggle" x-text="pullsExpanded ? '▼' : '▶'"></span>
@@ -605,6 +629,34 @@
                     class="issues-show-more"
                     @click="loadMorePulls()">Show more</button>
           </div>
+        </div>
+
+        <!-- Jira Placeholder -->
+        <div class="issues-section provider-placeholder" x-show="issuesProvider === 'jira' && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+          <div class="provider-placeholder-icon">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><path d="M15.09 7.39L8.61.91 8 .3l-5.09 5.1a.5.5 0 000 .7L7.65 10.84a.5.5 0 00.7 0l6.74-6.74a.5.5 0 000-.71zM8 10.13L5.17 7.3 8 4.47l2.83 2.83L8 10.13z" fill="#2684FF"/><path d="M8 4.47a3.93 3.93 0 01-.01-5.56l-5.08 5.1 2.83 2.83L8 4.47z" fill="#0052CC"/><path d="M10.84 7.29L8 10.13a3.93 3.93 0 010 5.56l5.1-5.1-2.84-2.83-.42.53z" fill="#0052CC"/></svg>
+          </div>
+          <div class="provider-placeholder-title">Connected to Jira</div>
+          <div class="provider-placeholder-url" x-text="settingsForm.jira_url"></div>
+          <div class="provider-placeholder-msg">Issue browsing coming in a future update</div>
+        </div>
+
+        <!-- Asana Placeholder -->
+        <div class="issues-section provider-placeholder" x-show="issuesProvider === 'asana' && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+          <div class="provider-placeholder-icon">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="4.5" r="2.8" fill="#F06A6A"/><circle cx="3.5" cy="11.5" r="2.8" fill="#F06A6A"/><circle cx="12.5" cy="11.5" r="2.8" fill="#F06A6A"/></svg>
+          </div>
+          <div class="provider-placeholder-title">Connected to Asana</div>
+          <div class="provider-placeholder-msg">Task browsing coming in a future update</div>
+        </div>
+
+        <!-- Google Tasks Placeholder -->
+        <div class="issues-section provider-placeholder" x-show="issuesProvider === 'google_tasks' && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
+          <div class="provider-placeholder-icon">
+            <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4285F4" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          </div>
+          <div class="provider-placeholder-title">Connected to Google Tasks</div>
+          <div class="provider-placeholder-msg">Task browsing coming in a future update</div>
         </div>
       </div>
     </div>
@@ -700,33 +752,88 @@
         </template>
         <template x-if="selectedSessionId">
           <div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <span style="font-weight:600;font-size:14px;">Issues</span>
-              <div class="issue-state-toggles" @click.stop>
-                <button class="issue-state-toggle" :class="{ 'active-open': githubIssuesState === 'open' }"
-                        @click="toggleIssueState('open')">Open</button>
-                <button class="issue-state-toggle" :class="{ 'active-closed': githubIssuesState === 'closed' }"
-                        @click="toggleIssueState('closed')">Closed</button>
-              </div>
+            <!-- Mobile Provider Tab Bar -->
+            <div class="provider-tab-bar" style="margin-bottom:8px;">
+              <button class="provider-tab" :class="{ active: issuesProvider === 'github' }"
+                      @click="issuesProvider = 'github'" title="GitHub"
+                      x-show="settingsForm.github_token">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              </button>
+              <button class="provider-tab" :class="{ active: issuesProvider === 'jira' }"
+                      @click="issuesProvider = 'jira'" title="Jira"
+                      x-show="settingsForm.jira_url && settingsForm.jira_token">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M15.09 7.39L8.61.91 8 .3l-5.09 5.1a.5.5 0 000 .7L7.65 10.84a.5.5 0 00.7 0l6.74-6.74a.5.5 0 000-.71zM8 10.13L5.17 7.3 8 4.47l2.83 2.83L8 10.13z" fill="#2684FF"/><path d="M8 4.47a3.93 3.93 0 01-.01-5.56l-5.08 5.1 2.83 2.83L8 4.47z" fill="#0052CC"/><path d="M10.84 7.29L8 10.13a3.93 3.93 0 010 5.56l5.1-5.1-2.84-2.83-.42.53z" fill="#0052CC"/></svg>
+              </button>
+              <button class="provider-tab" :class="{ active: issuesProvider === 'asana' }"
+                      @click="issuesProvider = 'asana'" title="Asana"
+                      x-show="settingsForm.asana_token">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="4.5" r="2.8" fill="#F06A6A"/><circle cx="3.5" cy="11.5" r="2.8" fill="#F06A6A"/><circle cx="12.5" cy="11.5" r="2.8" fill="#F06A6A"/></svg>
+              </button>
+              <button class="provider-tab" :class="{ active: issuesProvider === 'google_tasks' }"
+                      @click="issuesProvider = 'google_tasks'" title="Google Tasks"
+                      x-show="settingsForm.google_tasks_token">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4285F4" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              </button>
             </div>
-            <input type="text" class="issues-search" placeholder="Search issues..."
-                   x-model="githubIssuesSearch" @input="searchIssues()">
-            <div x-show="githubIssuesLoading" class="issues-loading">Loading...</div>
-            <div x-show="!githubIssuesLoading && githubIssuesError" class="issues-error" x-text="githubIssuesError"></div>
-            <div x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length === 0" class="issues-empty">No issues found</div>
-            <div class="issue-list" x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length > 0">
-              <template x-for="issue in githubIssues" :key="issue.number">
-                <div class="issue-row" @click="fetchIssueDetail(selectedSessionId, issue.number)">
-                  <div class="issue-dot" :class="issue.state"></div>
-                  <div class="issue-row-content">
-                    <div class="issue-row-title" x-text="issue.title"></div>
-                    <div class="issue-row-meta" x-text="'#' + issue.number + ' &middot; ' + issueTimeAgo(issue.updated_at)"></div>
-                  </div>
+
+            <!-- GitHub Issues (mobile) -->
+            <div x-show="issuesProvider === 'github'">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="font-weight:600;font-size:14px;">Issues</span>
+                <div class="issue-state-toggles" @click.stop>
+                  <button class="issue-state-toggle" :class="{ 'active-open': githubIssuesState === 'open' }"
+                          @click="toggleIssueState('open')">Open</button>
+                  <button class="issue-state-toggle" :class="{ 'active-closed': githubIssuesState === 'closed' }"
+                          @click="toggleIssueState('closed')">Closed</button>
                 </div>
-              </template>
+              </div>
+              <input type="text" class="issues-search" placeholder="Search issues..."
+                     x-model="githubIssuesSearch" @input="searchIssues()">
+              <div x-show="githubIssuesLoading" class="issues-loading">Loading...</div>
+              <div x-show="!githubIssuesLoading && githubIssuesError" class="issues-error" x-text="githubIssuesError"></div>
+              <div x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length === 0" class="issues-empty">No issues found</div>
+              <div class="issue-list" x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length > 0">
+                <template x-for="issue in githubIssues" :key="issue.number">
+                  <div class="issue-row" @click="fetchIssueDetail(selectedSessionId, issue.number)">
+                    <div class="issue-dot" :class="issue.state"></div>
+                    <div class="issue-row-content">
+                      <div class="issue-row-title" x-text="issue.title"></div>
+                      <div class="issue-row-meta" x-text="'#' + issue.number + ' &middot; ' + issueTimeAgo(issue.updated_at)"></div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <button x-show="githubIssuesHasMore && !githubIssuesLoading"
+                      class="issues-show-more" @click="loadMoreIssues()">Show more</button>
             </div>
-            <button x-show="githubIssuesHasMore && !githubIssuesLoading"
-                    class="issues-show-more" @click="loadMoreIssues()">Show more</button>
+
+            <!-- Jira Placeholder (mobile) -->
+            <div class="provider-placeholder" x-show="issuesProvider === 'jira'">
+              <div class="provider-placeholder-icon">
+                <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><path d="M15.09 7.39L8.61.91 8 .3l-5.09 5.1a.5.5 0 000 .7L7.65 10.84a.5.5 0 00.7 0l6.74-6.74a.5.5 0 000-.71zM8 10.13L5.17 7.3 8 4.47l2.83 2.83L8 10.13z" fill="#2684FF"/><path d="M8 4.47a3.93 3.93 0 01-.01-5.56l-5.08 5.1 2.83 2.83L8 4.47z" fill="#0052CC"/><path d="M10.84 7.29L8 10.13a3.93 3.93 0 010 5.56l5.1-5.1-2.84-2.83-.42.53z" fill="#0052CC"/></svg>
+              </div>
+              <div class="provider-placeholder-title">Connected to Jira</div>
+              <div class="provider-placeholder-url" x-text="settingsForm.jira_url"></div>
+              <div class="provider-placeholder-msg">Issue browsing coming in a future update</div>
+            </div>
+
+            <!-- Asana Placeholder (mobile) -->
+            <div class="provider-placeholder" x-show="issuesProvider === 'asana'">
+              <div class="provider-placeholder-icon">
+                <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="4.5" r="2.8" fill="#F06A6A"/><circle cx="3.5" cy="11.5" r="2.8" fill="#F06A6A"/><circle cx="12.5" cy="11.5" r="2.8" fill="#F06A6A"/></svg>
+              </div>
+              <div class="provider-placeholder-title">Connected to Asana</div>
+              <div class="provider-placeholder-msg">Task browsing coming in a future update</div>
+            </div>
+
+            <!-- Google Tasks Placeholder (mobile) -->
+            <div class="provider-placeholder" x-show="issuesProvider === 'google_tasks'">
+              <div class="provider-placeholder-icon">
+                <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4285F4" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              </div>
+              <div class="provider-placeholder-title">Connected to Google Tasks</div>
+              <div class="provider-placeholder-msg">Task browsing coming in a future update</div>
+            </div>
           </div>
         </template>
       </div>
@@ -1172,6 +1279,65 @@
             <input x-model="settingsForm.github_token" type="password" placeholder="ghp_..."
                    style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
             <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Personal access token for GitHub issue tracking (needs repo scope)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Integrations accordion -->
+      <div>
+        <div class="settings-accordion-header" @click="settingsAccordion.integrations = !settingsAccordion.integrations">
+          <h4>Integrations</h4>
+          <span class="settings-accordion-chevron" :class="{ open: settingsAccordion.integrations }">&#9654;</span>
+        </div>
+        <div class="settings-accordion-body" x-show="settingsAccordion.integrations">
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+            Connect project management tools to browse issues and tasks alongside GitHub.
+          </div>
+
+          <div style="border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px;">
+            <div style="font-size:12px; font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M15.09 7.39L8.61.91 8 .3l-5.09 5.1a.5.5 0 000 .7L7.65 10.84a.5.5 0 00.7 0l6.74-6.74a.5.5 0 000-.71zM8 10.13L5.17 7.3 8 4.47l2.83 2.83L8 10.13z" fill="#2684FF"/></svg>
+              Jira
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">BASE URL</label>
+              <input x-model="settingsForm.jira_url" type="text" placeholder="https://yourorg.atlassian.net"
+                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box; margin-bottom:6px;">
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">API TOKEN</label>
+              <input x-model="settingsForm.jira_token" type="password" placeholder="Jira API token"
+                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box; margin-bottom:6px;">
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">EMAIL</label>
+              <input x-model="settingsForm.jira_email" type="email" placeholder="you@company.com"
+                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box;">
+            </div>
+          </div>
+
+          <div style="border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px;">
+            <div style="font-size:12px; font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="4.5" r="2.8" fill="#F06A6A"/><circle cx="3.5" cy="11.5" r="2.8" fill="#F06A6A"/><circle cx="12.5" cy="11.5" r="2.8" fill="#F06A6A"/></svg>
+              Asana
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">PERSONAL ACCESS TOKEN</label>
+              <input x-model="settingsForm.asana_token" type="password" placeholder="Asana personal access token"
+                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box;">
+            </div>
+          </div>
+
+          <div style="border:1px solid var(--border); border-radius:8px; padding:12px;">
+            <div style="font-size:12px; font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4285F4" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+              Google Tasks
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">API KEY</label>
+              <input x-model="settingsForm.google_tasks_token" type="password" placeholder="Google Tasks API key"
+                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box;">
+            </div>
           </div>
         </div>
       </div>
