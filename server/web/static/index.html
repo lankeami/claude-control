@@ -76,7 +76,7 @@
             + New Session
           </button>
           <template x-for="session in sessions" :key="session.id">
-            <div class="session-item" :class="{ active: selectedSessionId === session.id }"
+            <div class="session-item" :class="{ active: selectedSessionId === session.id, 'recently-active': selectedSessionId !== session.id && isRecentlyActive(session) }"
                  @click="selectSession(session.id)">
               <span class="status-dot" :class="sessionStatus(session)"
                     :title="sessionStatus(session) === 'active' ? 'Working' : sessionStatus(session) === 'waiting' ? 'Waiting for input' : sessionStatus(session) === 'input_needed' ? 'Permission needed' : 'Idle'"></span>
@@ -684,7 +684,7 @@
           <button class="btn btn-sm" @click="mobileMenuOpen=false;openResumePicker()" style="flex:1;font-size:13px;">Resume</button>
         </div>
         <template x-for="session in sessions" :key="session.id">
-          <div class="session-item" :class="{ active: selectedSessionId === session.id }"
+          <div class="session-item" :class="{ active: selectedSessionId === session.id, 'recently-active': selectedSessionId !== session.id && isRecentlyActive(session) }"
                @click="selectSession(session.id)">
             <span class="status-dot" :class="sessionStatus(session)"></span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"

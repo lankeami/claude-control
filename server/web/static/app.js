@@ -796,6 +796,12 @@ document.addEventListener('alpine:init', () => {
       this.editingSessionName = null;
     },
 
+    isRecentlyActive(session) {
+      const lastSeen = new Date(session.last_seen_at);
+      const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+      return lastSeen > thirtyMinAgo;
+    },
+
     sessionStatus(session) {
       if (session.mode === 'managed') {
         const state = session.activity_state || 'idle';
