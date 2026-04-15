@@ -797,6 +797,8 @@ document.addEventListener('alpine:init', () => {
     },
 
     isRecentlyActive(session) {
+      const state = session.activity_state || 'idle';
+      if (state === 'working') return true;
       const lastSeen = new Date(session.last_seen_at);
       const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
       return lastSeen > thirtyMinAgo;
