@@ -201,6 +201,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		displayMsg = formatImageUploadMessage(req.Message, req.ImageID)
 	}
 	_, _ = s.store.CreateMessage(sessionID, "user", displayMsg)
+	_ = s.store.Heartbeat(sessionID) // Update last_seen_at so sidebar highlights recently active sessions
 	_ = s.store.UpdateActivityState(sessionID, "working")
 
 	broadcaster := s.manager.GetBroadcaster(sessionID)
