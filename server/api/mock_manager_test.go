@@ -13,6 +13,7 @@ import (
 
 const assistantLine = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello"}]}}`
 const resultLine = `{"type":"result","subtype":"success","cost":0.01}`
+const maxTurnsResultLine = `{"type":"result","subtype":"error_max_turns","cost":0.01}`
 const errorResultLine = `{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["something failed"]}`
 const toolUseLine = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/test.go"}}]}}`
 
