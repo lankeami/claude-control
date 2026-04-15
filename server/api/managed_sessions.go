@@ -225,6 +225,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		var mu sync.Mutex
 		var assistantEventCount int
 		var executionErrored bool
+		var hitMaxTurns bool
 
 		// turnDone is signaled by StreamNDJSON on each "result" message.
 		// Buffered so the signal isn't lost if we're between select calls.
@@ -245,13 +246,20 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 					IsError bool     `json:"is_error"`
 					Errors  []string `json:"errors"`
 				}
-				if json.Unmarshal([]byte(line), &res) == nil && res.Subtype == "error_during_execution" {
-					mu.Lock()
-					executionErrored = true
-					mu.Unlock()
-					if len(res.Errors) > 0 {
-						errText := strings.Join(res.Errors, "; ")
-						_, _ = s.store.CreateMessage(sessionID, "assistant", errText)
+				if json.Unmarshal([]byte(line), &res) == nil {
+					if res.Subtype == "error_during_execution" {
+						mu.Lock()
+						executionErrored = true
+						mu.Unlock()
+						if len(res.Errors) > 0 {
+							errText := strings.Join(res.Errors, "; ")
+							_, _ = s.store.CreateMessage(sessionID, "assistant", errText)
+						}
+					}
+					if res.Subtype == "error_max_turns" {
+						mu.Lock()
+						hitMaxTurns = true
+						mu.Unlock()
 					}
 				}
 			}
@@ -289,6 +297,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
 			assistantEventCount = 0
 			executionErrored = false
+			hitMaxTurns = false
 			mu.Unlock()
 
 			// Drain any stale turnDone signals from previous turns
@@ -353,6 +362,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
 			errored := executionErrored
 			events := assistantEventCount
+			reachedMaxTurns := hitMaxTurns
 			mu.Unlock()
 
 			if !sess.Initialized && !errored {
@@ -396,8 +406,20 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 			// --- Auto-continue decision ---
 			// The process is still alive. Claude completed a turn (hit --max-turns
-			// or finished naturally). If auto-continuations are configured, we
-			// continue by sending another message via stdin on the warm process.
+			// or finished naturally). Only auto-continue when Claude was interrupted
+			// by --max-turns (subtype "error_max_turns"). If Claude finished
+			// naturally (subtype "success"), it may be asking for user input —
+			// don't auto-continue in that case.
+
+			if !reachedMaxTurns {
+				log.Printf("session %s: Claude finished naturally (not max_turns), waiting for user input", sessionID)
+				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
+				<-streamDone
+				_ = s.store.UpdateActivityState(sessionID, "waiting")
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
+				broadcaster.Send(doneMsg)
+				return
+			}
 
 			// First turn (user's original message) — if max_continuations is 0, just finish
 			if continuationCount == 0 && sess.MaxContinuations <= 0 {

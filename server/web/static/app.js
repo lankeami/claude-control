@@ -61,6 +61,9 @@ document.addEventListener('alpine:init', () => {
     fileTreeData: [],
     gitInfo: null,
 
+    // Issues provider tabs
+    issuesProvider: 'github', // 'github' | 'jira' | 'asana' | 'google_tasks'
+
     // GitHub Issues state
     githubRepo: null,
     githubIssues: [],
@@ -121,7 +124,7 @@ document.addEventListener('alpine:init', () => {
     // Settings state
     showSettingsModal: false,
     settingsFirstRun: false,
-    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', shortcuts: [] },
+    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] },
     settingsError: '',
     settingsSaving: false,
     settingsRestartRequired: false,
@@ -130,7 +133,7 @@ document.addEventListener('alpine:init', () => {
     // Shortcuts state
     shortcuts: [],
     showShortcutPicker: false,
-    settingsAccordion: { server: false, shortcuts: false },
+    settingsAccordion: { server: false, integrations: false, shortcuts: false },
 
     // Usage tracking
     lastTurnThreshold: 0,
@@ -492,10 +495,15 @@ document.addEventListener('alpine:init', () => {
           claude_env: data.claude_env || '',
           compact_every_n_continues: data.compact_every_n_continues || '',
           github_token: data.github_token || '',
+          jira_url: data.jira_url || '',
+          jira_token: data.jira_token || '',
+          jira_email: data.jira_email || '',
+          asana_token: data.asana_token || '',
+          google_tasks_token: data.google_tasks_token || '',
           shortcuts: data.shortcuts || [],
         };
       } catch (e) {
-        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', shortcuts: [] };
+        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] };
       }
       this.showSettingsModal = true;
     },
@@ -527,6 +535,15 @@ document.addEventListener('alpine:init', () => {
         this.settingsError = 'Error: ' + e.message;
       }
       this.settingsSaving = false;
+    },
+
+    getConfiguredProviders() {
+      const providers = [];
+      if (this.settingsForm.github_token) providers.push('github');
+      if (this.settingsForm.jira_url && this.settingsForm.jira_token) providers.push('jira');
+      if (this.settingsForm.asana_token) providers.push('asana');
+      if (this.settingsForm.google_tasks_token) providers.push('google_tasks');
+      return providers;
     },
 
     async loadShortcuts() {
