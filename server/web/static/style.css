@@ -26,6 +26,7 @@
     --border: #333333;
     --card-pending-bg: #0a2614;
   }
+  .session-item.recently-active { background: rgba(37, 99, 235, 0.15); }
 }
 
 body {
@@ -150,8 +151,9 @@ body {
   transition: background 0.1s;
   background: rgba(255, 255, 255, 0.7);
 }
+.session-item.recently-active { background: rgba(37, 99, 235, 0.08); border-left: 3px solid var(--accent); }
 .session-item:hover { background: var(--border); }
-.session-item.active { background: var(--accent); color: #fff; }
+.session-item.active { background: var(--accent); color: #fff; border-left: none; }
 
 .session-delete {
   display: none;
