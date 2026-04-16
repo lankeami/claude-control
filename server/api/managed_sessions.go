@@ -554,6 +554,11 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 	ch := broadcaster.Subscribe()
 	defer broadcaster.Unsubscribe(ch)
 
+	// Flush headers immediately so the browser's EventSource fires onopen
+	// before any shell commands are sent. Without this, fast shell commands
+	// can broadcast events before the SSE subscriber is ready.
+	flusher.Flush()
+
 	for {
 		select {
 		case msg, ok := <-ch:
@@ -665,6 +670,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Command string `json:"command"`
 		Timeout int    `json:"timeout"`
+		ID      string `json:"id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -699,7 +705,12 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commandID := fmt.Sprintf("shell-%d", time.Now().UnixNano())
+	// Allow client-provided ID so frontend can set up SSE listener and
+	// placeholder messages before sending the command (avoids race condition).
+	commandID := req.ID
+	if commandID == "" {
+		commandID = fmt.Sprintf("shell-%d", time.Now().UnixNano())
+	}
 
 	proc, err := s.manager.SpawnShell(sessionID, managed.ShellOpts{
 		Command: req.Command,

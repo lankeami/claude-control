@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -253,6 +254,136 @@ func TestShellExecutePersistsMessages(t *testing.T) {
 	}
 }
 
+func TestShellExecuteUsesClientID(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0, 0)
+
+	body := `{"command": "echo hi", "id": "my-custom-id-123"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["id"] != "my-custom-id-123" {
+		t.Errorf("id=%v, want my-custom-id-123", result["id"])
+	}
+}
+
+// TestShellSSE_EventsDeliveredToPreconnectedSubscriber verifies that when an SSE
+// subscriber is connected BEFORE a shell command is executed, all events
+// (shell_start, shell_output, shell_exit) are received. This is the regression
+// test for the bug where switching to shell mode would stall because the frontend
+// connected SSE AFTER posting the command, causing fast commands to complete
+// before events could be captured.
+func TestShellSSE_EventsDeliveredToPreconnectedSubscriber(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0, 0)
+
+	// Connect SSE BEFORE sending the shell command (the fix)
+	sseURL := ts.URL + "/api/sessions/" + sess.ID + "/stream?token=test-api-key"
+	sseResp, err := http.Get(sseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sseResp.Body.Close()
+
+	if ct := sseResp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("expected text/event-stream, got %s", ct)
+	}
+
+	// Read SSE events in background goroutine
+	type sseEvent struct {
+		Type string `json:"type"`
+		ID   string `json:"id"`
+		Text string `json:"text"`
+		Code *int   `json:"code"`
+	}
+	eventsCh := make(chan sseEvent, 32)
+	go func() {
+		scanner := bufio.NewScanner(sseResp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			var evt sseEvent
+			if json.Unmarshal([]byte(data), &evt) == nil && strings.HasPrefix(evt.Type, "shell_") {
+				eventsCh <- evt
+			}
+		}
+		close(eventsCh)
+	}()
+
+	// Small delay to ensure SSE handler has subscribed to broadcaster
+	time.Sleep(50 * time.Millisecond)
+
+	// Now send a fast shell command
+	body := `{"command": "echo hello-from-shell", "timeout": 5, "id": "test-shell-sse"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// Collect events with timeout
+	hasStart, hasOutput, hasExit := false, false, false
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case evt, ok := <-eventsCh:
+			if !ok {
+				if !hasStart || !hasOutput || !hasExit {
+					t.Fatalf("SSE channel closed; start=%v output=%v exit=%v", hasStart, hasOutput, hasExit)
+				}
+				return
+			}
+			switch evt.Type {
+			case "shell_start":
+				hasStart = true
+				if evt.ID != "test-shell-sse" {
+					t.Errorf("shell_start id=%q, want test-shell-sse", evt.ID)
+				}
+			case "shell_output":
+				hasOutput = true
+				if !strings.Contains(evt.Text, "hello-from-shell") {
+					t.Errorf("shell_output text=%q, want to contain hello-from-shell", evt.Text)
+				}
+			case "shell_exit":
+				hasExit = true
+				if evt.Code == nil || *evt.Code != 0 {
+					t.Errorf("shell_exit code=%v, want 0", evt.Code)
+				}
+			}
+			if hasStart && hasOutput && hasExit {
+				return // Success — all events received
+			}
+		case <-timeout:
+			t.Fatalf("timed out; start=%v output=%v exit=%v", hasStart, hasOutput, hasExit)
+		}
+	}
+}
 
 func TestClearSessionAPI(t *testing.T) {
 	ts, store := setupTestServer(t)
