@@ -1517,39 +1517,47 @@ document.addEventListener('alpine:init', () => {
       this.inputText = '';
       this.inputSending = true;
 
+      // Generate ID client-side so placeholders and SSE are ready before
+      // the backend starts broadcasting events (fixes stale UI on fast commands).
+      const commandId = 'shell-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      this.activeShellId = commandId;
+
+      // Create placeholder messages immediately so SSE events have targets
+      this.chatMessages.push({
+        role: 'shell',
+        content: cmd,
+        shellId: commandId,
+        cwd: this.currentSession?.cwd || '',
+        timestamp: new Date().toISOString()
+      });
+
+      this.chatMessages.push({
+        role: 'shell_output',
+        stdout: '',
+        stderr: '',
+        exitCode: null,
+        timedOut: false,
+        shellId: commandId,
+        complete: false,
+        timestamp: new Date().toISOString()
+      });
+
+      this.$nextTick(() => this.scrollToBottom(true));
+
       try {
+        // Ensure SSE is connected BEFORE sending the command
+        await this.ensureSSEConnected(this.selectedSessionId);
+
         const res = await fetch(`/api/sessions/${this.selectedSessionId}/shell`, {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: cmd, timeout: 30 })
+          body: JSON.stringify({ command: cmd, timeout: 30, id: commandId })
         });
         if (!res.ok) throw new Error(await res.text());
-
-        const data = await res.json();
-        this.activeShellId = data.id;
-
-        this.chatMessages.push({
-          role: 'shell',
-          content: cmd,
-          shellId: data.id,
-          cwd: this.currentSession?.cwd || '',
-          timestamp: new Date().toISOString()
-        });
-
-        this.chatMessages.push({
-          role: 'shell_output',
-          stdout: '',
-          stderr: '',
-          exitCode: null,
-          timedOut: false,
-          shellId: data.id,
-          complete: false,
-          timestamp: new Date().toISOString()
-        });
-
-        this.$nextTick(() => this.scrollToBottom(true));
-        this.startSessionSSE(this.selectedSessionId);
       } catch (e) {
+        // Remove placeholder messages on error
+        this.chatMessages = this.chatMessages.filter(m => m.shellId !== commandId);
+        this.activeShellId = null;
         this.toast('Error: ' + e.message);
       }
       this.inputSending = false;
@@ -1700,6 +1708,25 @@ document.addEventListener('alpine:init', () => {
         }
       };
       window.speechSynthesis.speak(utterance);
+    },
+
+    ensureSSEConnected(sessionId) {
+      // If already connected to this session, resolve immediately
+      if (this.sessionSSE && this.sessionSSE.readyState === EventSource.OPEN) {
+        return Promise.resolve();
+      }
+      this.startSessionSSE(sessionId);
+      return new Promise((resolve) => {
+        if (!this.sessionSSE) { resolve(); return; }
+        if (this.sessionSSE.readyState === EventSource.OPEN) { resolve(); return; }
+        const onOpen = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        this.sessionSSE.addEventListener('open', onOpen, { once: true });
+        // Timeout fallback — don't block forever if connection fails
+        const timer = setTimeout(resolve, 3000);
+      });
     },
 
     startSessionSSE(sessionId) {
