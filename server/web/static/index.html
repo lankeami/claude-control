@@ -1301,6 +1301,7 @@
           <div class="settings-tab" :class="{ active: settingsActiveTab === 'server' }" @click="settingsActiveTab = 'server'">Server</div>
           <div class="settings-tab" :class="{ active: settingsActiveTab === 'integrations' }" @click="settingsActiveTab = 'integrations'">Integrations</div>
           <div class="settings-tab" :class="{ active: settingsActiveTab === 'shortcuts' }" @click="settingsActiveTab = 'shortcuts'">Shortcuts</div>
+          <div class="settings-tab" :class="{ active: settingsActiveTab === 'statusline' }" @click="settingsActiveTab = 'statusline'">Status Line</div>
           <div class="settings-tab-divider"></div>
           <div class="settings-tab danger" :class="{ active: settingsActiveTab === 'actions' }" @click="settingsActiveTab = 'actions'">Actions</div>
         </div>
@@ -1438,6 +1439,33 @@
             </template>
             <button @click="settingsForm.shortcuts.push({key:'', value:''})" class="btn btn-sm"
                     style="font-size:12px; color:var(--accent);">+ Add Shortcut</button>
+          </div>
+
+          <!-- Status Line tab -->
+          <div x-show="settingsActiveTab === 'statusline'">
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">
+              Choose which items appear in the bottom status bar for managed sessions.
+            </div>
+            <template x-for="item in [
+              { key: 'model', label: 'Model', desc: 'Claude model name (e.g., Opus 4.6)' },
+              { key: 'cost', label: 'Cost', desc: 'Accumulated session cost' },
+              { key: 'context', label: 'Context %', desc: 'Context window usage (when available)' },
+              { key: 'turns', label: 'Turns', desc: 'Turn count / max turns' },
+              { key: 'activity', label: 'Activity', desc: 'Session activity state (working/waiting/idle)' },
+              { key: 'cwd', label: 'Working Dir', desc: 'Session working directory' },
+            ]" :key="item.key">
+              <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1;">
+                  <input type="checkbox" :checked="statusLineConfig[item.key]"
+                         @change="toggleStatusLineItem(item.key)"
+                         style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;">
+                  <div>
+                    <div style="font-size:13px; font-weight:500;" x-text="item.label"></div>
+                    <div style="font-size:11px; color:var(--text-muted);" x-text="item.desc"></div>
+                  </div>
+                </label>
+              </div>
+            </template>
           </div>
 
           <!-- Actions tab -->
