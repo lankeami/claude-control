@@ -2297,40 +2297,6 @@ body {
   }
 }
 
-/* Settings accordion */
-.settings-accordion-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-  user-select: none;
-}
-.settings-accordion-header:hover {
-  color: var(--accent);
-}
-.settings-accordion-header h4 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.settings-accordion-chevron {
-  font-size: 12px;
-  color: var(--text-muted);
-  transition: transform 0.15s;
-}
-.settings-accordion-chevron.open {
-  transform: rotate(90deg);
-}
-.settings-accordion-body {
-  padding-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 
 /* Image upload button */
 .image-upload-btn {
