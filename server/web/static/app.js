@@ -49,6 +49,7 @@ document.addEventListener('alpine:init', () => {
     newProjectName: '',
     newProjectError: '',
     newProjectCreating: false,
+    showNewFolderInput: false,
     recentDirs: [],
 
     // Resume picker state
@@ -1236,6 +1237,7 @@ document.addEventListener('alpine:init', () => {
       this.newProjectName = '';
       this.newProjectError = '';
       this.newProjectCreating = false;
+      this.showNewFolderInput = false;
       // Fetch recent directories
       try {
         const res = await fetch('/api/sessions/recent-dirs', {

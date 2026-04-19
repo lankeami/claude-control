@@ -974,99 +974,120 @@
 
   <!-- New Session Modal -->
   <div x-show="showNewSessionModal" x-cloak
-       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
+       class="modal-backdrop" style="z-index:100;"
        @click.self="showNewSessionModal = false">
-    <div class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:70vh;">
+    <div class="modal-lg">
+      <!-- Mobile header -->
       <div class="mobile-detail-header mobile-modal-header">
         <button @click="showNewSessionModal = false" class="mobile-back-btn" aria-label="Back">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
           </svg>
         </button>
-        <span class="mobile-detail-title">New Managed Session</span>
-      </div>
-      <h3 class="desktop-modal-title" style="margin-top:0; margin-bottom:12px;">New Managed Session</h3>
-
-      <!-- Path input with search -->
-      <div style="display:flex; gap:8px; margin-bottom:4px;">
-        <input x-model="newSessionCWD" type="text" placeholder="/path/to/project"
-               style="flex:1; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;"
-               @keydown="handleBrowseInputKeydown($event)"
-               @input="if (newSessionCWD === browsePath) { browseFilter = ''; } else if (browsePath && newSessionCWD.startsWith(browsePath + '/')) { browseFilter = newSessionCWD.slice(browsePath.length + 1); }">
-        <button class="btn btn-sm" @click="browseTo(newSessionCWD)" style="white-space:nowrap;">Go</button>
-      </div>
-      <div x-show="browseConfirmed" style="font-size:11px; color:var(--accent); margin-bottom:8px;">
-        Press Enter again to start session in this folder
-      </div>
-      <div x-show="!browseConfirmed && browseFilter" style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
-        Filtering: <span x-text="browseFilter"></span>
+        <span class="mobile-detail-title">New Session</span>
       </div>
 
-      <!-- Recent directories -->
-      <template x-if="recentDirs.length > 0">
-        <div style="margin-bottom:8px;">
-          <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px; font-weight:600;">Recent Projects</div>
+      <!-- Desktop header -->
+      <div class="modal-header desktop-modal-title">
+        <h3>New Session</h3>
+        <button class="modal-close-btn" @click="showNewSessionModal = false" aria-label="Close">&times;</button>
+      </div>
+
+      <!-- Path input -->
+      <div style="padding:0 24px 12px;">
+        <div style="display:flex; gap:8px;">
+          <input x-model="newSessionCWD" type="text" placeholder="/path/to/project"
+                 class="modal-input" style="flex:1;"
+                 @keydown="handleBrowseInputKeydown($event)"
+                 @input="if (newSessionCWD === browsePath) { browseFilter = ''; } else if (browsePath && newSessionCWD.startsWith(browsePath + '/')) { browseFilter = newSessionCWD.slice(browsePath.length + 1); }">
+          <button class="btn btn-sm btn-primary" @click="browseTo(newSessionCWD)" style="white-space:nowrap;">Go</button>
+        </div>
+        <div x-show="browseConfirmed" style="font-size:11px; color:var(--accent); margin-top:4px;">
+          Press Enter again to start session in this folder
+        </div>
+        <div x-show="!browseConfirmed && browseFilter" style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+          Filtering: <span x-text="browseFilter"></span>
+        </div>
+      </div>
+
+      <!-- Two-column body -->
+      <div class="modal-columns">
+        <!-- Left: Recent Projects -->
+        <div class="modal-columns-left">
+          <div class="modal-section-label">Recent Projects</div>
+          <template x-if="recentDirs.length === 0">
+            <div style="font-size:12px; color:var(--text-muted);">No recent projects</div>
+          </template>
           <template x-for="dir in recentDirs" :key="dir.path">
-            <div class="browse-item" @click="selectRecentDir(dir.path)" style="cursor:pointer;">
+            <div class="browse-item" @click="selectRecentDir(dir.path)" style="cursor:pointer; border-radius:8px; padding:10px 12px; margin-bottom:4px;">
               <span class="browse-icon" style="color:var(--accent);">&#9733;</span>
-              <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500;" x-text="dir.name"></span>
-              <span style="font-size:10px; color:var(--text-muted); flex-shrink:0;" x-text="abbreviatePath(dir.path)"></span>
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="dir.name"></div>
+                <div style="font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="abbreviatePath(dir.path)"></div>
+              </div>
             </div>
           </template>
         </div>
-      </template>
 
-      <!-- Breadcrumb navigation -->
-      <div class="browse-breadcrumbs">
-        <template x-for="(crumb, i) in breadcrumbs" :key="crumb.path">
-          <span>
-            <span x-show="i > 0" style="color:var(--text-muted); margin:0 2px;">/</span>
-            <a href="#" @click.prevent="browseTo(crumb.path)" x-text="crumb.label"
-               style="color:var(--accent); text-decoration:none; font-size:13px;"></a>
-          </span>
-        </template>
-      </div>
-
-      <!-- Directory list -->
-      <div class="browse-list">
-        <template x-if="browseLoading">
-          <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading...</div>
-        </template>
-        <template x-if="!browseLoading && filteredBrowseEntries.length === 0">
-          <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;" x-text="browseFilter ? 'No matching directories' : 'No subdirectories'"></div>
-        </template>
-        <template x-for="entry in filteredBrowseEntries" :key="entry.path">
-          <div class="browse-item" @click="browseFilter = ''; browseTo(entry.path)">
-            <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
-                  :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
-            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="entry.name"></span>
-            <span x-show="entry.is_git_repo" style="font-size:10px; color:var(--green); flex-shrink:0;">git</span>
+        <!-- Right: File Browser -->
+        <div class="modal-columns-right">
+          <!-- Breadcrumbs -->
+          <div class="browse-breadcrumbs" style="margin-bottom:10px;">
+            <template x-for="(crumb, i) in breadcrumbs" :key="crumb.path">
+              <span>
+                <span x-show="i > 0" style="color:var(--text-muted); margin:0 2px;">&rsaquo;</span>
+                <a href="#" @click.prevent="browseTo(crumb.path)" x-text="crumb.label"
+                   style="color:var(--accent); text-decoration:none; font-size:13px;"></a>
+              </span>
+            </template>
           </div>
-        </template>
+
+          <!-- Directory list -->
+          <div class="browse-list" style="flex:1; min-height:0;">
+            <template x-if="browseLoading">
+              <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading...</div>
+            </template>
+            <template x-if="!browseLoading && filteredBrowseEntries.length === 0">
+              <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;" x-text="browseFilter ? 'No matching directories' : 'No subdirectories'"></div>
+            </template>
+            <template x-for="entry in filteredBrowseEntries" :key="entry.path">
+              <div class="browse-item" @click="browseFilter = ''; browseTo(entry.path)">
+                <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
+                      :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
+                <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="entry.name"></span>
+                <span x-show="entry.is_git_repo" style="font-size:10px; color:var(--green); flex-shrink:0;">git</span>
+              </div>
+            </template>
+          </div>
+
+          <!-- Collapsed New Folder -->
+          <div class="new-folder-toggle" @click="showNewFolderInput = !showNewFolderInput" x-show="!showNewFolderInput">
+            + New Folder
+          </div>
+          <div x-show="showNewFolderInput" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
+            <div style="display:flex; gap:8px;">
+              <input x-model="newProjectName" type="text" placeholder="Folder name..."
+                     class="modal-input" style="flex:1;"
+                     @keydown.enter.prevent="createNewProject()"
+                     @keydown.escape.prevent="showNewFolderInput = false; newProjectName = ''">
+              <button class="btn btn-sm btn-primary" @click="createNewProject()"
+                      :disabled="!isValidNewProjectName || newProjectCreating"
+                      x-text="newProjectCreating ? 'Creating...' : 'Create'"></button>
+              <button class="btn btn-sm" @click="showNewFolderInput = false; newProjectName = ''">&times;</button>
+            </div>
+            <div x-show="newProjectName && !isValidNewProjectName" style="font-size:11px; color:var(--red); margin-top:4px;">
+              Use letters, numbers, hyphens, dots, or underscores.
+            </div>
+            <div x-show="newProjectError" style="font-size:11px; color:var(--red); margin-top:4px;" x-text="newProjectError"></div>
+          </div>
+        </div>
       </div>
 
-      <!-- New Project -->
-      <div style="border-top:1px solid var(--border); padding-top:10px; margin-top:8px;">
-        <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">Create new project in this folder:</div>
-        <div style="display:flex; gap:8px;">
-          <input x-model="newProjectName" type="text" placeholder="New project name..."
-                 style="flex:1; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;"
-                 @keydown.enter.prevent="createNewProject()">
-          <button class="btn btn-sm btn-primary" @click="createNewProject()"
-                  :disabled="!isValidNewProjectName || newProjectCreating"
-                  x-text="newProjectCreating ? 'Creating...' : 'Create'"></button>
-        </div>
-        <div x-show="newProjectName && !isValidNewProjectName" style="font-size:11px; color:var(--red); margin-top:4px;">
-          Use letters, numbers, hyphens, dots, or underscores. Must start/end with alphanumeric.
-        </div>
-        <div x-show="newProjectError" style="font-size:11px; color:var(--red); margin-top:4px;" x-text="newProjectError"></div>
-      </div>
-
-      <!-- Actions -->
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-shrink:0;">
+      <!-- Footer -->
+      <div class="modal-footer">
         <button class="btn btn-sm" @click="showNewSessionModal = false">Cancel</button>
         <button class="btn btn-sm btn-primary" @click="createManagedSession()" :disabled="!newSessionCWD.trim()">
-          Select This Folder
+          Open
         </button>
       </div>
     </div>
