@@ -169,6 +169,15 @@ document.addEventListener('alpine:init', () => {
     slashFilter: '',
     slashSelectedIndex: 0,
     sessionCost: null,
+    sessionModel: null,
+    statusLineConfig: {
+      model: true,
+      cost: true,
+      context: false,
+      turns: false,
+      activity: false,
+      cwd: false,
+    },
 
     // Activity Status Pills
     stalenessTimer: null,
@@ -242,6 +251,14 @@ document.addEventListener('alpine:init', () => {
     async init() {
       // Detect Web Speech API support
       this.voiceChatSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
+      // Load status line config from localStorage
+      try {
+        const saved = localStorage.getItem('statusLineConfig');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          this.statusLineConfig = { ...this.statusLineConfig, ...parsed };
+        }
+      } catch (e) { /* ignore corrupt localStorage */ }
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
@@ -721,6 +738,17 @@ document.addEventListener('alpine:init', () => {
       return 'var(--accent)';
     },
 
+    toggleStatusLineItem(key) {
+      this.statusLineConfig[key] = !this.statusLineConfig[key];
+      localStorage.setItem('statusLineConfig', JSON.stringify(this.statusLineConfig));
+    },
+
+    statusLineVisible() {
+      const sess = this.currentSession;
+      if (!sess || sess.mode !== 'managed') return false;
+      return Object.values(this.statusLineConfig).some(v => v);
+    },
+
     pendingCountFor(sessionId) {
       return this.prompts.filter(p =>
         p.status === 'pending' && p.type === 'prompt' &&
@@ -855,6 +883,7 @@ document.addEventListener('alpine:init', () => {
       this.slashCommandsLoaded = false;
       this.showSlashMenu = false;
       this.sessionCost = null;
+      this.sessionModel = null;
       this.continuationCount = 0;
       this.isCompacting = false;
       this.sessionFiles = [];
@@ -1904,6 +1933,11 @@ document.addEventListener('alpine:init', () => {
           // Activity pill: tool_result means Claude is thinking again
           if (data.type === 'tool_result') {
             this.addActivityPill('Thinking...', 'active');
+          }
+
+          // Capture model name from system init event
+          if (data.type === 'system' && data.subtype === 'init' && data.model) {
+            this.sessionModel = data.model;
           }
 
           // Only display assistant messages and error events
