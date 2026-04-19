@@ -1935,6 +1935,11 @@ document.addEventListener('alpine:init', () => {
             this.addActivityPill('Thinking...', 'active');
           }
 
+          // Capture model name from system init event
+          if (data.type === 'system' && data.subtype === 'init' && data.model) {
+            this.sessionModel = data.model;
+          }
+
           // Only display assistant messages and error events
           if (data.type === 'assistant' && data.message) {
             // Extract text blocks from message content
