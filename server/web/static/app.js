@@ -744,7 +744,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     statusLineVisible() {
-      const sess = this.sessions.find(s => s.id === this.selectedSessionId);
+      const sess = this.currentSession;
       if (!sess || sess.mode !== 'managed') return false;
       return Object.values(this.statusLineConfig).some(v => v);
     },

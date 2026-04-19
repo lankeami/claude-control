@@ -579,7 +579,8 @@ body {
 .status-line {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding: 4px 1rem;
   border-top: 1px solid var(--border);
   font-size: 0.75rem;
