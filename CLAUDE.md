@@ -80,3 +80,5 @@ docker compose down                             # Stop
 - Session activity state plan: `docs/superpowers/plans/2026-03-23-session-activity-state.md`
 - Shortcut creator spec: `docs/superpowers/specs/2026-04-03-shortcut-creator-design.md`
 - Shortcut creator plan: `docs/superpowers/plans/2026-04-03-shortcut-creator.md`
+- Status line spec: `docs/superpowers/specs/2026-04-19-status-line-design.md`
+- Status line plan: `docs/superpowers/plans/2026-04-19-status-line.md`
