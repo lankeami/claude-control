@@ -1273,6 +1273,11 @@ body {
   flex-shrink: 0;
 }
 
+.modal-footer .btn-primary,
+.modal-header .btn-primary {
+  width: auto;
+}
+
 .modal-input {
   width: 100%;
   padding: 10px 12px;

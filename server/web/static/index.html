@@ -997,10 +997,10 @@
       <div style="padding:0 24px 12px;">
         <div style="display:flex; gap:8px;">
           <input x-model="newSessionCWD" type="text" placeholder="/path/to/project"
-                 class="modal-input" style="flex:1;"
+                 class="modal-input" style="flex:1; min-width:0;"
                  @keydown="handleBrowseInputKeydown($event)"
                  @input="if (newSessionCWD === browsePath) { browseFilter = ''; } else if (browsePath && newSessionCWD.startsWith(browsePath + '/')) { browseFilter = newSessionCWD.slice(browsePath.length + 1); }">
-          <button class="btn btn-sm btn-primary" @click="browseTo(newSessionCWD)" style="white-space:nowrap;">Go</button>
+          <button class="btn btn-sm btn-primary" @click="browseTo(newSessionCWD)" style="white-space:nowrap; width:auto; flex-shrink:0;">Go</button>
         </div>
         <div x-show="browseConfirmed" style="font-size:11px; color:var(--accent); margin-top:4px;">
           Press Enter again to start session in this folder
