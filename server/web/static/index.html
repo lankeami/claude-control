@@ -360,6 +360,48 @@
                 <span class="input-hint">⌘↵ to send</span>
               </div>
             </div>
+
+            <!-- Status line -->
+            <div class="status-line" x-show="statusLineVisible()" x-cloak>
+              <template x-if="statusLineConfig.model">
+                <span class="status-line-item" x-show="sessionModel">
+                  <span class="status-line-label">Model</span>
+                  <span x-text="sessionModel"></span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.cost">
+                <span class="status-line-item">
+                  <span class="status-line-label">Cost</span>
+                  <span x-text="sessionCost != null ? '$' + sessionCost.toFixed(4) : '$0.00'"></span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.context">
+                <span class="status-line-item" style="display:none;">
+                  <span class="status-line-label">Context</span>
+                  <span>—</span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.turns">
+                <span class="status-line-item" x-show="currentSession?.max_turns > 0">
+                  <span class="status-line-label">Turns</span>
+                  <span x-text="(currentSession?.turn_count || 0) + '/' + (currentSession?.max_turns || 0)"></span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.activity">
+                <span class="status-line-item">
+                  <span class="status-line-label">Activity</span>
+                  <span class="status-line-dot"
+                        :style="'background:' + (currentSession?.activity_state === 'working' ? '#f39c12' : currentSession?.activity_state === 'waiting' ? '#22c55e' : '#6b7280')"></span>
+                  <span x-text="currentSession?.activity_state || 'idle'"></span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.cwd">
+                <span class="status-line-item" x-show="currentSession?.cwd">
+                  <span class="status-line-label">CWD</span>
+                  <span x-text="currentSession?.cwd" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; vertical-align:bottom;"></span>
+                </span>
+              </template>
+            </div>
           </div>
 
           <!-- File viewer resize handle -->
