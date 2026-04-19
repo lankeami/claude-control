@@ -134,7 +134,8 @@ document.addEventListener('alpine:init', () => {
     // Shortcuts state
     shortcuts: [],
     showShortcutPicker: false,
-    settingsAccordion: { server: false, integrations: false, shortcuts: false },
+    settingsActiveTab: 'server',
+    settingsOriginal: null,
 
     // Usage tracking
     lastTurnThreshold: 0,
@@ -482,6 +483,7 @@ document.addEventListener('alpine:init', () => {
     async openSettingsModal() {
       this.settingsError = '';
       this.settingsFirstRun = false;
+      this.settingsActiveTab = 'server';
       try {
         const res = await fetch('/api/settings', {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
@@ -503,10 +505,27 @@ document.addEventListener('alpine:init', () => {
           google_tasks_token: data.google_tasks_token || '',
           shortcuts: data.shortcuts || [],
         };
+        this.settingsOriginal = JSON.parse(JSON.stringify(this.settingsForm));
       } catch (e) {
         this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] };
       }
       this.showSettingsModal = true;
+    },
+
+    settingsChangeCount() {
+      if (!this.settingsOriginal) return 0;
+      let count = 0;
+      const keys = ['port', 'ngrok_authtoken', 'claude_bin', 'claude_args', 'claude_env', 'compact_every_n_continues', 'github_token', 'jira_url', 'jira_token', 'jira_email', 'asana_token', 'google_tasks_token'];
+      for (const key of keys) {
+        if (String(this.settingsForm[key] || '') !== String(this.settingsOriginal[key] || '')) count++;
+      }
+      if (JSON.stringify(this.settingsForm.shortcuts) !== JSON.stringify(this.settingsOriginal.shortcuts)) count++;
+      return count;
+    },
+
+    isFieldChanged(fieldName) {
+      if (!this.settingsOriginal) return false;
+      return String(this.settingsForm[fieldName] || '') !== String(this.settingsOriginal[fieldName] || '');
     },
 
     async saveSettings() {
