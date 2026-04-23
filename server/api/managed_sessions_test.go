@@ -582,6 +582,36 @@ func TestRecentDirsAPI(t *testing.T) {
 	}
 }
 
+func TestBuildPersistentArgs_WithModel(t *testing.T) {
+	sess := &db.Session{
+		ID:       "test-id",
+		MaxTurns: 10,
+	}
+	cfg := managed.Config{}
+
+	// Without model — no --model flag
+	args := buildPersistentArgs(sess, cfg)
+	for _, a := range args {
+		if a == "--model" {
+			t.Error("unexpected --model flag without model set")
+		}
+	}
+
+	// With model — --model flag present
+	sess.Model = "claude-opus-4-6"
+	args = buildPersistentArgs(sess, cfg)
+	found := false
+	for i, a := range args {
+		if a == "--model" && i+1 < len(args) && args[i+1] == "claude-opus-4-6" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected --model claude-opus-4-6 in args, got: %v", args)
+	}
+}
+
 func TestStaleState_ServerRestart(t *testing.T) {
 	dir := t.TempDir()
 	store, err := db.Open(dir + "/test.db")

@@ -29,6 +29,7 @@ type Session struct {
 	ActivityState         string  `json:"activity_state"`
 	Name                  string  `json:"name"`
 	CompactEveryNContinues int    `json:"compact_every_n_continues"`
+	Model                  string `json:"model,omitempty"`
 }
 
 const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,''), compact_every_n_continues`

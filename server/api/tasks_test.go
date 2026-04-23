@@ -98,7 +98,7 @@ func TestListTasks(t *testing.T) {
 	ts, store := newTestServer(t)
 
 	// Create a task directly via store
-	_, err := store.CreateScheduledTask("", "Task A", "shell", "ls", "/tmp", "0 * * * *")
+	_, err := store.CreateScheduledTask("", "Task A", "shell", "ls", "/tmp", "0 * * * *", "")
 	if err != nil {
 		t.Fatalf("CreateScheduledTask: %v", err)
 	}
