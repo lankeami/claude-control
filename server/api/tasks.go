@@ -19,6 +19,7 @@ type createTaskRequest struct {
 	Command          string `json:"command"`
 	WorkingDirectory string `json:"working_directory"`
 	CronExpression   string `json:"cron_expression"`
+	Model            string `json:"model"`
 }
 
 type updateTaskRequest struct {
@@ -28,6 +29,7 @@ type updateTaskRequest struct {
 	WorkingDirectory string `json:"working_directory"`
 	CronExpression   string `json:"cron_expression"`
 	Enabled          bool   `json:"enabled"`
+	Model            string `json:"model"`
 }
 
 func validateTaskRequest(name, taskType, command, workingDir, cronExpr string) (string, bool) {
@@ -70,7 +72,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := s.store.CreateScheduledTask(req.SessionID, req.Name, req.TaskType, req.Command, req.WorkingDirectory, req.CronExpression)
+	task, err := s.store.CreateScheduledTask(req.SessionID, req.Name, req.TaskType, req.Command, req.WorkingDirectory, req.CronExpression, req.Model)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
@@ -145,7 +147,7 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.UpdateScheduledTask(taskID, req.Name, req.TaskType, req.Command, req.WorkingDirectory, req.CronExpression, req.Enabled); err != nil {
+	if err := s.store.UpdateScheduledTask(taskID, req.Name, req.TaskType, req.Command, req.WorkingDirectory, req.CronExpression, req.Model, req.Enabled); err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}

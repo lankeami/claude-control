@@ -29,6 +29,7 @@ type ScheduledTask struct {
 	NextRunAt        *time.Time `json:"next_run_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	Model            string     `json:"model"`
 }
 
 type TaskRun struct {
@@ -41,7 +42,7 @@ type TaskRun struct {
 	Status     string     `json:"status"`
 }
 
-const taskColumns = `id, session_id, name, task_type, command, working_directory, cron_expression, enabled, last_run_at, next_run_at, created_at, updated_at`
+const taskColumns = `id, session_id, name, task_type, command, working_directory, cron_expression, enabled, last_run_at, next_run_at, created_at, updated_at, COALESCE(model,'')`
 
 func scanTask(scanner interface{ Scan(...interface{}) error }) (ScheduledTask, error) {
 	var t ScheduledTask
@@ -49,7 +50,7 @@ func scanTask(scanner interface{ Scan(...interface{}) error }) (ScheduledTask, e
 	err := scanner.Scan(
 		&t.ID, &t.SessionID, &t.Name, &t.TaskType, &t.Command,
 		&t.WorkingDirectory, &t.CronExpression, &enabled,
-		&t.LastRunAt, &t.NextRunAt, &t.CreatedAt, &t.UpdatedAt,
+		&t.LastRunAt, &t.NextRunAt, &t.CreatedAt, &t.UpdatedAt, &t.Model,
 	)
 	if err != nil {
 		return t, err
@@ -75,16 +76,16 @@ func scanRun(scanner interface{ Scan(...interface{}) error }) (TaskRun, error) {
 }
 
 // CreateScheduledTask creates a new scheduled task. Pass empty string for sessionID to create a session-less task.
-func (s *Store) CreateScheduledTask(sessionID, name, taskType, command, workingDir, cronExpr string) (*ScheduledTask, error) {
+func (s *Store) CreateScheduledTask(sessionID, name, taskType, command, workingDir, cronExpr, model string) (*ScheduledTask, error) {
 	id := uuid.New().String()
 	var sessPtr *string
 	if sessionID != "" {
 		sessPtr = &sessionID
 	}
 	_, err := s.db.Exec(`
-		INSERT INTO scheduled_tasks (id, session_id, name, task_type, command, working_directory, cron_expression, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-	`, id, sessPtr, name, taskType, command, workingDir, cronExpr)
+		INSERT INTO scheduled_tasks (id, session_id, name, task_type, command, working_directory, cron_expression, model, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+	`, id, sessPtr, name, taskType, command, workingDir, cronExpr, model)
 	if err != nil {
 		return nil, fmt.Errorf("create scheduled task: %w", err)
 	}
@@ -127,16 +128,16 @@ func (s *Store) ListScheduledTasks(sessionID string) ([]ScheduledTask, error) {
 	return tasks, rows.Err()
 }
 
-func (s *Store) UpdateScheduledTask(id, name, taskType, command, workingDir, cronExpr string, enabled bool) error {
+func (s *Store) UpdateScheduledTask(id, name, taskType, command, workingDir, cronExpr, model string, enabled bool) error {
 	enabledInt := 0
 	if enabled {
 		enabledInt = 1
 	}
 	_, err := s.db.Exec(`
 		UPDATE scheduled_tasks
-		SET name = ?, task_type = ?, command = ?, working_directory = ?, cron_expression = ?, enabled = ?, updated_at = datetime('now')
+		SET name = ?, task_type = ?, command = ?, working_directory = ?, cron_expression = ?, model = ?, enabled = ?, updated_at = datetime('now')
 		WHERE id = ?
-	`, name, taskType, command, workingDir, cronExpr, enabledInt, id)
+	`, name, taskType, command, workingDir, cronExpr, model, enabledInt, id)
 	if err != nil {
 		return fmt.Errorf("update scheduled task: %w", err)
 	}
