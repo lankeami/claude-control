@@ -286,6 +286,14 @@
                 </template>
               </div>
 
+              <div x-show="currentSession?.mode === 'managed' && !shellMode" x-cloak style="display:flex; align-items:center; padding:0 0 6px 0;">
+                <select x-model="selectedModel" @change="localStorage.setItem('claude-controller-model', selectedModel)"
+                        style="background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border); border-radius:6px; padding:3px 8px; font-size:0.75rem; cursor:pointer; outline:none;">
+                  <option value="claude-opus-4-6">Opus</option>
+                  <option value="claude-sonnet-4-6">Sonnet</option>
+                  <option value="claude-haiku-4-5-20251001">Haiku</option>
+                </select>
+              </div>
               <div class="input-row">
                 <div class="input-wrapper">
                   <!-- Image preview -->
@@ -1238,6 +1246,15 @@
               <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 9 * * 1-5'">weekdays</span>
               <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '*/5 * * * *'">every 5min</span>
             </div>
+          </div>
+          <div class="settings-field" x-show="taskForm.task_type === 'claude'">
+            <label class="modal-label">Model</label>
+            <select x-model="taskForm.model" class="modal-input">
+              <option value="">Default</option>
+              <option value="claude-opus-4-6">Opus</option>
+              <option value="claude-sonnet-4-6">Sonnet</option>
+              <option value="claude-haiku-4-5-20251001">Haiku</option>
+            </select>
           </div>
           <div x-show="taskFormErrors" style="color:#ef4444; font-size:0.8rem; margin-bottom:8px;" x-text="taskFormErrors"></div>
           <div x-show="editingTask && taskRuns.length > 0" style="margin-top:8px; border-top:1px solid var(--border); padding-top:16px;">
