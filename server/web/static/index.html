@@ -1440,7 +1440,17 @@
               Define shortcuts that map a key (emoji or text) to a message sent in chat.
             </div>
             <template x-for="(shortcut, idx) in settingsForm.shortcuts" :key="idx">
-              <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+              <div class="shortcut-row"
+                   :data-idx="idx"
+                   draggable="true"
+                   @dragstart="shortcutDragStart($event, idx)"
+                   @dragover="shortcutDragOver($event, idx)"
+                   @drop="shortcutDrop($event)"
+                   @dragend="shortcutDragEnd()">
+                <span class="shortcut-drag-handle"
+                      @touchstart="shortcutTouchStart($event, idx)"
+                      @touchmove="shortcutTouchMove($event, idx)"
+                      @touchend="shortcutTouchEnd()">&#x2807;</span>
                 <input x-model="shortcut.key" type="text" maxlength="20" placeholder="Key"
                        class="modal-input" style="width:70px; flex-shrink:0; text-align:center;">
                 <input x-model="shortcut.value" type="text" placeholder="Message to send..."
