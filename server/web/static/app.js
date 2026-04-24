@@ -136,6 +136,8 @@ document.addEventListener('alpine:init', () => {
     // Shortcuts state
     shortcuts: [],
     showShortcutPicker: false,
+    shortcutDragIdx: null,
+    shortcutDragOverIdx: null,
     settingsActiveTab: 'server',
     settingsOriginal: null,
 
@@ -1226,6 +1228,93 @@ document.addEventListener('alpine:init', () => {
       this.showShortcutPicker = false;
       this.inputText = value;
       this.handleInput();
+    },
+
+    shortcutReorder(fromIdx, toIdx) {
+      if (fromIdx === toIdx || fromIdx === null || toIdx === null) return;
+      const [item] = this.settingsForm.shortcuts.splice(fromIdx, 1);
+      this.settingsForm.shortcuts.splice(toIdx, 0, item);
+    },
+
+    shortcutDragStart(event, idx) {
+      if (!event.target.closest('.shortcut-drag-handle')) {
+        event.preventDefault();
+        return;
+      }
+      this.shortcutDragIdx = idx;
+      event.dataTransfer.effectAllowed = 'move';
+      event.target.closest('.shortcut-row').classList.add('dragging');
+    },
+
+    shortcutDragOver(event, idx) {
+      if (this.shortcutDragIdx === null) return;
+      event.preventDefault();
+      // Clear previous indicators
+      document.querySelectorAll('.shortcut-row').forEach(el => {
+        el.classList.remove('drag-over-above', 'drag-over-below');
+      });
+      const row = event.target.closest('.shortcut-row');
+      if (!row) return;
+      const rect = row.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (event.clientY < midY) {
+        row.classList.add('drag-over-above');
+        this.shortcutDragOverIdx = idx;
+      } else {
+        row.classList.add('drag-over-below');
+        this.shortcutDragOverIdx = idx + 1;
+      }
+    },
+
+    shortcutDrop(event) {
+      event.preventDefault();
+      this.shortcutReorder(this.shortcutDragIdx, this.shortcutDragOverIdx > this.shortcutDragIdx ? this.shortcutDragOverIdx - 1 : this.shortcutDragOverIdx);
+      this.shortcutDragEnd();
+    },
+
+    shortcutDragEnd() {
+      this.shortcutDragIdx = null;
+      this.shortcutDragOverIdx = null;
+      document.querySelectorAll('.shortcut-row').forEach(el => {
+        el.classList.remove('dragging', 'drag-over-above', 'drag-over-below');
+      });
+    },
+
+    shortcutTouchStart(event, idx) {
+      this.shortcutDragIdx = idx;
+      event.target.closest('.shortcut-row').classList.add('dragging');
+    },
+
+    shortcutTouchMove(event, idx) {
+      if (this.shortcutDragIdx === null) return;
+      event.preventDefault();
+      const touch = event.touches[0];
+      // Clear previous indicators
+      document.querySelectorAll('.shortcut-row').forEach(el => {
+        el.classList.remove('drag-over-above', 'drag-over-below');
+      });
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!el) return;
+      const row = el.closest('.shortcut-row');
+      if (!row) return;
+      const rowIdx = parseInt(row.dataset.idx, 10);
+      if (isNaN(rowIdx)) return;
+      const rect = row.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (touch.clientY < midY) {
+        row.classList.add('drag-over-above');
+        this.shortcutDragOverIdx = rowIdx;
+      } else {
+        row.classList.add('drag-over-below');
+        this.shortcutDragOverIdx = rowIdx + 1;
+      }
+    },
+
+    shortcutTouchEnd() {
+      if (this.shortcutDragIdx !== null && this.shortcutDragOverIdx !== null) {
+        this.shortcutReorder(this.shortcutDragIdx, this.shortcutDragOverIdx > this.shortcutDragIdx ? this.shortcutDragOverIdx - 1 : this.shortcutDragOverIdx);
+      }
+      this.shortcutDragEnd();
     },
 
     async handleInput() {
