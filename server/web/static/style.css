@@ -2436,6 +2436,23 @@ body {
   50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
 }
 
+/* Model selector styled as toolbar button */
+.model-select-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.75rem;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.model-select-btn:hover {
+  background: var(--bg-tertiary, #e5e7eb);
+}
+
 /* Image preview strip */
 .image-preview-strip {
   display: flex;
