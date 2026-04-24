@@ -1448,6 +1448,8 @@
                    @drop="shortcutDrop($event)"
                    @dragend="shortcutDragEnd()">
                 <span class="shortcut-drag-handle"
+                      @mousedown="shortcutDragFromHandle = true"
+                      @mouseup="shortcutDragFromHandle = false"
                       @touchstart="shortcutTouchStart($event, idx)"
                       @touchmove="shortcutTouchMove($event, idx)"
                       @touchend="shortcutTouchEnd()">&#x2807;</span>

@@ -138,6 +138,7 @@ document.addEventListener('alpine:init', () => {
     showShortcutPicker: false,
     shortcutDragIdx: null,
     shortcutDragOverIdx: null,
+    shortcutDragFromHandle: false,
     settingsActiveTab: 'server',
     settingsOriginal: null,
 
@@ -1237,13 +1238,13 @@ document.addEventListener('alpine:init', () => {
     },
 
     shortcutDragStart(event, idx) {
-      if (!event.target.closest('.shortcut-drag-handle')) {
+      if (!this.shortcutDragFromHandle) {
         event.preventDefault();
         return;
       }
       this.shortcutDragIdx = idx;
       event.dataTransfer.effectAllowed = 'move';
-      event.target.closest('.shortcut-row').classList.add('dragging');
+      event.currentTarget.classList.add('dragging');
     },
 
     shortcutDragOver(event, idx) {
@@ -1275,6 +1276,7 @@ document.addEventListener('alpine:init', () => {
     shortcutDragEnd() {
       this.shortcutDragIdx = null;
       this.shortcutDragOverIdx = null;
+      this.shortcutDragFromHandle = false;
       document.querySelectorAll('.shortcut-row').forEach(el => {
         el.classList.remove('dragging', 'drag-over-above', 'drag-over-below');
       });
