@@ -1281,6 +1281,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     shortcutTouchStart(event, idx) {
+      event.preventDefault();
       this.shortcutDragIdx = idx;
       event.target.closest('.shortcut-row').classList.add('dragging');
     },
