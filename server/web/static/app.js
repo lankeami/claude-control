@@ -32,6 +32,8 @@ document.addEventListener('alpine:init', () => {
     // Browser notifications
     prevActivityStates: {},
 
+    selectedModel: localStorage.getItem('claude-controller-model') || 'claude-sonnet-4-6',
+
     // Managed session state
     showNewSessionModal: false,
     pendingPermission: null,
@@ -110,7 +112,7 @@ document.addEventListener('alpine:init', () => {
     taskRuns: [],
     taskModalOpen: false,
     editingTask: null,
-    taskForm: { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '' },
+    taskForm: { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '', model: '' },
     taskFormErrors: '',
     taskLoading: false,
     taskRunsLoading: false,
@@ -1529,7 +1531,7 @@ document.addEventListener('alpine:init', () => {
       this.clearPendingImage();
 
       try {
-        const body = { message: msg };
+        const body = { message: msg, model: this.selectedModel };
         if (imageId) body.image_id = imageId;
 
         const res = await fetch(`/api/sessions/${this.selectedSessionId}/message`, {
@@ -3197,13 +3199,13 @@ Please review this PR and provide feedback.`;
             this.taskForm = {
                 name: task.name, task_type: task.task_type, command: task.command,
                 working_directory: task.working_directory, cron_expression: task.cron_expression,
-                session_id: task.session_id || ''
+                session_id: task.session_id || '', model: task.model || ''
             };
             this.loadTaskRuns(task.id);
         } else {
             this.editingTask = null;
             this.taskRuns = [];
-            this.taskForm = { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '' };
+            this.taskForm = { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '', model: '' };
         }
         this.taskFormErrors = '';
         this.taskModalOpen = true;
@@ -3261,7 +3263,7 @@ Please review this PR and provide feedback.`;
                 body: JSON.stringify({
                     name: task.name, task_type: task.task_type, command: task.command,
                     working_directory: task.working_directory, cron_expression: task.cron_expression,
-                    enabled: !task.enabled
+                    enabled: !task.enabled, model: task.model || ''
                 })
             });
             await this.loadScheduledTasks();

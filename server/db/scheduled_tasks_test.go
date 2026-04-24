@@ -12,7 +12,7 @@ func TestCreateAndGetScheduledTask(t *testing.T) {
 		t.Fatalf("UpsertSession: %v", err)
 	}
 
-	task, err := store.CreateScheduledTask(sess.ID, "Daily backup", "shell", "tar -czf backup.tar.gz .", "/tmp/project", "0 2 * * *")
+	task, err := store.CreateScheduledTask(sess.ID, "Daily backup", "shell", "tar -czf backup.tar.gz .", "/tmp/project", "0 2 * * *", "")
 	if err != nil {
 		t.Fatalf("CreateScheduledTask: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestCreateAndGetScheduledTask(t *testing.T) {
 
 func TestCreateScheduledTaskWithoutSession(t *testing.T) {
 	store := newTestStore(t)
-	task, err := store.CreateScheduledTask("", "Shell task", "shell", "echo hello", "/tmp", "*/5 * * * *")
+	task, err := store.CreateScheduledTask("", "Shell task", "shell", "echo hello", "/tmp", "*/5 * * * *", "")
 	if err != nil {
 		t.Fatalf("CreateScheduledTask: %v", err)
 	}
@@ -52,9 +52,9 @@ func TestCreateScheduledTaskWithoutSession(t *testing.T) {
 func TestListScheduledTasks(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/proj", "")
-	store.CreateScheduledTask(sess.ID, "Task A", "shell", "echo a", "/tmp", "0 * * * *")
-	store.CreateScheduledTask(sess.ID, "Task B", "claude", "summarize", "/tmp", "0 9 * * *")
-	store.CreateScheduledTask("", "Task C", "shell", "echo c", "/tmp", "*/5 * * * *")
+	store.CreateScheduledTask(sess.ID, "Task A", "shell", "echo a", "/tmp", "0 * * * *", "")
+	store.CreateScheduledTask(sess.ID, "Task B", "claude", "summarize", "/tmp", "0 9 * * *", "")
+	store.CreateScheduledTask("", "Task C", "shell", "echo c", "/tmp", "*/5 * * * *", "")
 
 	all, err := store.ListScheduledTasks("")
 	if err != nil {
@@ -76,9 +76,9 @@ func TestListScheduledTasks(t *testing.T) {
 func TestUpdateScheduledTask(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/proj", "")
-	task, _ := store.CreateScheduledTask(sess.ID, "Old Name", "shell", "echo old", "/tmp", "0 * * * *")
+	task, _ := store.CreateScheduledTask(sess.ID, "Old Name", "shell", "echo old", "/tmp", "0 * * * *", "")
 
-	err := store.UpdateScheduledTask(task.ID, "New Name", "shell", "echo new", "/tmp/new", "0 2 * * *", false)
+	err := store.UpdateScheduledTask(task.ID, "New Name", "shell", "echo new", "/tmp/new", "0 2 * * *", "", false)
 	if err != nil {
 		t.Fatalf("UpdateScheduledTask: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestUpdateScheduledTask(t *testing.T) {
 func TestDeleteScheduledTask(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/proj", "")
-	task, _ := store.CreateScheduledTask(sess.ID, "To Delete", "shell", "echo x", "/tmp", "0 * * * *")
+	task, _ := store.CreateScheduledTask(sess.ID, "To Delete", "shell", "echo x", "/tmp", "0 * * * *", "")
 
 	err := store.DeleteScheduledTask(task.ID)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestDeleteScheduledTask(t *testing.T) {
 func TestTaskRunLifecycle(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/proj", "")
-	task, _ := store.CreateScheduledTask(sess.ID, "Task", "shell", "echo hi", "/tmp", "0 * * * *")
+	task, _ := store.CreateScheduledTask(sess.ID, "Task", "shell", "echo hi", "/tmp", "0 * * * *", "")
 
 	run, err := store.CreateTaskRun(task.ID)
 	if err != nil {
@@ -152,7 +152,7 @@ func TestTaskRunLifecycle(t *testing.T) {
 func TestCompleteTaskRunFailed(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/proj", "")
-	task, _ := store.CreateScheduledTask(sess.ID, "Task", "shell", "exit 1", "/tmp", "0 * * * *")
+	task, _ := store.CreateScheduledTask(sess.ID, "Task", "shell", "exit 1", "/tmp", "0 * * * *", "")
 
 	run, _ := store.CreateTaskRun(task.ID)
 	store.CompleteTaskRun(run.ID, 1, "error output")
@@ -167,8 +167,8 @@ func TestGetTasksDueForExecution(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/proj", "")
 
-	task1, _ := store.CreateScheduledTask(sess.ID, "Due", "shell", "echo a", "/tmp", "0 * * * *")
-	task2, _ := store.CreateScheduledTask(sess.ID, "Not Due", "shell", "echo b", "/tmp", "0 * * * *")
+	task1, _ := store.CreateScheduledTask(sess.ID, "Due", "shell", "echo a", "/tmp", "0 * * * *", "")
+	task2, _ := store.CreateScheduledTask(sess.ID, "Not Due", "shell", "echo b", "/tmp", "0 * * * *", "")
 
 	past := time.Now().Add(-1 * time.Minute)
 	future := time.Now().Add(1 * time.Hour)
@@ -190,12 +190,30 @@ func TestGetTasksDueForExecution(t *testing.T) {
 func TestCascadeDeleteTaskRuns(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/proj", "")
-	task, _ := store.CreateScheduledTask(sess.ID, "Task", "shell", "echo hi", "/tmp", "0 * * * *")
+	task, _ := store.CreateScheduledTask(sess.ID, "Task", "shell", "echo hi", "/tmp", "0 * * * *", "")
 	store.CreateTaskRun(task.ID)
 
 	store.DeleteScheduledTask(task.ID)
 	runs, _ := store.ListTaskRuns(task.ID, 20)
 	if len(runs) != 0 {
 		t.Errorf("expected 0 runs after cascade delete, got %d", len(runs))
+	}
+}
+
+func TestScheduledTaskModelField(t *testing.T) {
+	store := newTestStore(t)
+	task, err := store.CreateScheduledTask("", "Model task", "claude", "summarize", "/tmp", "0 9 * * *", "claude-opus-4-6")
+	if err != nil {
+		t.Fatalf("CreateScheduledTask: %v", err)
+	}
+	if task.Model != "claude-opus-4-6" {
+		t.Errorf("model: got %q, want %q", task.Model, "claude-opus-4-6")
+	}
+	task2, err := store.CreateScheduledTask("", "No model", "shell", "echo hi", "/tmp", "0 * * * *", "")
+	if err != nil {
+		t.Fatalf("CreateScheduledTask: %v", err)
+	}
+	if task2.Model != "" {
+		t.Errorf("model: got %q, want empty", task2.Model)
 	}
 }

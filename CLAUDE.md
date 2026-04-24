@@ -82,3 +82,5 @@ docker compose down                             # Stop
 - Shortcut creator plan: `docs/superpowers/plans/2026-04-03-shortcut-creator.md`
 - Status line spec: `docs/superpowers/specs/2026-04-19-status-line-design.md`
 - Status line plan: `docs/superpowers/plans/2026-04-19-status-line.md`
+- Model selection spec: `docs/superpowers/specs/2026-04-22-model-selection-design.md`
+- Model selection plan: `docs/superpowers/plans/2026-04-22-model-selection.md`

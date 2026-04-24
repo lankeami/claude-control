@@ -98,6 +98,10 @@ func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", sess.MaxBudgetUSD))
 	}
 
+	if sess.Model != "" {
+		args = append(args, "--model", sess.Model)
+	}
+
 	if cfg.BinaryPath != "" && cfg.ServerPort > 0 {
 		mcpConfig := map[string]interface{}{
 			"mcpServers": map[string]interface{}{
@@ -141,6 +145,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Message string `json:"message"`
 		ImageID string `json:"image_id"`
+		Model   string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -219,6 +224,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		continuationCount := 0
 		currentMessage := req.Message
+		sess.Model = req.Model
 
 		// --- Per-turn mutable state, shared with onLine callback ---
 		// onLine runs in the StreamNDJSON goroutine, which lives for the
