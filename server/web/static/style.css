@@ -2201,6 +2201,49 @@ body {
     font-size: 10px;
 }
 
+/* Shortcut drag-and-drop reorder */
+.shortcut-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.shortcut-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 4px;
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.shortcut-drag-handle:hover {
+  color: var(--text-primary);
+}
+
+.shortcut-row.dragging {
+  opacity: 0.4;
+}
+
+.shortcut-row.drag-over-above {
+  border-top: 2px solid var(--accent);
+}
+
+.shortcut-row.drag-over-below {
+  border-bottom: 2px solid var(--accent);
+}
+
+@media (max-width: 600px) {
+  .shortcut-drag-handle {
+    padding: 10px;
+    font-size: 18px;
+  }
+}
+
 /* Shortcut picker trigger button */
 .shortcut-picker-btn {
   background: var(--bg-secondary, #f3f4f6);
