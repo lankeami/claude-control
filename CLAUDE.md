@@ -34,6 +34,17 @@ docker compose down                             # Stop
 ./hooks/install.sh                             # Install hooks into Claude Code settings
 ```
 
+## Git Workflow
+
+Always create a feature branch before starting work — never commit directly to `main`.
+
+```bash
+git checkout -b feat/<short-description>   # Start work on a new branch
+# ... make changes, commit ...
+git push -u origin feat/<short-description>
+gh pr create                               # Open a PR when ready
+```
+
 ## Architecture
 
 - `server/` — Go REST API. `db/` = SQLite layer, `api/` = HTTP handlers + middleware, `tunnel/` = ngrok management, `managed/` = managed session process lifecycle + NDJSON streaming, `web/` = embedded Alpine.js web UI.
