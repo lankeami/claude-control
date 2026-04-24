@@ -33,14 +33,14 @@ Relocate the `<select>` into `.shortcut-buttons`, between the microphone (voice 
 Apply a new CSS class (e.g. `.model-select-btn`) to replace the current inline style:
 
 - `background: transparent`
-- `border: none`
+- `border: 1px solid var(--border)` — matches `.voice-chat-btn` and `.image-upload-btn`
 - `color: var(--text-secondary)`
 - `font-size: 0.75rem`
 - `padding: 4px 6px`
 - `border-radius: 6px`
 - `cursor: pointer`
 - `outline: none`
-- On hover: `background: var(--bg-hover)` — matches existing icon button hover behavior
+- On hover: `background: var(--bg-tertiary, #e5e7eb)` — matches `.shortcut-picker-btn:hover` pattern
 - Retains native `<select>` caret (no custom arrow needed)
 
 ## Scope
