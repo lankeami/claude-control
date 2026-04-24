@@ -288,6 +288,7 @@
 
               <div x-show="currentSession?.mode === 'managed' && !shellMode" x-cloak style="display:flex; align-items:center; padding:0 0 6px 0;">
                 <select x-model="selectedModel" @change="localStorage.setItem('claude-controller-model', selectedModel)"
+                        aria-label="Model"
                         style="background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border); border-radius:6px; padding:3px 8px; font-size:0.75rem; cursor:pointer; outline:none;">
                   <option value="claude-opus-4-6">Opus</option>
                   <option value="claude-sonnet-4-6">Sonnet</option>
@@ -1217,7 +1218,7 @@
           </div>
           <div class="settings-field">
             <label class="modal-label">Type</label>
-            <select x-model="taskForm.task_type" class="modal-input">
+            <select x-model="taskForm.task_type" @change="if (taskForm.task_type !== 'claude') taskForm.model = ''" class="modal-input">
               <option value="shell">Shell Command</option>
               <option value="claude">Claude Command</option>
             </select>
