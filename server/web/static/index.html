@@ -1105,27 +1105,29 @@
               </div>
             </template>
           </div>
+        </div>
+      </div>
 
-          <!-- Collapsed New Folder -->
-          <div class="new-folder-toggle" @click="showNewFolderInput = !showNewFolderInput" x-show="!showNewFolderInput">
-            + New Folder
+      <!-- New Folder strip (full-width) -->
+      <div style="border-top:1px solid var(--border); padding:8px 24px 12px;">
+        <div class="new-folder-toggle" @click="showNewFolderInput = !showNewFolderInput" x-show="!showNewFolderInput" style="margin-top:0; padding-top:0; border-top:none;">
+          + New Folder
+        </div>
+        <div x-show="showNewFolderInput" style="padding-top:4px;">
+          <div style="display:flex; gap:8px;">
+            <input x-model="newProjectName" type="text" placeholder="Folder name..."
+                   class="modal-input" style="flex:1; min-width:0;"
+                   @keydown.enter.prevent="createNewProject()"
+                   @keydown.escape.prevent="showNewFolderInput = false; newProjectName = ''">
+            <button class="btn btn-sm btn-primary" @click="createNewProject()"
+                    :disabled="!isValidNewProjectName || newProjectCreating"
+                    x-text="newProjectCreating ? 'Creating...' : 'Create'"></button>
+            <button class="btn btn-sm" @click="showNewFolderInput = false; newProjectName = ''">&times;</button>
           </div>
-          <div x-show="showNewFolderInput" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
-            <div style="display:flex; gap:8px;">
-              <input x-model="newProjectName" type="text" placeholder="Folder name..."
-                     class="modal-input" style="flex:1;"
-                     @keydown.enter.prevent="createNewProject()"
-                     @keydown.escape.prevent="showNewFolderInput = false; newProjectName = ''">
-              <button class="btn btn-sm btn-primary" @click="createNewProject()"
-                      :disabled="!isValidNewProjectName || newProjectCreating"
-                      x-text="newProjectCreating ? 'Creating...' : 'Create'"></button>
-              <button class="btn btn-sm" @click="showNewFolderInput = false; newProjectName = ''">&times;</button>
-            </div>
-            <div x-show="newProjectName && !isValidNewProjectName" style="font-size:11px; color:var(--red); margin-top:4px;">
-              Use letters, numbers, hyphens, dots, or underscores.
-            </div>
-            <div x-show="newProjectError" style="font-size:11px; color:var(--red); margin-top:4px;" x-text="newProjectError"></div>
+          <div x-show="newProjectName && !isValidNewProjectName" style="font-size:11px; color:var(--red); margin-top:4px;">
+            Use letters, numbers, hyphens, dots, or underscores.
           </div>
+          <div x-show="newProjectError" style="font-size:11px; color:var(--red); margin-top:4px;" x-text="newProjectError"></div>
         </div>
       </div>
 
