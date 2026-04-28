@@ -115,3 +115,53 @@ func TestHandleBrowseSearchDepthCap(t *testing.T) {
 		t.Errorf("name=%v, want target-shallow", entry["name"])
 	}
 }
+
+func TestHandleBrowseSearchDepthSort(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	// Structure:
+	//   base/target            (depth 1 from base — shallower)
+	//   base/a/b/target        (depth 3 from base — deeper)
+	base := t.TempDir()
+	shallow := filepath.Join(base, "target")
+	deep := filepath.Join(base, "a", "b", "target")
+	for _, dir := range []string{shallow, deep} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	req, _ := http.NewRequest("GET",
+		ts.URL+"/api/browse/search?path="+base+"&q=target",
+		nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	entries := result["entries"].([]interface{})
+
+	if len(entries) != 2 {
+		t.Fatalf("len(entries)=%d, want 2", len(entries))
+	}
+	// Shallow result must come first.
+	first := entries[0].(map[string]interface{})
+	if first["path"] != shallow {
+		t.Errorf("first path=%v, want %v (shallower dir)", first["path"], shallow)
+	}
+	second := entries[1].(map[string]interface{})
+	if second["path"] != deep {
+		t.Errorf("second path=%v, want %v (deeper dir)", second["path"], deep)
+	}
+}
