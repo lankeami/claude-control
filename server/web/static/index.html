@@ -1099,7 +1099,7 @@
           <!-- Directory list -->
           <div class="browse-list" style="flex:1; min-height:0;">
             <!-- Normal browse (no active search) -->
-            <div x-show="!dirSearch">
+            <div x-show="!dirSearchActive">
               <template x-if="browseLoading">
                 <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading...</div>
               </template>
@@ -1116,7 +1116,7 @@
               </template>
             </div>
             <!-- Search results (active search) -->
-            <div x-show="dirSearch">
+            <div x-show="dirSearchActive">
               <template x-if="dirSearchLoading">
                 <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Searching…</div>
               </template>
@@ -1124,7 +1124,7 @@
                 <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">No matching directories</div>
               </template>
               <template x-for="entry in dirSearchResults" :key="entry.path">
-                <div class="browse-item" @click="dirSearch = ''; dirSearchResults = []; browseTo(entry.path)">
+                <div class="browse-item" @click="dirSearch = ''; dirSearchResults = []; dirSearchActive = false; browseTo(entry.path)">
                   <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
                         :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
                   <div style="flex:1; min-width:0;">

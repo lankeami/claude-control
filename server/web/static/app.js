@@ -56,6 +56,7 @@ document.addEventListener('alpine:init', () => {
     dirSearch: '',
     dirSearchResults: [],
     dirSearchLoading: false,
+    dirSearchActive: false,
 
     // Resume picker state
     showResumePicker: false,
@@ -1386,6 +1387,7 @@ document.addEventListener('alpine:init', () => {
       this.dirSearch = '';
       this.dirSearchResults = [];
       this.dirSearchLoading = false;
+      this.dirSearchActive = false;
       // Fetch recent directories
       try {
         const res = await fetch('/api/sessions/recent-dirs', {
@@ -1406,8 +1408,10 @@ document.addEventListener('alpine:init', () => {
       if (!q) {
         this.dirSearchResults = [];
         this.dirSearchLoading = false;
+        this.dirSearchActive = false;
         return;
       }
+      this.dirSearchActive = true;
       this.dirSearchLoading = true;
       try {
         const path = encodeURIComponent(this.browsePath || '');
