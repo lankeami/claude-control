@@ -1088,22 +1088,52 @@
             </template>
           </div>
 
+          <!-- Directory search -->
+          <div style="margin-bottom:8px;">
+            <input x-model="dirSearch" type="text" placeholder="Search folders…"
+                   class="modal-input" style="width:100%; box-sizing:border-box;"
+                   @input="onDirSearchInput()">
+          </div>
+
           <!-- Directory list -->
           <div class="browse-list" style="flex:1; min-height:0;">
-            <template x-if="browseLoading">
-              <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading...</div>
-            </template>
-            <template x-if="!browseLoading && filteredBrowseEntries.length === 0">
-              <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;" x-text="browseFilter ? 'No matching directories' : 'No subdirectories'"></div>
-            </template>
-            <template x-for="entry in filteredBrowseEntries" :key="entry.path">
-              <div class="browse-item" @click="browseFilter = ''; browseTo(entry.path)">
-                <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
-                      :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
-                <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="entry.name"></span>
-                <span x-show="entry.is_git_repo" style="font-size:10px; color:var(--green); flex-shrink:0;">git</span>
-              </div>
-            </template>
+            <!-- Normal browse (no active search) -->
+            <div x-show="!dirSearch">
+              <template x-if="browseLoading">
+                <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading...</div>
+              </template>
+              <template x-if="!browseLoading && filteredBrowseEntries.length === 0">
+                <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;" x-text="browseFilter ? 'No matching directories' : 'No subdirectories'"></div>
+              </template>
+              <template x-for="entry in filteredBrowseEntries" :key="entry.path">
+                <div class="browse-item" @click="browseFilter = ''; browseTo(entry.path)">
+                  <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
+                        :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
+                  <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="entry.name"></span>
+                  <span x-show="entry.is_git_repo" style="font-size:10px; color:var(--green); flex-shrink:0;">git</span>
+                </div>
+              </template>
+            </div>
+            <!-- Search results (active search) -->
+            <div x-show="dirSearch">
+              <template x-if="dirSearchLoading">
+                <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Searching…</div>
+              </template>
+              <template x-if="!dirSearchLoading && dirSearchResults.length === 0">
+                <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">No matching directories</div>
+              </template>
+              <template x-for="entry in dirSearchResults" :key="entry.path">
+                <div class="browse-item" @click="dirSearch = ''; dirSearchResults = []; browseTo(entry.path)">
+                  <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
+                        :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="entry.name"></div>
+                    <div style="font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="abbreviatePath(entry.path)"></div>
+                  </div>
+                  <span x-show="entry.is_git_repo" style="font-size:10px; color:var(--green); flex-shrink:0;">git</span>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
       </div>
