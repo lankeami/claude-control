@@ -1490,8 +1490,11 @@ document.addEventListener('alpine:init', () => {
           body: JSON.stringify({ cwd: this.newSessionCWD.trim() })
         });
         if (!res.ok) throw new Error(await res.text());
+        const sess = await res.json();
         this.showNewSessionModal = false;
         this.newSessionCWD = '';
+        await this.pollState();
+        this.selectSession(sess.id);
         this.toast('Session created');
       } catch (e) {
         this.toast('Error: ' + e.message);
@@ -1554,8 +1557,8 @@ document.addEventListener('alpine:init', () => {
         this.newProjectName = '';
         this.newProjectError = '';
         this.toast('Project created');
-        await this.loadSessions();
-        this.selectedSessionId = sess.id;
+        await this.pollState();
+        this.selectSession(sess.id);
       } catch (e) {
         this.newProjectError = 'Error: ' + e.message;
       } finally {
