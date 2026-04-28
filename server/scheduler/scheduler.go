@@ -137,7 +137,12 @@ func (s *Scheduler) executeTask(task db.ScheduledTask) {
 	case "shell":
 		cmd = exec.CommandContext(ctx, "bash", "-c", task.Command)
 	case "claude":
-		cmd = exec.CommandContext(ctx, "claude", "-p", task.Command)
+		args := []string{"-p"}
+		if task.Model != "" {
+			args = append(args, "--model", task.Model)
+		}
+		args = append(args, task.Command)
+		cmd = exec.CommandContext(ctx, "claude", args...)
 	default:
 		s.store.CompleteTaskRunWithError(run.ID, fmt.Sprintf("unknown task type: %s", task.TaskType))
 		return

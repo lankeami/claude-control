@@ -76,7 +76,7 @@
             + New Session
           </button>
           <template x-for="session in sessions" :key="session.id">
-            <div class="session-item" :class="{ active: selectedSessionId === session.id }"
+            <div class="session-item" :class="{ active: selectedSessionId === session.id, 'recently-active': selectedSessionId !== session.id && isRecentlyActive(session) }"
                  @click="selectSession(session.id)">
               <span class="status-dot" :class="sessionStatus(session)"
                     :title="sessionStatus(session) === 'active' ? 'Working' : sessionStatus(session) === 'waiting' ? 'Waiting for input' : sessionStatus(session) === 'input_needed' ? 'Permission needed' : 'Idle'"></span>
@@ -357,8 +357,54 @@
                     <line x1="5" y1="15" x2="11" y2="15"/>
                   </svg>
                 </button>
+                <select x-model="selectedModel"
+                        x-show="currentSession?.mode === 'managed' && !shellMode"
+                        x-cloak
+                        @change="localStorage.setItem('claude-controller-model', selectedModel)"
+                        aria-label="Model"
+                        class="model-select-btn">
+                  <option value="claude-opus-4-6">Opus</option>
+                  <option value="claude-sonnet-4-6">Sonnet</option>
+                  <option value="claude-haiku-4-5-20251001">Haiku</option>
+                </select>
                 <span class="input-hint">⌘↵ to send</span>
               </div>
+            </div>
+
+            <!-- Status line -->
+            <div class="status-line" x-show="statusLineVisible()" x-cloak>
+              <template x-if="statusLineConfig.model && sessionModel">
+                <span class="status-line-item">
+                  <span class="status-line-label">Model</span>
+                  <span x-text="sessionModel"></span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.cost">
+                <span class="status-line-item">
+                  <span class="status-line-label">Cost</span>
+                  <span x-text="sessionCost != null ? '$' + sessionCost.toFixed(4) : '$0.0000'"></span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.turns && currentSession?.max_turns > 0">
+                <span class="status-line-item">
+                  <span class="status-line-label">Turns</span>
+                  <span x-text="(currentSession?.turn_count || 0) + '/' + (currentSession?.max_turns || 0)"></span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.activity">
+                <span class="status-line-item">
+                  <span class="status-line-label">Activity</span>
+                  <span class="status-line-dot"
+                        :style="'background:' + (currentSession?.activity_state === 'working' ? '#f39c12' : currentSession?.activity_state === 'waiting' ? '#22c55e' : '#6b7280')"></span>
+                  <span x-text="currentSession?.activity_state || 'idle'"></span>
+                </span>
+              </template>
+              <template x-if="statusLineConfig.cwd && currentSession?.cwd">
+                <span class="status-line-item">
+                  <span class="status-line-label">CWD</span>
+                  <span x-text="currentSession?.cwd" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; vertical-align:bottom;"></span>
+                </span>
+              </template>
             </div>
           </div>
 
@@ -684,7 +730,7 @@
           <button class="btn btn-sm" @click="mobileMenuOpen=false;openResumePicker()" style="flex:1;font-size:13px;">Resume</button>
         </div>
         <template x-for="session in sessions" :key="session.id">
-          <div class="session-item" :class="{ active: selectedSessionId === session.id }"
+          <div class="session-item" :class="{ active: selectedSessionId === session.id, 'recently-active': selectedSessionId !== session.id && isRecentlyActive(session) }"
                @click="selectSession(session.id)">
             <span class="status-dot" :class="sessionStatus(session)"></span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
@@ -974,99 +1020,120 @@
 
   <!-- New Session Modal -->
   <div x-show="showNewSessionModal" x-cloak
-       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
+       class="modal-backdrop" style="z-index:100;"
        @click.self="showNewSessionModal = false">
-    <div class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:70vh;">
+    <div class="modal-lg">
+      <!-- Mobile header -->
       <div class="mobile-detail-header mobile-modal-header">
         <button @click="showNewSessionModal = false" class="mobile-back-btn" aria-label="Back">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
             <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
           </svg>
         </button>
-        <span class="mobile-detail-title">New Managed Session</span>
-      </div>
-      <h3 class="desktop-modal-title" style="margin-top:0; margin-bottom:12px;">New Managed Session</h3>
-
-      <!-- Path input with search -->
-      <div style="display:flex; gap:8px; margin-bottom:4px;">
-        <input x-model="newSessionCWD" type="text" placeholder="/path/to/project"
-               style="flex:1; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;"
-               @keydown="handleBrowseInputKeydown($event)"
-               @input="if (newSessionCWD === browsePath) { browseFilter = ''; } else if (browsePath && newSessionCWD.startsWith(browsePath + '/')) { browseFilter = newSessionCWD.slice(browsePath.length + 1); }">
-        <button class="btn btn-sm" @click="browseTo(newSessionCWD)" style="white-space:nowrap;">Go</button>
-      </div>
-      <div x-show="browseConfirmed" style="font-size:11px; color:var(--accent); margin-bottom:8px;">
-        Press Enter again to start session in this folder
-      </div>
-      <div x-show="!browseConfirmed && browseFilter" style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">
-        Filtering: <span x-text="browseFilter"></span>
+        <span class="mobile-detail-title">New Session</span>
       </div>
 
-      <!-- Recent directories -->
-      <template x-if="recentDirs.length > 0">
-        <div style="margin-bottom:8px;">
-          <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px; font-weight:600;">Recent Projects</div>
+      <!-- Desktop header -->
+      <div class="modal-header desktop-modal-title">
+        <h3>New Session</h3>
+        <button class="modal-close-btn" @click="showNewSessionModal = false" aria-label="Close">&times;</button>
+      </div>
+
+      <!-- Path input -->
+      <div style="padding:0 24px 12px;">
+        <div style="display:flex; gap:8px;">
+          <input x-model="newSessionCWD" type="text" placeholder="/path/to/project"
+                 class="modal-input" style="flex:1; min-width:0;"
+                 @keydown="handleBrowseInputKeydown($event)"
+                 @input="if (newSessionCWD === browsePath) { browseFilter = ''; } else if (browsePath && newSessionCWD.startsWith(browsePath + '/')) { browseFilter = newSessionCWD.slice(browsePath.length + 1); }">
+          <button class="btn btn-sm btn-primary" @click="browseTo(newSessionCWD)" style="white-space:nowrap; width:auto; flex-shrink:0;">Go</button>
+        </div>
+        <div x-show="browseConfirmed" style="font-size:11px; color:var(--accent); margin-top:4px;">
+          Press Enter again to start session in this folder
+        </div>
+        <div x-show="!browseConfirmed && browseFilter" style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+          Filtering: <span x-text="browseFilter"></span>
+        </div>
+      </div>
+
+      <!-- Two-column body -->
+      <div class="modal-columns">
+        <!-- Left: Recent Projects -->
+        <div class="modal-columns-left">
+          <div class="modal-section-label">Recent Projects</div>
+          <template x-if="recentDirs.length === 0">
+            <div style="font-size:12px; color:var(--text-muted);">No recent projects</div>
+          </template>
           <template x-for="dir in recentDirs" :key="dir.path">
-            <div class="browse-item" @click="selectRecentDir(dir.path)" style="cursor:pointer;">
+            <div class="browse-item" @click="selectRecentDir(dir.path)" style="cursor:pointer; border-radius:8px; padding:10px 12px; margin-bottom:4px;">
               <span class="browse-icon" style="color:var(--accent);">&#9733;</span>
-              <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500;" x-text="dir.name"></span>
-              <span style="font-size:10px; color:var(--text-muted); flex-shrink:0;" x-text="abbreviatePath(dir.path)"></span>
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="dir.name"></div>
+                <div style="font-size:10px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="abbreviatePath(dir.path)"></div>
+              </div>
             </div>
           </template>
         </div>
-      </template>
 
-      <!-- Breadcrumb navigation -->
-      <div class="browse-breadcrumbs">
-        <template x-for="(crumb, i) in breadcrumbs" :key="crumb.path">
-          <span>
-            <span x-show="i > 0" style="color:var(--text-muted); margin:0 2px;">/</span>
-            <a href="#" @click.prevent="browseTo(crumb.path)" x-text="crumb.label"
-               style="color:var(--accent); text-decoration:none; font-size:13px;"></a>
-          </span>
-        </template>
-      </div>
-
-      <!-- Directory list -->
-      <div class="browse-list">
-        <template x-if="browseLoading">
-          <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading...</div>
-        </template>
-        <template x-if="!browseLoading && filteredBrowseEntries.length === 0">
-          <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;" x-text="browseFilter ? 'No matching directories' : 'No subdirectories'"></div>
-        </template>
-        <template x-for="entry in filteredBrowseEntries" :key="entry.path">
-          <div class="browse-item" @click="browseFilter = ''; browseTo(entry.path)">
-            <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
-                  :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
-            <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="entry.name"></span>
-            <span x-show="entry.is_git_repo" style="font-size:10px; color:var(--green); flex-shrink:0;">git</span>
+        <!-- Right: File Browser -->
+        <div class="modal-columns-right">
+          <!-- Breadcrumbs -->
+          <div class="browse-breadcrumbs" style="margin-bottom:10px;">
+            <template x-for="(crumb, i) in breadcrumbs" :key="crumb.path">
+              <span>
+                <span x-show="i > 0" style="color:var(--text-muted); margin:0 2px;">&rsaquo;</span>
+                <a href="#" @click.prevent="browseTo(crumb.path)" x-text="crumb.label"
+                   style="color:var(--accent); text-decoration:none; font-size:13px;"></a>
+              </span>
+            </template>
           </div>
-        </template>
+
+          <!-- Directory list -->
+          <div class="browse-list" style="flex:1; min-height:0;">
+            <template x-if="browseLoading">
+              <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading...</div>
+            </template>
+            <template x-if="!browseLoading && filteredBrowseEntries.length === 0">
+              <div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:13px;" x-text="browseFilter ? 'No matching directories' : 'No subdirectories'"></div>
+            </template>
+            <template x-for="entry in filteredBrowseEntries" :key="entry.path">
+              <div class="browse-item" @click="browseFilter = ''; browseTo(entry.path)">
+                <span class="browse-icon" x-text="entry.is_git_repo ? '&#9679;' : '&#128193;'"
+                      :style="entry.is_git_repo ? 'color:var(--green)' : 'color:var(--text-muted)'"></span>
+                <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="entry.name"></span>
+                <span x-show="entry.is_git_repo" style="font-size:10px; color:var(--green); flex-shrink:0;">git</span>
+              </div>
+            </template>
+          </div>
+
+          <!-- Collapsed New Folder -->
+          <div class="new-folder-toggle" @click="showNewFolderInput = !showNewFolderInput" x-show="!showNewFolderInput">
+            + New Folder
+          </div>
+          <div x-show="showNewFolderInput" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
+            <div style="display:flex; gap:8px;">
+              <input x-model="newProjectName" type="text" placeholder="Folder name..."
+                     class="modal-input" style="flex:1;"
+                     @keydown.enter.prevent="createNewProject()"
+                     @keydown.escape.prevent="showNewFolderInput = false; newProjectName = ''">
+              <button class="btn btn-sm btn-primary" @click="createNewProject()"
+                      :disabled="!isValidNewProjectName || newProjectCreating"
+                      x-text="newProjectCreating ? 'Creating...' : 'Create'"></button>
+              <button class="btn btn-sm" @click="showNewFolderInput = false; newProjectName = ''">&times;</button>
+            </div>
+            <div x-show="newProjectName && !isValidNewProjectName" style="font-size:11px; color:var(--red); margin-top:4px;">
+              Use letters, numbers, hyphens, dots, or underscores.
+            </div>
+            <div x-show="newProjectError" style="font-size:11px; color:var(--red); margin-top:4px;" x-text="newProjectError"></div>
+          </div>
+        </div>
       </div>
 
-      <!-- New Project -->
-      <div style="border-top:1px solid var(--border); padding-top:10px; margin-top:8px;">
-        <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">Create new project in this folder:</div>
-        <div style="display:flex; gap:8px;">
-          <input x-model="newProjectName" type="text" placeholder="New project name..."
-                 style="flex:1; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;"
-                 @keydown.enter.prevent="createNewProject()">
-          <button class="btn btn-sm btn-primary" @click="createNewProject()"
-                  :disabled="!isValidNewProjectName || newProjectCreating"
-                  x-text="newProjectCreating ? 'Creating...' : 'Create'"></button>
-        </div>
-        <div x-show="newProjectName && !isValidNewProjectName" style="font-size:11px; color:var(--red); margin-top:4px;">
-          Use letters, numbers, hyphens, dots, or underscores. Must start/end with alphanumeric.
-        </div>
-        <div x-show="newProjectError" style="font-size:11px; color:var(--red); margin-top:4px;" x-text="newProjectError"></div>
-      </div>
-
-      <!-- Actions -->
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-shrink:0;">
+      <!-- Footer -->
+      <div class="modal-footer">
         <button class="btn btn-sm" @click="showNewSessionModal = false">Cancel</button>
         <button class="btn btn-sm btn-primary" @click="createManagedSession()" :disabled="!newSessionCWD.trim()">
-          Select This Folder
+          Open
         </button>
       </div>
     </div>
@@ -1074,9 +1141,9 @@
 
   <!-- Resume Picker Modal -->
   <div x-show="showResumePicker" x-cloak
-       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
+       class="modal-backdrop" style="z-index:100;"
        @click.self="showResumePicker = false">
-    <div class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:70vh;">
+    <div class="modal-sm">
       <div class="mobile-detail-header mobile-modal-header">
         <button @click="showResumePicker = false" class="mobile-back-btn" aria-label="Back">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -1085,20 +1152,20 @@
         </button>
         <span class="mobile-detail-title">Resume a Session</span>
       </div>
-      <h3 class="desktop-modal-title" style="margin-top:0; margin-bottom:12px;">Resume a Session</h3>
-
-      <template x-if="resumeLoading">
-        <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading sessions...</div>
-      </template>
-
-      <template x-if="!resumeLoading && resumableSessions.length === 0">
-        <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:13px;">No sessions to resume</div>
-      </template>
-
-      <div style="overflow-y:auto; flex:1; min-height:0;">
+      <div class="modal-header desktop-modal-title">
+        <h3>Resume a Session</h3>
+        <button class="modal-close-btn" @click="showResumePicker = false" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <template x-if="resumeLoading">
+          <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading sessions...</div>
+        </template>
+        <template x-if="!resumeLoading && resumableSessions.length === 0">
+          <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:13px;">No sessions to resume</div>
+        </template>
         <template x-for="rs in resumableSessions" :key="rs.session_id">
           <div @click="resumeSession(rs.session_id, rs.summary)"
-               style="padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.15s;"
+               style="padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.15s;"
                onmouseenter="this.style.background='var(--hover)'"
                onmouseleave="this.style.background='transparent'">
             <div style="font-weight:600; font-size:14px; margin-bottom:2px;" x-text="rs.summary || 'Untitled session'"></div>
@@ -1111,8 +1178,7 @@
           </div>
         </template>
       </div>
-
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-shrink:0;">
+      <div class="modal-footer">
         <button class="btn btn-sm" @click="showResumePicker = false">Cancel</button>
       </div>
     </div>
@@ -1120,9 +1186,9 @@
 
   <!-- Task Create/Edit Modal -->
   <div x-show="taskModalOpen" x-cloak
-       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:200; display:flex; align-items:center; justify-content:center;"
+       class="modal-backdrop" style="z-index:200;"
        @click.self="taskModalOpen = false" @keydown.escape.window="taskModalOpen && (taskModalOpen = false)">
-    <div @click.stop class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; border:1px solid var(--border); max-height:85vh; overflow-y:auto; width:500px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+    <div @click.stop class="modal-md">
       <div class="mobile-detail-header mobile-modal-header">
         <button @click="taskModalOpen = false" class="mobile-back-btn" aria-label="Back">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -1131,90 +1197,101 @@
         </button>
         <span class="mobile-detail-title" x-text="editingTask ? editingTask.name : 'New Scheduled Task'"></span>
       </div>
-      <div class="desktop-modal-title" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-        <h3 style="margin:0; font-size:1rem;" x-text="editingTask ? editingTask.name : 'New Scheduled Task'"></h3>
-        <div x-show="editingTask" style="display:flex; gap:6px;">
-          <button type="button" class="btn btn-sm" @click="triggerTask(editingTask.id)" style="font-size:0.75rem;">&#9654; Run Now</button>
-          <button type="button" class="btn btn-sm" @click="toggleTaskEnabled(editingTask); editingTask.enabled = !editingTask.enabled" style="font-size:0.75rem;"
-                  x-text="editingTask?.enabled ? 'Disable' : 'Enable'"></button>
-          <button type="button" class="btn btn-sm" @click="taskModalOpen = false; deleteTask(editingTask.id)" style="font-size:0.75rem; color:#ef4444;">Delete</button>
+      <div class="modal-header desktop-modal-title">
+        <h3 x-text="editingTask ? editingTask.name : 'New Scheduled Task'"></h3>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <template x-if="editingTask">
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn btn-sm" @click="triggerTask(editingTask.id)" style="font-size:0.75rem;">&#9654; Run Now</button>
+              <button type="button" class="btn btn-sm" @click="toggleTaskEnabled(editingTask); editingTask.enabled = !editingTask.enabled" style="font-size:0.75rem;"
+                      x-text="editingTask?.enabled ? 'Disable' : 'Enable'"></button>
+              <button type="button" class="btn btn-sm" @click="taskModalOpen = false; deleteTask(editingTask.id)" style="font-size:0.75rem; color:#ef4444;">Delete</button>
+            </div>
+          </template>
+          <button class="modal-close-btn" @click="taskModalOpen = false" aria-label="Close">&times;</button>
         </div>
       </div>
-      <form @submit.prevent="saveTask()">
-        <div style="margin-bottom:12px;">
-          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);">Name</label>
-          <input type="text" x-model="taskForm.name" required
-                 style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; box-sizing:border-box;"
-                 placeholder="e.g., Daily Backup">
-        </div>
-        <div style="margin-bottom:12px;">
-          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);">Type</label>
-          <select x-model="taskForm.task_type"
-                  style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px;">
-            <option value="shell">Shell Command</option>
-            <option value="claude">Claude Command</option>
-          </select>
-        </div>
-        <div style="margin-bottom:12px;">
-          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);"
-                 x-text="taskForm.task_type === 'claude' ? 'Prompt' : 'Command'"></label>
-          <textarea x-model="taskForm.command" required rows="3"
-                    style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; font-family:monospace; font-size:0.85rem; resize:vertical; box-sizing:border-box;"
-                    :placeholder="taskForm.task_type === 'claude' ? 'e.g., Summarize the latest changes' : 'e.g., tar -czf backup.tar.gz ./data'"></textarea>
-        </div>
-        <div style="margin-bottom:12px;">
-          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);">Working Directory</label>
-          <input type="text" x-model="taskForm.working_directory" required
-                 style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; font-family:monospace; font-size:0.85rem; box-sizing:border-box;"
-                 placeholder="/absolute/path/to/project">
-        </div>
-        <div style="margin-bottom:12px;">
-          <label style="display:block; font-size:0.8rem; margin-bottom:4px; color:var(--text-muted);">Cron Expression</label>
-          <input type="text" x-model="taskForm.cron_expression" required
-                 style="width:100%; padding:8px; background:var(--input-bg); color:var(--text); border:1px solid var(--border); border-radius:6px; font-family:monospace; font-size:0.85rem; box-sizing:border-box;"
-                 placeholder="0 9 * * *">
-          <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
-            min hour day month weekday |
-            <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 * * * *'">hourly</span>
-            <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 9 * * *'">daily 9am</span>
-            <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 9 * * 1-5'">weekdays</span>
-            <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '*/5 * * * *'">every 5min</span>
+      <div class="modal-body">
+        <form @submit.prevent="saveTask()">
+          <div class="settings-field">
+            <label class="modal-label">Name</label>
+            <input type="text" x-model="taskForm.name" required class="modal-input" placeholder="e.g., Daily Backup">
           </div>
-        </div>
-        <div x-show="taskFormErrors" style="color:#ef4444; font-size:0.8rem; margin-bottom:8px;" x-text="taskFormErrors"></div>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button type="button" class="btn btn-sm" @click="taskModalOpen = false">Cancel</button>
-          <button type="submit" class="btn btn-sm btn-primary" :disabled="taskLoading" x-text="editingTask ? 'Update' : 'Create'"></button>
-        </div>
-      </form>
-
-      <!-- Recent Runs (only when editing) -->
-      <div x-show="editingTask && taskRuns.length > 0" style="margin-top:16px; border-top:1px solid var(--border); padding-top:16px;">
-        <h4 style="margin:0 0 10px 0; font-size:0.85rem; color:var(--text-muted);">Recent Runs</h4>
-        <template x-for="run in taskRuns.slice(0, 5)" :key="run.id">
-          <div style="border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin-bottom:6px; font-size:0.8rem;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="width:7px; height:7px; border-radius:50%;"
-                      :style="'background:' + (run.status === 'success' ? '#22c55e' : run.status === 'failed' ? '#ef4444' : '#eab308')"></span>
-                <span style="font-weight:500;" x-text="run.status"></span>
-                <span style="font-size:0.75rem; color:var(--text-muted);" x-text="formatRelativeTime(run.started_at)"></span>
-              </div>
-              <span style="font-size:0.7rem; color:var(--text-muted);" x-show="run.exit_code != null" x-text="'exit ' + run.exit_code"></span>
+          <div class="settings-field">
+            <label class="modal-label">Type</label>
+            <select x-model="taskForm.task_type" @change="if (taskForm.task_type !== 'claude') taskForm.model = ''" class="modal-input">
+              <option value="shell">Shell Command</option>
+              <option value="claude">Claude Command</option>
+            </select>
+          </div>
+          <div class="settings-field">
+            <label class="modal-label" x-text="taskForm.task_type === 'claude' ? 'Prompt' : 'Command'"></label>
+            <textarea x-model="taskForm.command" required rows="3"
+                      class="modal-input" style="font-family:monospace; font-size:0.85rem; resize:vertical;"
+                      :placeholder="taskForm.task_type === 'claude' ? 'e.g., Summarize the latest changes' : 'e.g., tar -czf backup.tar.gz ./data'"></textarea>
+          </div>
+          <div class="settings-field">
+            <label class="modal-label">Working Directory</label>
+            <input type="text" x-model="taskForm.working_directory" required
+                   class="modal-input" style="font-family:monospace; font-size:0.85rem;"
+                   placeholder="/absolute/path/to/project">
+          </div>
+          <div class="settings-field">
+            <label class="modal-label">Cron Expression</label>
+            <input type="text" x-model="taskForm.cron_expression" required
+                   class="modal-input" style="font-family:monospace; font-size:0.85rem;"
+                   placeholder="0 9 * * *">
+            <div class="modal-hint">
+              min hour day month weekday |
+              <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 * * * *'">hourly</span>
+              <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 9 * * *'">daily 9am</span>
+              <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '0 9 * * 1-5'">weekdays</span>
+              <span style="cursor:pointer; text-decoration:underline;" @click="taskForm.cron_expression = '*/5 * * * *'">every 5min</span>
             </div>
-            <div x-show="run.output" style="background:var(--input-bg); border-radius:4px; padding:6px; font-family:monospace; font-size:0.7rem; white-space:pre-wrap; word-break:break-all; max-height:120px; overflow-y:auto; color:var(--text-muted);"
-                 x-text="(run.output || '').substring(0, 300) + ((run.output || '').length > 300 ? '\n...' : '')"></div>
           </div>
-        </template>
+          <div class="settings-field" x-show="taskForm.task_type === 'claude'">
+            <label class="modal-label">Model</label>
+            <select x-model="taskForm.model" class="modal-input">
+              <option value="">Default</option>
+              <option value="claude-opus-4-6">Opus</option>
+              <option value="claude-sonnet-4-6">Sonnet</option>
+              <option value="claude-haiku-4-5-20251001">Haiku</option>
+            </select>
+          </div>
+          <div x-show="taskFormErrors" style="color:#ef4444; font-size:0.8rem; margin-bottom:8px;" x-text="taskFormErrors"></div>
+          <div x-show="editingTask && taskRuns.length > 0" style="margin-top:8px; border-top:1px solid var(--border); padding-top:16px;">
+            <h4 style="margin:0 0 10px 0; font-size:0.85rem; color:var(--text-muted);">Recent Runs</h4>
+            <template x-for="run in taskRuns.slice(0, 5)" :key="run.id">
+              <div style="border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin-bottom:6px; font-size:0.8rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="width:7px; height:7px; border-radius:50%;"
+                          :style="'background:' + (run.status === 'success' ? '#22c55e' : run.status === 'failed' ? '#ef4444' : '#eab308')"></span>
+                    <span style="font-weight:500;" x-text="run.status"></span>
+                    <span style="font-size:0.75rem; color:var(--text-muted);" x-text="formatRelativeTime(run.started_at)"></span>
+                  </div>
+                  <span style="font-size:0.7rem; color:var(--text-muted);" x-show="run.exit_code != null" x-text="'exit ' + run.exit_code"></span>
+                </div>
+                <div x-show="run.output" style="background:var(--input-bg); border-radius:4px; padding:6px; font-family:monospace; font-size:0.7rem; white-space:pre-wrap; word-break:break-all; max-height:120px; overflow-y:auto; color:var(--text-muted);"
+                     x-text="(run.output || '').substring(0, 300) + ((run.output || '').length > 300 ? '\n...' : '')"></div>
+              </div>
+            </template>
+          </div>
+          <div class="modal-footer" style="margin:16px -24px -24px; padding:16px 24px;">
+            <button type="button" class="btn btn-sm" @click="taskModalOpen = false">Cancel</button>
+            <button type="submit" class="btn btn-sm btn-primary" :disabled="taskLoading" x-text="editingTask ? 'Update' : 'Create'"></button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
 
   <!-- Settings Modal -->
   <div x-show="showSettingsModal" x-cloak
-       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center;"
+       class="modal-backdrop" style="z-index:100;"
        @click.self="showSettingsModal = false">
-    <div class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); display:flex; flex-direction:column; max-height:80vh; overflow-y:auto;">
+    <div class="modal-lg" style="height:min(85vh, 520px);">
+      <!-- Mobile header -->
       <div class="mobile-detail-header mobile-modal-header">
         <button @click="showSettingsModal = false" class="mobile-back-btn" aria-label="Back">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -1223,164 +1300,244 @@
         </button>
         <span class="mobile-detail-title" x-text="settingsFirstRun ? 'Welcome \u2014 Configure Claude Controller' : 'Settings'"></span>
       </div>
-      <h3 class="desktop-modal-title" style="margin-top:0; margin-bottom:16px;" x-text="settingsFirstRun ? 'Welcome \u2014 Configure Claude Controller' : 'Settings'"></h3>
 
-      <!-- Server Configuration accordion -->
-      <div>
-        <div class="settings-accordion-header" @click="settingsAccordion.server = !settingsAccordion.server">
-          <h4>Server Configuration</h4>
-          <span class="settings-accordion-chevron" :class="{ open: settingsAccordion.server }">&#9654;</span>
+      <!-- Desktop header -->
+      <div class="modal-header desktop-modal-title">
+        <h3 x-text="settingsFirstRun ? 'Welcome \u2014 Configure Claude Controller' : 'Settings'"></h3>
+        <button class="modal-close-btn" @click="showSettingsModal = false" aria-label="Close">&times;</button>
+      </div>
+
+      <!-- Tabbed layout -->
+      <div class="settings-layout" x-show="!settingsFirstRun">
+        <!-- Sidebar tabs -->
+        <div class="settings-tabs">
+          <div class="settings-tab" :class="{ active: settingsActiveTab === 'server' }" @click="settingsActiveTab = 'server'">Server</div>
+          <div class="settings-tab" :class="{ active: settingsActiveTab === 'integrations' }" @click="settingsActiveTab = 'integrations'">Integrations</div>
+          <div class="settings-tab" :class="{ active: settingsActiveTab === 'shortcuts' }" @click="settingsActiveTab = 'shortcuts'">Shortcuts</div>
+          <div class="settings-tab" :class="{ active: settingsActiveTab === 'statusline' }" @click="settingsActiveTab = 'statusline'">Status Line</div>
+          <div class="settings-tab-divider"></div>
+          <div class="settings-tab danger" :class="{ active: settingsActiveTab === 'actions' }" @click="settingsActiveTab = 'actions'">Actions</div>
         </div>
-        <div class="settings-accordion-body" x-show="settingsAccordion.server">
-          <div>
-            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">PORT</label>
-            <input x-model="settingsForm.port" type="text" placeholder="8080"
-                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Server port (requires restart)</div>
+
+        <!-- Content panel -->
+        <div class="settings-content">
+          <!-- Server tab -->
+          <div x-show="settingsActiveTab === 'server'">
+            <div class="settings-field">
+              <label class="modal-label">
+                Port
+                <span x-show="isFieldChanged('port')" class="settings-change-badge">changed</span>
+              </label>
+              <input x-model="settingsForm.port" type="text" placeholder="8080" class="modal-input" :style="isFieldChanged('port') ? 'border-color:var(--yellow)' : ''">
+              <div class="modal-hint">Server port (requires restart)</div>
+            </div>
+
+            <div class="settings-field">
+              <label class="modal-label">
+                Ngrok Auth Token
+                <span x-show="isFieldChanged('ngrok_authtoken')" class="settings-change-badge">changed</span>
+              </label>
+              <input x-model="settingsForm.ngrok_authtoken" type="password" placeholder="ngrok auth token" class="modal-input" :style="isFieldChanged('ngrok_authtoken') ? 'border-color:var(--yellow)' : ''">
+              <div class="modal-hint">For remote access via ngrok tunnel (requires restart)</div>
+            </div>
+
+            <div class="settings-field">
+              <label class="modal-label">
+                Claude Binary
+                <span x-show="isFieldChanged('claude_bin')" class="settings-change-badge">changed</span>
+              </label>
+              <input x-model="settingsForm.claude_bin" type="text" placeholder="claude" class="modal-input" :style="isFieldChanged('claude_bin') ? 'border-color:var(--yellow)' : ''">
+              <div class="modal-hint">Path to Claude CLI binary</div>
+            </div>
+
+            <div class="settings-field">
+              <label class="modal-label">
+                CLI Arguments
+                <span x-show="isFieldChanged('claude_args')" class="settings-change-badge">changed</span>
+              </label>
+              <input x-model="settingsForm.claude_args" type="text" placeholder="--dangerously-skip-permissions" class="modal-input" :style="isFieldChanged('claude_args') ? 'border-color:var(--yellow)' : ''">
+              <div class="modal-hint">Space-separated CLI flags for managed sessions</div>
+            </div>
+
+            <div class="settings-field">
+              <label class="modal-label">
+                Environment Variables
+                <span x-show="isFieldChanged('claude_env')" class="settings-change-badge">changed</span>
+              </label>
+              <input x-model="settingsForm.claude_env" type="text" placeholder="CLAUDE_CONFIG_DIR=/path" class="modal-input" :style="isFieldChanged('claude_env') ? 'border-color:var(--yellow)' : ''">
+              <div class="modal-hint">Comma-separated KEY=VALUE pairs for managed session environment</div>
+            </div>
+
+            <div class="settings-field">
+              <label class="modal-label">
+                Compact Every N Continues
+                <span x-show="isFieldChanged('compact_every_n_continues')" class="settings-change-badge">changed</span>
+              </label>
+              <input x-model="settingsForm.compact_every_n_continues" type="number" min="0" placeholder="0" class="modal-input" :style="isFieldChanged('compact_every_n_continues') ? 'border-color:var(--yellow)' : ''">
+              <div class="modal-hint">Run /compact every N auto-continues to reduce token usage. 0 = disabled.</div>
+            </div>
+
+            <div class="settings-field">
+              <label class="modal-label">
+                GitHub Token
+                <span x-show="isFieldChanged('github_token')" class="settings-change-badge">changed</span>
+              </label>
+              <input x-model="settingsForm.github_token" type="password" placeholder="ghp_..." class="modal-input" :style="isFieldChanged('github_token') ? 'border-color:var(--yellow)' : ''">
+              <div class="modal-hint">Personal access token for GitHub issue tracking (needs repo scope)</div>
+            </div>
           </div>
 
-          <div>
-            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">NGROK_AUTHTOKEN</label>
-            <input x-model="settingsForm.ngrok_authtoken" type="password" placeholder="ngrok auth token"
-                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">For remote access via ngrok tunnel (requires restart)</div>
+          <!-- Integrations tab -->
+          <div x-show="settingsActiveTab === 'integrations'">
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">
+              Connect project management tools to browse issues and tasks alongside GitHub.
+            </div>
+
+            <div style="border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px;">
+              <div style="font-size:13px; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M15.09 7.39L8.61.91 8 .3l-5.09 5.1a.5.5 0 000 .7L7.65 10.84a.5.5 0 00.7 0l6.74-6.74a.5.5 0 000-.71zM8 10.13L5.17 7.3 8 4.47l2.83 2.83L8 10.13z" fill="#2684FF"/></svg>
+                Jira
+              </div>
+              <div class="settings-field">
+                <label class="modal-label">Base URL</label>
+                <input x-model="settingsForm.jira_url" type="text" placeholder="https://yourorg.atlassian.net" class="modal-input">
+              </div>
+              <div class="settings-field">
+                <label class="modal-label">API Token</label>
+                <input x-model="settingsForm.jira_token" type="password" placeholder="Jira API token" class="modal-input">
+              </div>
+              <div class="settings-field" style="margin-bottom:0;">
+                <label class="modal-label">Email</label>
+                <input x-model="settingsForm.jira_email" type="email" placeholder="you@company.com" class="modal-input">
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px;">
+              <div style="font-size:13px; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="4.5" r="2.8" fill="#F06A6A"/><circle cx="3.5" cy="11.5" r="2.8" fill="#F06A6A"/><circle cx="12.5" cy="11.5" r="2.8" fill="#F06A6A"/></svg>
+                Asana
+              </div>
+              <div class="settings-field" style="margin-bottom:0;">
+                <label class="modal-label">Personal Access Token</label>
+                <input x-model="settingsForm.asana_token" type="password" placeholder="Asana personal access token" class="modal-input">
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--border); border-radius:10px; padding:14px;">
+              <div style="font-size:13px; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4285F4" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                Google Tasks
+              </div>
+              <div class="settings-field" style="margin-bottom:0;">
+                <label class="modal-label">API Key</label>
+                <input x-model="settingsForm.google_tasks_token" type="password" placeholder="Google Tasks API key" class="modal-input">
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_BIN</label>
-            <input x-model="settingsForm.claude_bin" type="text" placeholder="claude"
-                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Path to Claude CLI binary</div>
+          <!-- Shortcuts tab -->
+          <div x-show="settingsActiveTab === 'shortcuts'">
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">
+              Define shortcuts that map a key (emoji or text) to a message sent in chat.
+            </div>
+            <template x-for="(shortcut, idx) in settingsForm.shortcuts" :key="idx">
+              <div class="shortcut-row"
+                   :data-idx="idx"
+                   draggable="true"
+                   @dragstart="shortcutDragStart($event, idx)"
+                   @dragover="shortcutDragOver($event, idx)"
+                   @drop="shortcutDrop($event)"
+                   @dragend="shortcutDragEnd()">
+                <span class="shortcut-drag-handle"
+                      @mousedown="shortcutDragFromHandle = true"
+                      @mouseup="shortcutDragFromHandle = false"
+                      @touchstart="shortcutTouchStart($event, idx)"
+                      @touchmove="shortcutTouchMove($event, idx)"
+                      @touchend="shortcutTouchEnd()">&#x2807;</span>
+                <input x-model="shortcut.key" type="text" maxlength="20" placeholder="Key"
+                       class="modal-input" style="width:70px; flex-shrink:0; text-align:center;">
+                <input x-model="shortcut.value" type="text" placeholder="Message to send..."
+                       class="modal-input" style="flex:1;">
+                <button @click="settingsForm.shortcuts.splice(idx, 1)" class="btn btn-sm"
+                        style="padding:4px 8px; flex-shrink:0; color:var(--red);" title="Remove shortcut">&times;</button>
+              </div>
+            </template>
+            <button @click="settingsForm.shortcuts.push({key:'', value:''})" class="btn btn-sm"
+                    style="font-size:12px; color:var(--accent);">+ Add Shortcut</button>
           </div>
 
-          <div>
-            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_ARGS</label>
-            <input x-model="settingsForm.claude_args" type="text" placeholder="--dangerously-skip-permissions"
-                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Space-separated CLI flags for managed sessions</div>
+          <!-- Status Line tab -->
+          <div x-show="settingsActiveTab === 'statusline'">
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">
+              Choose which items appear in the bottom status bar for managed sessions.
+            </div>
+            <template x-for="item in [
+              { key: 'model', label: 'Model', desc: 'Claude model name (e.g., Opus 4.6)' },
+              { key: 'cost', label: 'Cost', desc: 'Accumulated session cost' },
+              { key: 'turns', label: 'Turns', desc: 'Turn count / max turns' },
+              { key: 'activity', label: 'Activity', desc: 'Session activity state (working/waiting/idle)' },
+              { key: 'cwd', label: 'Working Dir', desc: 'Session working directory' },
+            ]" :key="item.key">
+              <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex:1;">
+                  <input type="checkbox" :checked="statusLineConfig[item.key]"
+                         @change="toggleStatusLineItem(item.key)"
+                         style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;">
+                  <div>
+                    <div style="font-size:13px; font-weight:500;" x-text="item.label"></div>
+                    <div style="font-size:11px; color:var(--text-muted);" x-text="item.desc"></div>
+                  </div>
+                </label>
+              </div>
+            </template>
           </div>
 
-          <div>
-            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">CLAUDE_ENV</label>
-            <input x-model="settingsForm.claude_env" type="text" placeholder="CLAUDE_CONFIG_DIR=/path"
-                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Comma-separated KEY=VALUE pairs for managed session environment</div>
-          </div>
-
-          <div>
-            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">COMPACT_EVERY_N_CONTINUES</label>
-            <input x-model="settingsForm.compact_every_n_continues" type="number" min="0" placeholder="0"
-                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Run /compact every N auto-continues to reduce token usage. 0 = disabled.</div>
-          </div>
-
-          <div>
-            <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">GITHUB_TOKEN</label>
-            <input x-model="settingsForm.github_token" type="password" placeholder="ghp_..."
-                   style="width:100%; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Personal access token for GitHub issue tracking (needs repo scope)</div>
+          <!-- Actions tab -->
+          <div x-show="settingsActiveTab === 'actions'">
+            <div class="settings-field">
+              <button class="btn btn-sm" @click="restartServer()" :disabled="serverRestarting"
+                      style="background:var(--red); color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-size:13px;">
+                <span x-show="!serverRestarting">Restart Server</span>
+                <span x-show="serverRestarting">Restarting...</span>
+              </button>
+              <div class="modal-hint">Gracefully restarts the server, preserving all session state</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Integrations accordion -->
-      <div>
-        <div class="settings-accordion-header" @click="settingsAccordion.integrations = !settingsAccordion.integrations">
-          <h4>Integrations</h4>
-          <span class="settings-accordion-chevron" :class="{ open: settingsAccordion.integrations }">&#9654;</span>
+      <!-- First-run flow (no sidebar, just server fields) -->
+      <div x-show="settingsFirstRun" class="modal-body" style="padding-top:16px;">
+        <div class="settings-field">
+          <label class="modal-label">Port</label>
+          <input x-model="settingsForm.port" type="text" placeholder="8080" class="modal-input">
+          <div class="modal-hint">Server port (requires restart)</div>
         </div>
-        <div class="settings-accordion-body" x-show="settingsAccordion.integrations">
-          <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
-            Connect project management tools to browse issues and tasks alongside GitHub.
-          </div>
-
-          <div style="border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px;">
-            <div style="font-size:12px; font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M15.09 7.39L8.61.91 8 .3l-5.09 5.1a.5.5 0 000 .7L7.65 10.84a.5.5 0 00.7 0l6.74-6.74a.5.5 0 000-.71zM8 10.13L5.17 7.3 8 4.47l2.83 2.83L8 10.13z" fill="#2684FF"/></svg>
-              Jira
-            </div>
-            <div>
-              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">BASE URL</label>
-              <input x-model="settingsForm.jira_url" type="text" placeholder="https://yourorg.atlassian.net"
-                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box; margin-bottom:6px;">
-            </div>
-            <div>
-              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">API TOKEN</label>
-              <input x-model="settingsForm.jira_token" type="password" placeholder="Jira API token"
-                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box; margin-bottom:6px;">
-            </div>
-            <div>
-              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">EMAIL</label>
-              <input x-model="settingsForm.jira_email" type="email" placeholder="you@company.com"
-                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box;">
-            </div>
-          </div>
-
-          <div style="border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px;">
-            <div style="font-size:12px; font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="4.5" r="2.8" fill="#F06A6A"/><circle cx="3.5" cy="11.5" r="2.8" fill="#F06A6A"/><circle cx="12.5" cy="11.5" r="2.8" fill="#F06A6A"/></svg>
-              Asana
-            </div>
-            <div>
-              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">PERSONAL ACCESS TOKEN</label>
-              <input x-model="settingsForm.asana_token" type="password" placeholder="Asana personal access token"
-                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box;">
-            </div>
-          </div>
-
-          <div style="border:1px solid var(--border); border-radius:8px; padding:12px;">
-            <div style="font-size:12px; font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#4285F4" stroke-width="1.5" fill="none"/><path d="M5 8l2 2 4-4" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-              Google Tasks
-            </div>
-            <div>
-              <label style="font-size:11px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:2px;">API KEY</label>
-              <input x-model="settingsForm.google_tasks_token" type="password" placeholder="Google Tasks API key"
-                     style="width:100%; padding:6px 8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; box-sizing:border-box;">
-            </div>
-          </div>
+        <div class="settings-field">
+          <label class="modal-label">Ngrok Auth Token</label>
+          <input x-model="settingsForm.ngrok_authtoken" type="password" placeholder="ngrok auth token" class="modal-input">
+          <div class="modal-hint">For remote access via ngrok tunnel (requires restart)</div>
+        </div>
+        <div class="settings-field">
+          <label class="modal-label">Claude Binary</label>
+          <input x-model="settingsForm.claude_bin" type="text" placeholder="claude" class="modal-input">
+          <div class="modal-hint">Path to Claude CLI binary</div>
+        </div>
+        <div class="settings-field">
+          <label class="modal-label">CLI Arguments</label>
+          <input x-model="settingsForm.claude_args" type="text" placeholder="--dangerously-skip-permissions" class="modal-input">
+          <div class="modal-hint">Space-separated CLI flags for managed sessions</div>
         </div>
       </div>
 
-      <!-- Shortcuts accordion -->
-      <div>
-        <div class="settings-accordion-header" @click="settingsAccordion.shortcuts = !settingsAccordion.shortcuts">
-          <h4>Shortcuts</h4>
-          <span class="settings-accordion-chevron" :class="{ open: settingsAccordion.shortcuts }">&#9654;</span>
-        </div>
-        <div class="settings-accordion-body" x-show="settingsAccordion.shortcuts">
-          <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">
-            Define shortcuts that map a key (emoji or text) to a message sent in chat.
-          </div>
-          <template x-for="(shortcut, idx) in settingsForm.shortcuts" :key="idx">
-            <div style="display:flex; gap:8px; align-items:center;">
-              <input x-model="shortcut.key" type="text" maxlength="20" placeholder="Key (e.g. 👍)"
-                     style="width:80px; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box; flex-shrink:0;">
-              <input x-model="shortcut.value" type="text" placeholder="Message to send..."
-                     style="flex:1; padding:8px; background:var(--input-bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; box-sizing:border-box;">
-              <button @click="settingsForm.shortcuts.splice(idx, 1)" class="btn btn-sm"
-                      style="padding:4px 8px; flex-shrink:0; color:var(--red);" title="Remove shortcut">&times;</button>
-            </div>
-          </template>
-          <button @click="settingsForm.shortcuts.push({key:'', value:''})" class="btn btn-sm"
-                  style="align-self:flex-start; font-size:12px;">+ Add Shortcut</button>
-        </div>
-      </div>
+      <!-- Error -->
+      <p class="error-msg" x-show="settingsError" x-text="settingsError" style="margin:0 24px 8px;"></p>
 
-      <p class="error-msg" x-show="settingsError" x-text="settingsError" style="margin-top:8px;"></p>
-
-      <!-- Actions -->
-      <div x-show="!settingsFirstRun" style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
-        <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:8px;">ACTIONS</label>
-        <button class="btn btn-sm" @click="restartServer()" :disabled="serverRestarting"
-                style="background:var(--red); color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-size:13px;">
-          <span x-show="!serverRestarting">Restart Server</span>
-          <span x-show="serverRestarting">Restarting...</span>
-        </button>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Gracefully restarts the server, preserving all session state</div>
-      </div>
-
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+      <!-- Footer -->
+      <div class="modal-footer">
+        <template x-if="!settingsFirstRun && settingsChangeCount() > 0">
+          <span class="modal-footer-status" x-text="settingsChangeCount() + ' unsaved change' + (settingsChangeCount() > 1 ? 's' : '')"></span>
+        </template>
         <button class="btn btn-sm" @click="showSettingsModal = false; settingsFirstRun = false;" x-text="settingsFirstRun ? 'Skip' : 'Cancel'"></button>
         <button class="btn btn-sm btn-primary" @click="saveSettings()" :disabled="settingsSaving">
           <span x-show="!settingsSaving" x-text="settingsFirstRun ? 'Save & Continue' : 'Save'"></span>
@@ -1392,37 +1549,41 @@
 
   <!-- Permission Prompt Modal -->
   <div x-show="pendingPermission" x-cloak
-       style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:200; display:flex; align-items:center; justify-content:center;">
-    <div @click.stop class="modal-inner" style="background:var(--bg); border-radius:12px; padding:24px; width:500px; max-width:90vw; border:1px solid var(--border); box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-      <h3 style="margin-top:0; margin-bottom:16px; display:flex; align-items:center; gap:8px;">
-        <span style="color:var(--yellow);">&#9888;</span> Permission Required
-      </h3>
-      <template x-if="pendingPermission">
-        <div>
-          <div style="margin-bottom:12px;">
-            <span style="font-weight:600;" x-text="pendingPermission.tool_name || 'Tool'"></span>
-            <span style="color:var(--text-muted); margin-left:8px;" x-text="pendingPermission.description || ''"></span>
+       class="modal-backdrop" style="z-index:200;">
+    <div @click.stop class="modal-sm">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <span style="color:var(--yellow);">&#9888;</span> Permission Required
+        </h3>
+      </div>
+      <div class="modal-body" style="padding-bottom:16px;">
+        <template x-if="pendingPermission">
+          <div>
+            <div style="margin-bottom:12px;">
+              <span style="font-weight:600;" x-text="pendingPermission.tool_name || 'Tool'"></span>
+              <span style="color:var(--text-muted); margin-left:8px;" x-text="pendingPermission.description || ''"></span>
+            </div>
+            <template x-if="pendingPermission.input">
+              <pre style="background:var(--input-bg); border:1px solid var(--border); border-radius:8px; padding:12px; font-size:12px; overflow-x:auto; max-height:200px; overflow-y:auto; margin-bottom:16px; white-space:pre-wrap; word-break:break-all;"
+                   x-text="typeof pendingPermission.input === 'string' ? pendingPermission.input : JSON.stringify(pendingPermission.input, null, 2)"></pre>
+            </template>
           </div>
-          <template x-if="pendingPermission.input">
-            <pre style="background:var(--input-bg); border:1px solid var(--border); border-radius:6px; padding:12px; font-size:12px; overflow-x:auto; max-height:200px; overflow-y:auto; margin-bottom:16px; white-space:pre-wrap; word-break:break-all;"
-                 x-text="typeof pendingPermission.input === 'string' ? pendingPermission.input : JSON.stringify(pendingPermission.input, null, 2)"></pre>
-          </template>
-          <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button class="btn" @click="respondToPermission('deny')"
-                    style="background:var(--red); color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">
-              Deny
-            </button>
-            <button class="btn" @click="respondToPermission('allow_always')"
-                    style="background:var(--input-bg); color:var(--text); border:1px solid var(--border); padding:8px 16px; border-radius:6px; cursor:pointer;">
-              Allow Always
-            </button>
-            <button class="btn" @click="respondToPermission('allow')"
-                    style="background:var(--green); color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">
-              Allow
-            </button>
-          </div>
-        </div>
-      </template>
+        </template>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" @click="respondToPermission('deny')"
+                style="background:var(--red); color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer;">
+          Deny
+        </button>
+        <button class="btn" @click="respondToPermission('allow_always')"
+                style="background:var(--input-bg); color:var(--text); border:1px solid var(--border); padding:8px 16px; border-radius:8px; cursor:pointer;">
+          Allow Always
+        </button>
+        <button class="btn" @click="respondToPermission('allow')"
+                style="background:var(--green); color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer;">
+          Allow
+        </button>
+      </div>
     </div>
   </div>
 

@@ -21,7 +21,7 @@ func newTestStore(t *testing.T) *db.Store {
 func TestSchedulerExecutesShellTask(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/tmp", "")
-	task, _ := store.CreateScheduledTask(sess.ID, "Echo test", "shell", "echo hello-from-scheduler", "/tmp", "* * * * *")
+	task, _ := store.CreateScheduledTask(sess.ID, "Echo test", "shell", "echo hello-from-scheduler", "/tmp", "* * * * *", "")
 	store.UpdateTaskNextRun(task.ID, time.Now().Add(-1*time.Minute))
 
 	s := New(store)
@@ -46,7 +46,7 @@ func TestSchedulerExecutesShellTask(t *testing.T) {
 func TestSchedulerSkipsConcurrentExecution(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/tmp", "")
-	task, _ := store.CreateScheduledTask(sess.ID, "Slow task", "shell", "sleep 3", "/tmp", "* * * * *")
+	task, _ := store.CreateScheduledTask(sess.ID, "Slow task", "shell", "sleep 3", "/tmp", "* * * * *", "")
 	store.UpdateTaskNextRun(task.ID, time.Now().Add(-1*time.Minute))
 
 	s := New(store)
@@ -66,7 +66,7 @@ func TestSchedulerSkipsConcurrentExecution(t *testing.T) {
 func TestReconcileStaleRuns(t *testing.T) {
 	store := newTestStore(t)
 	sess, _ := store.UpsertSession("mac1", "/tmp", "")
-	task, _ := store.CreateScheduledTask(sess.ID, "Task", "shell", "echo hi", "/tmp", "* * * * *")
+	task, _ := store.CreateScheduledTask(sess.ID, "Task", "shell", "echo hi", "/tmp", "* * * * *", "")
 	run, _ := store.CreateTaskRun(task.ID)
 
 	s := New(store)

@@ -34,6 +34,17 @@ docker compose down                             # Stop
 ./hooks/install.sh                             # Install hooks into Claude Code settings
 ```
 
+## Git Workflow
+
+Always create a feature branch before starting work — never commit directly to `main`.
+
+```bash
+git checkout -b feat/<short-description>   # Start work on a new branch
+# ... make changes, commit ...
+git push -u origin feat/<short-description>
+gh pr create                               # Open a PR when ready
+```
+
 ## Architecture
 
 - `server/` — Go REST API. `db/` = SQLite layer, `api/` = HTTP handlers + middleware, `tunnel/` = ngrok management, `managed/` = managed session process lifecycle + NDJSON streaming, `web/` = embedded Alpine.js web UI.
@@ -80,3 +91,7 @@ docker compose down                             # Stop
 - Session activity state plan: `docs/superpowers/plans/2026-03-23-session-activity-state.md`
 - Shortcut creator spec: `docs/superpowers/specs/2026-04-03-shortcut-creator-design.md`
 - Shortcut creator plan: `docs/superpowers/plans/2026-04-03-shortcut-creator.md`
+- Status line spec: `docs/superpowers/specs/2026-04-19-status-line-design.md`
+- Status line plan: `docs/superpowers/plans/2026-04-19-status-line.md`
+- Model selection spec: `docs/superpowers/specs/2026-04-22-model-selection-design.md`
+- Model selection plan: `docs/superpowers/plans/2026-04-22-model-selection.md`

@@ -32,6 +32,8 @@ document.addEventListener('alpine:init', () => {
     // Browser notifications
     prevActivityStates: {},
 
+    selectedModel: localStorage.getItem('claude-controller-model') || 'claude-sonnet-4-6',
+
     // Managed session state
     showNewSessionModal: false,
     pendingPermission: null,
@@ -49,6 +51,7 @@ document.addEventListener('alpine:init', () => {
     newProjectName: '',
     newProjectError: '',
     newProjectCreating: false,
+    showNewFolderInput: false,
     recentDirs: [],
 
     // Resume picker state
@@ -109,7 +112,7 @@ document.addEventListener('alpine:init', () => {
     taskRuns: [],
     taskModalOpen: false,
     editingTask: null,
-    taskForm: { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '' },
+    taskForm: { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '', model: '' },
     taskFormErrors: '',
     taskLoading: false,
     taskRunsLoading: false,
@@ -133,7 +136,11 @@ document.addEventListener('alpine:init', () => {
     // Shortcuts state
     shortcuts: [],
     showShortcutPicker: false,
-    settingsAccordion: { server: false, integrations: false, shortcuts: false },
+    shortcutDragIdx: null,
+    shortcutDragOverIdx: null,
+    shortcutDragFromHandle: false,
+    settingsActiveTab: 'server',
+    settingsOriginal: null,
 
     // Usage tracking
     lastTurnThreshold: 0,
@@ -167,6 +174,15 @@ document.addEventListener('alpine:init', () => {
     slashFilter: '',
     slashSelectedIndex: 0,
     sessionCost: null,
+    sessionModel: null,
+    statusLineConfig: {
+      model: true,
+      cost: true,
+      context: false,
+      turns: false,
+      activity: false,
+      cwd: false,
+    },
 
     // Activity Status Pills
     stalenessTimer: null,
@@ -240,6 +256,14 @@ document.addEventListener('alpine:init', () => {
     async init() {
       // Detect Web Speech API support
       this.voiceChatSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
+      // Load status line config from localStorage
+      try {
+        const saved = localStorage.getItem('statusLineConfig');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          this.statusLineConfig = { ...this.statusLineConfig, ...parsed };
+        }
+      } catch (e) { /* ignore corrupt localStorage */ }
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
@@ -481,6 +505,7 @@ document.addEventListener('alpine:init', () => {
     async openSettingsModal() {
       this.settingsError = '';
       this.settingsFirstRun = false;
+      this.settingsActiveTab = 'server';
       try {
         const res = await fetch('/api/settings', {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
@@ -502,10 +527,27 @@ document.addEventListener('alpine:init', () => {
           google_tasks_token: data.google_tasks_token || '',
           shortcuts: data.shortcuts || [],
         };
+        this.settingsOriginal = JSON.parse(JSON.stringify(this.settingsForm));
       } catch (e) {
         this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] };
       }
       this.showSettingsModal = true;
+    },
+
+    settingsChangeCount() {
+      if (!this.settingsOriginal) return 0;
+      let count = 0;
+      const keys = ['port', 'ngrok_authtoken', 'claude_bin', 'claude_args', 'claude_env', 'compact_every_n_continues', 'github_token', 'jira_url', 'jira_token', 'jira_email', 'asana_token', 'google_tasks_token'];
+      for (const key of keys) {
+        if (String(this.settingsForm[key] || '') !== String(this.settingsOriginal[key] || '')) count++;
+      }
+      if (JSON.stringify(this.settingsForm.shortcuts) !== JSON.stringify(this.settingsOriginal.shortcuts)) count++;
+      return count;
+    },
+
+    isFieldChanged(fieldName) {
+      if (!this.settingsOriginal) return false;
+      return String(this.settingsForm[fieldName] || '') !== String(this.settingsOriginal[fieldName] || '');
     },
 
     async saveSettings() {
@@ -701,6 +743,17 @@ document.addEventListener('alpine:init', () => {
       return 'var(--accent)';
     },
 
+    toggleStatusLineItem(key) {
+      this.statusLineConfig[key] = !this.statusLineConfig[key];
+      localStorage.setItem('statusLineConfig', JSON.stringify(this.statusLineConfig));
+    },
+
+    statusLineVisible() {
+      const sess = this.currentSession;
+      if (!sess || sess.mode !== 'managed') return false;
+      return Object.values(this.statusLineConfig).some(v => v);
+    },
+
     pendingCountFor(sessionId) {
       return this.prompts.filter(p =>
         p.status === 'pending' && p.type === 'prompt' &&
@@ -796,6 +849,14 @@ document.addEventListener('alpine:init', () => {
       this.editingSessionName = null;
     },
 
+    isRecentlyActive(session) {
+      const state = session.activity_state || 'idle';
+      if (state === 'working') return true;
+      const lastSeen = new Date(session.last_seen_at);
+      const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+      return lastSeen > thirtyMinAgo;
+    },
+
     sessionStatus(session) {
       if (session.mode === 'managed') {
         const state = session.activity_state || 'idle';
@@ -827,6 +888,7 @@ document.addEventListener('alpine:init', () => {
       this.slashCommandsLoaded = false;
       this.showSlashMenu = false;
       this.sessionCost = null;
+      this.sessionModel = null;
       this.continuationCount = 0;
       this.isCompacting = false;
       this.sessionFiles = [];
@@ -1169,6 +1231,95 @@ document.addEventListener('alpine:init', () => {
       this.handleInput();
     },
 
+    shortcutReorder(fromIdx, toIdx) {
+      if (fromIdx === toIdx || fromIdx === null || toIdx === null) return;
+      const [item] = this.settingsForm.shortcuts.splice(fromIdx, 1);
+      this.settingsForm.shortcuts.splice(toIdx, 0, item);
+    },
+
+    shortcutDragStart(event, idx) {
+      if (!this.shortcutDragFromHandle) {
+        event.preventDefault();
+        return;
+      }
+      this.shortcutDragIdx = idx;
+      event.dataTransfer.effectAllowed = 'move';
+      event.currentTarget.classList.add('dragging');
+    },
+
+    shortcutDragOver(event, idx) {
+      if (this.shortcutDragIdx === null) return;
+      event.preventDefault();
+      // Clear previous indicators
+      document.querySelectorAll('.shortcut-row').forEach(el => {
+        el.classList.remove('drag-over-above', 'drag-over-below');
+      });
+      const row = event.target.closest('.shortcut-row');
+      if (!row) return;
+      const rect = row.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (event.clientY < midY) {
+        row.classList.add('drag-over-above');
+        this.shortcutDragOverIdx = idx;
+      } else {
+        row.classList.add('drag-over-below');
+        this.shortcutDragOverIdx = idx + 1;
+      }
+    },
+
+    shortcutDrop(event) {
+      event.preventDefault();
+      this.shortcutReorder(this.shortcutDragIdx, this.shortcutDragOverIdx > this.shortcutDragIdx ? this.shortcutDragOverIdx - 1 : this.shortcutDragOverIdx);
+      this.shortcutDragEnd();
+    },
+
+    shortcutDragEnd() {
+      this.shortcutDragIdx = null;
+      this.shortcutDragOverIdx = null;
+      this.shortcutDragFromHandle = false;
+      document.querySelectorAll('.shortcut-row').forEach(el => {
+        el.classList.remove('dragging', 'drag-over-above', 'drag-over-below');
+      });
+    },
+
+    shortcutTouchStart(event, idx) {
+      event.preventDefault();
+      this.shortcutDragIdx = idx;
+      event.target.closest('.shortcut-row').classList.add('dragging');
+    },
+
+    shortcutTouchMove(event, idx) {
+      if (this.shortcutDragIdx === null) return;
+      event.preventDefault();
+      const touch = event.touches[0];
+      // Clear previous indicators
+      document.querySelectorAll('.shortcut-row').forEach(el => {
+        el.classList.remove('drag-over-above', 'drag-over-below');
+      });
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!el) return;
+      const row = el.closest('.shortcut-row');
+      if (!row) return;
+      const rowIdx = parseInt(row.dataset.idx, 10);
+      if (isNaN(rowIdx)) return;
+      const rect = row.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (touch.clientY < midY) {
+        row.classList.add('drag-over-above');
+        this.shortcutDragOverIdx = rowIdx;
+      } else {
+        row.classList.add('drag-over-below');
+        this.shortcutDragOverIdx = rowIdx + 1;
+      }
+    },
+
+    shortcutTouchEnd() {
+      if (this.shortcutDragIdx !== null && this.shortcutDragOverIdx !== null) {
+        this.shortcutReorder(this.shortcutDragIdx, this.shortcutDragOverIdx > this.shortcutDragIdx ? this.shortcutDragOverIdx - 1 : this.shortcutDragOverIdx);
+      }
+      this.shortcutDragEnd();
+    },
+
     async handleInput() {
       if (!this.selectedSessionId || !this.inputText.trim()) return;
       this.showSlashMenu = false;
@@ -1228,6 +1379,7 @@ document.addEventListener('alpine:init', () => {
       this.newProjectName = '';
       this.newProjectError = '';
       this.newProjectCreating = false;
+      this.showNewFolderInput = false;
       // Fetch recent directories
       try {
         const res = await fetch('/api/sessions/recent-dirs', {
@@ -1471,7 +1623,7 @@ document.addEventListener('alpine:init', () => {
       this.clearPendingImage();
 
       try {
-        const body = { message: msg };
+        const body = { message: msg, model: this.selectedModel };
         if (imageId) body.image_id = imageId;
 
         const res = await fetch(`/api/sessions/${this.selectedSessionId}/message`, {
@@ -1509,39 +1661,47 @@ document.addEventListener('alpine:init', () => {
       this.inputText = '';
       this.inputSending = true;
 
+      // Generate ID client-side so placeholders and SSE are ready before
+      // the backend starts broadcasting events (fixes stale UI on fast commands).
+      const commandId = 'shell-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      this.activeShellId = commandId;
+
+      // Create placeholder messages immediately so SSE events have targets
+      this.chatMessages.push({
+        role: 'shell',
+        content: cmd,
+        shellId: commandId,
+        cwd: this.currentSession?.cwd || '',
+        timestamp: new Date().toISOString()
+      });
+
+      this.chatMessages.push({
+        role: 'shell_output',
+        stdout: '',
+        stderr: '',
+        exitCode: null,
+        timedOut: false,
+        shellId: commandId,
+        complete: false,
+        timestamp: new Date().toISOString()
+      });
+
+      this.$nextTick(() => this.scrollToBottom(true));
+
       try {
+        // Ensure SSE is connected BEFORE sending the command
+        await this.ensureSSEConnected(this.selectedSessionId);
+
         const res = await fetch(`/api/sessions/${this.selectedSessionId}/shell`, {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: cmd, timeout: 30 })
+          body: JSON.stringify({ command: cmd, timeout: 30, id: commandId })
         });
         if (!res.ok) throw new Error(await res.text());
-
-        const data = await res.json();
-        this.activeShellId = data.id;
-
-        this.chatMessages.push({
-          role: 'shell',
-          content: cmd,
-          shellId: data.id,
-          cwd: this.currentSession?.cwd || '',
-          timestamp: new Date().toISOString()
-        });
-
-        this.chatMessages.push({
-          role: 'shell_output',
-          stdout: '',
-          stderr: '',
-          exitCode: null,
-          timedOut: false,
-          shellId: data.id,
-          complete: false,
-          timestamp: new Date().toISOString()
-        });
-
-        this.$nextTick(() => this.scrollToBottom(true));
-        this.startSessionSSE(this.selectedSessionId);
       } catch (e) {
+        // Remove placeholder messages on error
+        this.chatMessages = this.chatMessages.filter(m => m.shellId !== commandId);
+        this.activeShellId = null;
         this.toast('Error: ' + e.message);
       }
       this.inputSending = false;
@@ -1692,6 +1852,25 @@ document.addEventListener('alpine:init', () => {
         }
       };
       window.speechSynthesis.speak(utterance);
+    },
+
+    ensureSSEConnected(sessionId) {
+      // If already connected to this session, resolve immediately
+      if (this.sessionSSE && this.sessionSSE.readyState === EventSource.OPEN) {
+        return Promise.resolve();
+      }
+      this.startSessionSSE(sessionId);
+      return new Promise((resolve) => {
+        if (!this.sessionSSE) { resolve(); return; }
+        if (this.sessionSSE.readyState === EventSource.OPEN) { resolve(); return; }
+        const onOpen = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        this.sessionSSE.addEventListener('open', onOpen, { once: true });
+        // Timeout fallback — don't block forever if connection fails
+        const timer = setTimeout(resolve, 3000);
+      });
     },
 
     startSessionSSE(sessionId) {
@@ -1848,6 +2027,11 @@ document.addEventListener('alpine:init', () => {
           // Activity pill: tool_result means Claude is thinking again
           if (data.type === 'tool_result') {
             this.addActivityPill('Thinking...', 'active');
+          }
+
+          // Capture model name from system init event
+          if (data.type === 'system' && data.subtype === 'init' && data.model) {
+            this.sessionModel = data.model;
           }
 
           // Only display assistant messages and error events
@@ -3107,13 +3291,13 @@ Please review this PR and provide feedback.`;
             this.taskForm = {
                 name: task.name, task_type: task.task_type, command: task.command,
                 working_directory: task.working_directory, cron_expression: task.cron_expression,
-                session_id: task.session_id || ''
+                session_id: task.session_id || '', model: task.model || ''
             };
             this.loadTaskRuns(task.id);
         } else {
             this.editingTask = null;
             this.taskRuns = [];
-            this.taskForm = { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '' };
+            this.taskForm = { name: '', task_type: 'shell', command: '', working_directory: '', cron_expression: '', session_id: '', model: '' };
         }
         this.taskFormErrors = '';
         this.taskModalOpen = true;
@@ -3171,7 +3355,7 @@ Please review this PR and provide feedback.`;
                 body: JSON.stringify({
                     name: task.name, task_type: task.task_type, command: task.command,
                     working_directory: task.working_directory, cron_expression: task.cron_expression,
-                    enabled: !task.enabled
+                    enabled: !task.enabled, model: task.model || ''
                 })
             });
             await this.loadScheduledTasks();

@@ -98,6 +98,10 @@ func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", sess.MaxBudgetUSD))
 	}
 
+	if sess.Model != "" {
+		args = append(args, "--model", sess.Model)
+	}
+
 	if cfg.BinaryPath != "" && cfg.ServerPort > 0 {
 		mcpConfig := map[string]interface{}{
 			"mcpServers": map[string]interface{}{
@@ -141,6 +145,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Message string `json:"message"`
 		ImageID string `json:"image_id"`
+		Model   string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -201,6 +206,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		displayMsg = formatImageUploadMessage(req.Message, req.ImageID)
 	}
 	_, _ = s.store.CreateMessage(sessionID, "user", displayMsg)
+	_ = s.store.Heartbeat(sessionID) // Update last_seen_at so sidebar highlights recently active sessions
 	_ = s.store.UpdateActivityState(sessionID, "working")
 
 	broadcaster := s.manager.GetBroadcaster(sessionID)
@@ -218,6 +224,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		continuationCount := 0
 		currentMessage := req.Message
+		sess.Model = req.Model
 
 		// --- Per-turn mutable state, shared with onLine callback ---
 		// onLine runs in the StreamNDJSON goroutine, which lives for the
@@ -225,6 +232,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		var mu sync.Mutex
 		var assistantEventCount int
 		var executionErrored bool
+		var hitMaxTurns bool
 
 		// turnDone is signaled by StreamNDJSON on each "result" message.
 		// Buffered so the signal isn't lost if we're between select calls.
@@ -245,13 +253,20 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 					IsError bool     `json:"is_error"`
 					Errors  []string `json:"errors"`
 				}
-				if json.Unmarshal([]byte(line), &res) == nil && res.Subtype == "error_during_execution" {
-					mu.Lock()
-					executionErrored = true
-					mu.Unlock()
-					if len(res.Errors) > 0 {
-						errText := strings.Join(res.Errors, "; ")
-						_, _ = s.store.CreateMessage(sessionID, "assistant", errText)
+				if json.Unmarshal([]byte(line), &res) == nil {
+					if res.Subtype == "error_during_execution" {
+						mu.Lock()
+						executionErrored = true
+						mu.Unlock()
+						if len(res.Errors) > 0 {
+							errText := strings.Join(res.Errors, "; ")
+							_, _ = s.store.CreateMessage(sessionID, "assistant", errText)
+						}
+					}
+					if res.Subtype == "error_max_turns" {
+						mu.Lock()
+						hitMaxTurns = true
+						mu.Unlock()
 					}
 				}
 			}
@@ -289,6 +304,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
 			assistantEventCount = 0
 			executionErrored = false
+			hitMaxTurns = false
 			mu.Unlock()
 
 			// Drain any stale turnDone signals from previous turns
@@ -353,6 +369,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
 			errored := executionErrored
 			events := assistantEventCount
+			reachedMaxTurns := hitMaxTurns
 			mu.Unlock()
 
 			if !sess.Initialized && !errored {
@@ -396,8 +413,20 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 			// --- Auto-continue decision ---
 			// The process is still alive. Claude completed a turn (hit --max-turns
-			// or finished naturally). If auto-continuations are configured, we
-			// continue by sending another message via stdin on the warm process.
+			// or finished naturally). Only auto-continue when Claude was interrupted
+			// by --max-turns (subtype "error_max_turns"). If Claude finished
+			// naturally (subtype "success"), it may be asking for user input —
+			// don't auto-continue in that case.
+
+			if !reachedMaxTurns {
+				log.Printf("session %s: Claude finished naturally (not max_turns), waiting for user input", sessionID)
+				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
+				<-streamDone
+				_ = s.store.UpdateActivityState(sessionID, "waiting")
+				doneMsg := fmt.Sprintf(`{"type":"done","exit_code":%d}`, 0)
+				broadcaster.Send(doneMsg)
+				return
+			}
 
 			// First turn (user's original message) — if max_continuations is 0, just finish
 			if continuationCount == 0 && sess.MaxContinuations <= 0 {
@@ -531,6 +560,11 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 	ch := broadcaster.Subscribe()
 	defer broadcaster.Unsubscribe(ch)
 
+	// Flush headers immediately so the browser's EventSource fires onopen
+	// before any shell commands are sent. Without this, fast shell commands
+	// can broadcast events before the SSE subscriber is ready.
+	flusher.Flush()
+
 	for {
 		select {
 		case msg, ok := <-ch:
@@ -642,6 +676,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Command string `json:"command"`
 		Timeout int    `json:"timeout"`
+		ID      string `json:"id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -676,7 +711,12 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commandID := fmt.Sprintf("shell-%d", time.Now().UnixNano())
+	// Allow client-provided ID so frontend can set up SSE listener and
+	// placeholder messages before sending the command (avoids race condition).
+	commandID := req.ID
+	if commandID == "" {
+		commandID = fmt.Sprintf("shell-%d", time.Now().UnixNano())
+	}
 
 	proc, err := s.manager.SpawnShell(sessionID, managed.ShellOpts{
 		Command: req.Command,
