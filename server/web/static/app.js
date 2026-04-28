@@ -56,7 +56,6 @@ document.addEventListener('alpine:init', () => {
     dirSearch: '',
     dirSearchResults: [],
     dirSearchLoading: false,
-    _dirSearchTimer: null,
 
     // Resume picker state
     showResumePicker: false,
@@ -1402,8 +1401,7 @@ document.addEventListener('alpine:init', () => {
       await this.browseTo('');
     },
 
-    onDirSearchInput() {
-      clearTimeout(this._dirSearchTimer);
+    async triggerDirSearch() {
       const q = this.dirSearch.trim();
       if (!q) {
         this.dirSearchResults = [];
@@ -1411,22 +1409,20 @@ document.addEventListener('alpine:init', () => {
         return;
       }
       this.dirSearchLoading = true;
-      this._dirSearchTimer = setTimeout(async () => {
-        try {
-          const path = encodeURIComponent(this.browsePath || '');
-          const res = await fetch(
-            '/api/browse/search?path=' + path + '&q=' + encodeURIComponent(q),
-            { headers: { 'Authorization': 'Bearer ' + this.apiKey } }
-          );
-          if (!res.ok) throw new Error(await res.text());
-          const data = await res.json();
-          this.dirSearchResults = data.entries || [];
-        } catch (e) {
-          this.dirSearchResults = [];
-        } finally {
-          this.dirSearchLoading = false;
-        }
-      }, 300);
+      try {
+        const path = encodeURIComponent(this.browsePath || '');
+        const res = await fetch(
+          '/api/browse/search?path=' + path + '&q=' + encodeURIComponent(q),
+          { headers: { 'Authorization': 'Bearer ' + this.apiKey } }
+        );
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        this.dirSearchResults = data.entries || [];
+      } catch (e) {
+        this.dirSearchResults = [];
+      } finally {
+        this.dirSearchLoading = false;
+      }
     },
 
     async browseTo(path) {
