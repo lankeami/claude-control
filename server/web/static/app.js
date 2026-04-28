@@ -53,6 +53,10 @@ document.addEventListener('alpine:init', () => {
     newProjectCreating: false,
     showNewFolderInput: false,
     recentDirs: [],
+    dirSearch: '',
+    dirSearchResults: [],
+    dirSearchLoading: false,
+    _dirSearchTimer: null,
 
     // Resume picker state
     showResumePicker: false,
@@ -1380,6 +1384,9 @@ document.addEventListener('alpine:init', () => {
       this.newProjectError = '';
       this.newProjectCreating = false;
       this.showNewFolderInput = false;
+      this.dirSearch = '';
+      this.dirSearchResults = [];
+      this.dirSearchLoading = false;
       // Fetch recent directories
       try {
         const res = await fetch('/api/sessions/recent-dirs', {
@@ -1393,6 +1400,33 @@ document.addEventListener('alpine:init', () => {
         this.recentDirs = [];
       }
       await this.browseTo('');
+    },
+
+    onDirSearchInput() {
+      clearTimeout(this._dirSearchTimer);
+      const q = this.dirSearch.trim();
+      if (!q) {
+        this.dirSearchResults = [];
+        this.dirSearchLoading = false;
+        return;
+      }
+      this.dirSearchLoading = true;
+      this._dirSearchTimer = setTimeout(async () => {
+        try {
+          const path = encodeURIComponent(this.browsePath || '');
+          const res = await fetch(
+            '/api/browse/search?path=' + path + '&q=' + encodeURIComponent(q),
+            { headers: { 'Authorization': 'Bearer ' + this.apiKey } }
+          );
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          this.dirSearchResults = data.entries || [];
+        } catch (e) {
+          this.dirSearchResults = [];
+        } finally {
+          this.dirSearchLoading = false;
+        }
+      }, 300);
     },
 
     async browseTo(path) {
@@ -1490,8 +1524,11 @@ document.addEventListener('alpine:init', () => {
           body: JSON.stringify({ cwd: this.newSessionCWD.trim() })
         });
         if (!res.ok) throw new Error(await res.text());
+        const sess = await res.json();
         this.showNewSessionModal = false;
         this.newSessionCWD = '';
+        await this.pollState();
+        this.selectSession(sess.id);
         this.toast('Session created');
       } catch (e) {
         this.toast('Error: ' + e.message);
@@ -1554,8 +1591,8 @@ document.addEventListener('alpine:init', () => {
         this.newProjectName = '';
         this.newProjectError = '';
         this.toast('Project created');
-        await this.loadSessions();
-        this.selectedSessionId = sess.id;
+        await this.pollState();
+        this.selectSession(sess.id);
       } catch (e) {
         this.newProjectError = 'Error: ' + e.message;
       } finally {
