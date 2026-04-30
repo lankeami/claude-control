@@ -136,6 +136,16 @@ func (s *Server) handleBrowseSearch(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
+	sort.Slice(results, func(i, j int) bool {
+		sep := string(filepath.Separator)
+		di := strings.Count(results[i].Path, sep)
+		dj := strings.Count(results[j].Path, sep)
+		if di != dj {
+			return di < dj
+		}
+		return strings.ToLower(results[i].Name) < strings.ToLower(results[j].Name)
+	})
+
 	if results == nil {
 		results = []dirEntry{}
 	}
