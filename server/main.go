@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -188,11 +187,7 @@ func main() {
 			os.Exit(0)
 		}
 		log.Printf("Re-execing %s %v", exe, os.Args)
-		execErr := syscall.Exec(exe, os.Args, os.Environ())
-		if execErr != nil {
-			log.Printf("syscall.Exec failed: %v — exiting for wrapper to restart", execErr)
-			os.Exit(0)
-		}
+		execRestart(exe, os.Args, os.Environ())
 	}
 }
 

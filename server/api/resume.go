@@ -14,8 +14,14 @@ import (
 )
 
 // claudeProjectDir encodes a CWD to match Claude Code's project directory naming.
-// Replaces /, _, and . with -.
+// Replaces /, _, and . with -. Handles Windows paths (backslashes, drive letter colon).
 func claudeProjectDir(cwd string) string {
+	// Normalize Windows backslashes to forward slashes
+	cwd = filepath.ToSlash(cwd)
+	// Strip drive letter colon (e.g. "C:/Users/..." -> "C/Users/...")
+	if len(cwd) >= 2 && cwd[1] == ':' {
+		cwd = cwd[:1] + cwd[2:]
+	}
 	r := strings.NewReplacer("/", "-", "_", "-", ".", "-")
 	return r.Replace(cwd)
 }
