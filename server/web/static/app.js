@@ -467,8 +467,10 @@ document.addEventListener('alpine:init', () => {
               });
             }
           }
+          const hadMessages = this.chatMessages.length;
+          const hasNewMessages = messages.length > hadMessages;
           this.chatMessages = messages;
-          this.$nextTick(() => this.scrollToBottom(forceScroll));
+          this.$nextTick(() => this.scrollToBottom(forceScroll || hasNewMessages));
         }
       } catch (e) {}
       this.chatLoading = false;
