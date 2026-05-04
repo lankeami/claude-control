@@ -926,6 +926,7 @@ document.addEventListener('alpine:init', () => {
         this.githubPullsError = null;
         this.fetchGithubPulls(this.selectedSessionId);
       }
+      this.focusPromptInput();
     },
 
     async deleteSession(id) {
@@ -947,6 +948,10 @@ document.addEventListener('alpine:init', () => {
           }
         }
       } catch (e) {}
+    },
+
+    focusPromptInput() {
+      this.$nextTick(() => this.$refs.promptInput?.focus());
     },
 
     // Actions
@@ -1371,6 +1376,7 @@ document.addEventListener('alpine:init', () => {
         }
       } catch (e) {}
       this.inputSending = false;
+      this.focusPromptInput();
     },
 
     async openNewSessionModal() {
@@ -1690,6 +1696,7 @@ document.addEventListener('alpine:init', () => {
         this.toast('Error: ' + e.message);
       }
       this.inputSending = false;
+      this.focusPromptInput();
     },
 
     async executeShell() {
@@ -1742,6 +1749,7 @@ document.addEventListener('alpine:init', () => {
         this.toast('Error: ' + e.message);
       }
       this.inputSending = false;
+      this.focusPromptInput();
     },
 
     toggleVoiceChat() {
