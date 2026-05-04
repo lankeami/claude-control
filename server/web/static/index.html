@@ -295,7 +295,7 @@
                     <button class="image-preview-remove" @click="clearPendingImage()" title="Remove image">&times;</button>
                   </div>
 
-                  <textarea x-model="inputText" rows="1"
+                  <textarea x-ref="promptInput" x-model="inputText" rows="1"
                          :placeholder="shellMode ? 'Run a command...' : (voiceChatActive ? (isListening ? 'Listening...' : 'Voice chat paused...') : (currentSession?.mode === 'managed' ? 'Send a message... (/ for commands)' : 'Send instruction (delivered on next stop)...'))"
                          :class="{ 'shell-input': shellMode }"
                          @keydown="handleSlashKeydown($event)"
