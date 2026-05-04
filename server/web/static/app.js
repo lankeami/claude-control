@@ -949,6 +949,10 @@ document.addEventListener('alpine:init', () => {
       } catch (e) {}
     },
 
+    focusPromptInput() {
+      this.$nextTick(() => this.$refs.promptInput?.focus());
+    },
+
     // Actions
     async respondToPrompt(promptId, response) {
       // Use the prompt's own session_id, not selectedSessionId, to avoid mismatches
