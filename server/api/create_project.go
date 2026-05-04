@@ -94,9 +94,18 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Git init
+	// Git init — strip GIT_DIR and related vars that git push sets in hook
+	// context; inheriting them causes git init to reinitialize the parent
+	// repo at GIT_DIR instead of creating .git in fullPath.
 	gitCmd := exec.Command("git", "init")
 	gitCmd.Dir = fullPath
+	var gitEnv []string
+	for _, e := range os.Environ() {
+		if k, _, _ := strings.Cut(e, "="); k != "GIT_DIR" && k != "GIT_WORK_TREE" && k != "GIT_INDEX_FILE" && k != "GIT_OBJECT_DIRECTORY" {
+			gitEnv = append(gitEnv, e)
+		}
+	}
+	gitCmd.Env = gitEnv
 	if out, err := gitCmd.CombinedOutput(); err != nil {
 		os.RemoveAll(fullPath)
 		http.Error(w, fmt.Sprintf("git init failed: %s", string(out)), http.StatusInternalServerError)

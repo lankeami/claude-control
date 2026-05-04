@@ -6,7 +6,7 @@ PORT ?= 9999
 CLAUDE_DIR ?= ~/.claude
 SERVER_BIN := server/claude-controller
 
-.PHONY: help build test run stop open local run-docker run-docker-bg stop-docker logs ngrok hooks clean all
+.PHONY: help build build-windows test run stop open local run-docker run-docker-bg stop-docker logs ngrok hooks clean all
 
 .DEFAULT_GOAL := help
 
@@ -19,6 +19,9 @@ help: ## Show this help message
 
 build: ## Build the Go server binary
 	cd server && go build -o claude-controller .
+
+build-windows: ## Cross-compile the Go server binary for Windows (amd64)
+	cd server && GOOS=windows GOARCH=amd64 go build -o claude-controller.exe .
 
 test: ## Run all server tests
 	cd server && go test ./... -v

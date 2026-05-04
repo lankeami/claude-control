@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"runtime"
 	"sync"
 	"time"
 
@@ -135,7 +136,11 @@ func (s *Scheduler) executeTask(task db.ScheduledTask) {
 	var cmd *exec.Cmd
 	switch task.TaskType {
 	case "shell":
-		cmd = exec.CommandContext(ctx, "bash", "-c", task.Command)
+		if runtime.GOOS == "windows" {
+			cmd = exec.CommandContext(ctx, "cmd", "/c", task.Command)
+		} else {
+			cmd = exec.CommandContext(ctx, "bash", "-c", task.Command)
+		}
 	case "claude":
 		args := []string{"-p"}
 		if task.Model != "" {

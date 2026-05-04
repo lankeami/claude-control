@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -187,7 +186,7 @@ func (m *Manager) Interrupt(sessionID string) error {
 	if !ok {
 		return fmt.Errorf("no running process for session %s", sessionID)
 	}
-	return proc.Cmd.Process.Signal(syscall.SIGINT)
+	return interruptProcess(proc.Cmd.Process)
 }
 
 // ReapIdle closes stdin on any process that has been idle longer than maxIdle.
@@ -253,9 +252,8 @@ func (m *Manager) SpawnShell(sessionID string, opts ShellOpts) (*Process, error)
 	}
 	m.mu.Unlock()
 
-	cmd := exec.Command("sh", "-c", opts.Command)
+	cmd := newShellCmd(opts.Command)
 	cmd.Dir = opts.CWD
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -296,19 +294,7 @@ func (m *Manager) SpawnShell(sessionID string, opts ShellOpts) (*Process, error)
 		go func() {
 			select {
 			case <-time.After(opts.Timeout):
-				pgid, err := syscall.Getpgid(cmd.Process.Pid)
-				if err != nil {
-					cmd.Process.Kill()
-					return
-				}
-				proc.TimedOut = true
-				syscall.Kill(-pgid, syscall.SIGINT)
-				select {
-				case <-proc.Done:
-					return
-				case <-time.After(5 * time.Second):
-					syscall.Kill(-pgid, syscall.SIGKILL)
-				}
+				killWithTimeout(cmd, proc, 5*time.Second)
 			case <-proc.Done:
 				return
 			}
