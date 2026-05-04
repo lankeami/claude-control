@@ -1375,6 +1375,7 @@ document.addEventListener('alpine:init', () => {
         }
       } catch (e) {}
       this.inputSending = false;
+      this.focusPromptInput();
     },
 
     async openNewSessionModal() {
