@@ -926,6 +926,7 @@ document.addEventListener('alpine:init', () => {
         this.githubPullsError = null;
         this.fetchGithubPulls(this.selectedSessionId);
       }
+      this.focusPromptInput();
     },
 
     async deleteSession(id) {
