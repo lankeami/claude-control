@@ -807,16 +807,16 @@ document.addEventListener('alpine:init', () => {
 
     get viewerFileName() {
       if (!this.viewerFile) return '';
-      return this.viewerFile.split('/').pop();
+      return this.viewerFile.split(/[/\\]/).pop();
     },
 
     sessionName(session) {
       if (session.name) return session.name;
       if (session.mode === 'managed' && session.cwd) {
-        const parts = session.cwd.split('/');
+        const parts = session.cwd.split(/[/\\]/);
         return parts[parts.length - 1] || parts[parts.length - 2] || session.cwd;
       }
-      const parts = session.project_path.split('/');
+      const parts = session.project_path.split(/[/\\]/);
       const proj = parts[parts.length - 1] || parts[parts.length - 2] || session.project_path;
       return `${session.computer_name} / ${proj}`;
     },
@@ -2592,11 +2592,13 @@ Please review this PR and provide feedback.`;
 
     buildFileTree(files) {
       if (!files || files.length === 0) return [];
-      const paths = files.map(f => f.path);
+      // Normalize all paths to forward slashes for consistent cross-platform handling
+      const normalizedFiles = files.map(f => ({ ...f, _normPath: f.path.replace(/\\/g, '/') }));
+      const paths = normalizedFiles.map(f => f._normPath);
       const prefix = this.commonPrefix(paths);
       const root = {};
-      for (const file of files) {
-        const rel = file.path.substring(prefix.length).replace(/^\//, '');
+      for (const file of normalizedFiles) {
+        const rel = file._normPath.substring(prefix.length).replace(/^\//, '');
         const parts = rel.split('/');
         let node = root;
         for (let i = 0; i < parts.length; i++) {
