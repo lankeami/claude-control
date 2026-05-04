@@ -1694,6 +1694,7 @@ document.addEventListener('alpine:init', () => {
         this.toast('Error: ' + e.message);
       }
       this.inputSending = false;
+      this.focusPromptInput();
     },
 
     async executeShell() {
