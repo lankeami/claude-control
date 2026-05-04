@@ -130,12 +130,16 @@ func main() {
 	ngrokDone := make(chan struct{})
 	go func() {
 		defer close(ngrokDone)
+		if os.Getenv("NGROK_AUTHTOKEN") == "" {
+			log.Printf("Server is running locally only at http://%s", addr)
+			log.Printf("To expose via ngrok, set NGROK_AUTHTOKEN environment variable")
+			return
+		}
 		var err error
 		tun, err = tunnel.Start(ctx)
 		if err != nil {
 			log.Printf("Warning: ngrok tunnel failed: %v", err)
 			log.Printf("Server is running locally only at http://%s", addr)
-			log.Printf("To expose via ngrok, set NGROK_AUTHTOKEN environment variable")
 			return
 		}
 		ngrokURL := tun.URL()
