@@ -199,10 +199,10 @@ func main() {
 		buildCmd.Stdout = &buildOut
 		buildCmd.Stderr = &buildOut
 		if err := buildCmd.Run(); err != nil {
-			log.Printf("Build failed, not restarting:\n%s", buildOut.String())
-			os.Exit(1)
+			log.Printf("Build failed, restarting with previous binary:\n%s", buildOut.String())
+		} else {
+			log.Printf("Build succeeded, restarting %s %v", exe, os.Args)
 		}
-		log.Printf("Build succeeded, restarting %s %v", exe, os.Args)
 		execRestart(exe, os.Args, os.Environ())
 	}
 }
