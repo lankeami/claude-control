@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -190,7 +192,17 @@ func main() {
 			log.Printf("Failed to find executable path: %v", err)
 			os.Exit(0)
 		}
-		log.Printf("Re-execing %s %v", exe, os.Args)
+		log.Printf("Building %s...", exe)
+		buildCmd := exec.Command("go", "build", "-o", exe, ".")
+		buildCmd.Dir = filepath.Dir(exe)
+		var buildOut bytes.Buffer
+		buildCmd.Stdout = &buildOut
+		buildCmd.Stderr = &buildOut
+		if err := buildCmd.Run(); err != nil {
+			log.Printf("Build failed, restarting with previous binary:\n%s", buildOut.String())
+		} else {
+			log.Printf("Build succeeded, restarting %s %v", exe, os.Args)
+		}
 		execRestart(exe, os.Args, os.Environ())
 	}
 }
