@@ -1152,6 +1152,7 @@
                    @keydown.escape.prevent="showNewFolderInput = false; newProjectName = ''">
             <button class="btn btn-sm btn-primary" @click="createNewProject()"
                     :disabled="!isValidNewProjectName || newProjectCreating"
+                    style="width:auto; white-space:nowrap;"
                     x-text="newProjectCreating ? 'Creating...' : 'Create'"></button>
             <button class="btn btn-sm" @click="showNewFolderInput = false; newProjectName = ''">&times;</button>
           </div>
