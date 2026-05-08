@@ -4,6 +4,7 @@ xcuserdata/
 .env
 .superpowers/
 server/claude-controller
+server/claude-controller.exe
 .playwright-mcp/
 .worktrees/
 shortcuts.json
