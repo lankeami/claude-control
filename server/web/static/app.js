@@ -277,6 +277,13 @@ document.addEventListener('alpine:init', () => {
       this.$watch('mobileMenuOpen', (open) => {
         document.body.style.overflow = open ? 'hidden' : '';
       });
+      // Option selector: handle clicks on detected option buttons (rendered via x-html)
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-option-send]');
+        if (!btn) return;
+        this.inputText = btn.dataset.optionSend;
+        this.$nextTick(() => this.handleInput());
+      });
     },
 
     // Auth
@@ -2948,7 +2955,18 @@ Please review this PR and provide feedback.`;
           };
           const html = marked.parse(msg.content || '', { renderer: r, breaks: true });
           const eyebrow = msg.command ? `<div class="command-label">${esc(msg.command)}</div>` : '';
-          return `${imgHtml}${eyebrow}<div class="markdown-content">${html}</div>${time}`;
+          let optionsHtml = '';
+          if (msg.role === 'assistant') {
+            const opts = this.extractOptions(msg.content);
+            if (opts.length > 0) {
+              optionsHtml = '<div class="option-buttons">' + opts.map(o => {
+                const safe = o.text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const display = o.label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<button class="option-btn" data-option-send="${safe}">${display}</button>`;
+              }).join('') + '</div>';
+            }
+          }
+          return `${imgHtml}${eyebrow}<div class="markdown-content">${html}</div>${optionsHtml}${time}`;
         }
         return `${imgHtml}${esc(msg.content)}${time}`;
       }
@@ -2966,6 +2984,58 @@ Please review this PR and provide feedback.`;
         return `<div class="tool-label">Bash</div><div>${esc(msg.content)}</div>${cmd}${time}`;
       }
       return `${esc(msg.content)}${time}`;
+    },
+
+    // Detect numbered/lettered options in assistant messages for the option selector UI
+    extractOptions(content) {
+      if (!content) return [];
+      const options = [];
+      const lines = content.split('\n');
+      // Strip markdown formatting from a line
+      const strip = (s) => s.replace(/^\s*#{1,6}\s*/, '').replace(/\*\*/g, '').replace(/\*/g, '').replace(/^[-*]\s+/, '').replace(/:$/, '').trim();
+
+      for (const line of lines) {
+        const c = strip(line);
+        if (!c) continue;
+        let m;
+
+        // "Option A: Title", "Option B - Title", "Option 1: Title" etc.
+        m = c.match(/^option\s+([a-zA-Z]|\d+)\s*[:\-.]\s*(.+)/i);
+        if (m) {
+          const label = `Option ${m[1].toUpperCase()}`;
+          const title = strip(m[2]);
+          options.push({ label, text: title ? `${label}: ${title}` : label });
+          continue;
+        }
+
+        // "Option A" alone (no separator/title)
+        m = c.match(/^option\s+([a-zA-Z]|\d+)\s*$/i);
+        if (m) {
+          const label = `Option ${m[1].toUpperCase()}`;
+          options.push({ label, text: label });
+          continue;
+        }
+
+        // "A. Title" or "B. Title" (capital letter + dot — letter-choice style)
+        m = c.match(/^([A-Z])\.\s+(.+)/);
+        if (m) {
+          const label = m[1];
+          const title = strip(m[2]);
+          options.push({ label, text: `${label}. ${title}` });
+          continue;
+        }
+
+        // "a) Title" / "A) Title" / "1) Title" (parenthesis style)
+        m = c.match(/^([a-zA-Z]|\d+)\)\s+(.+)/);
+        if (m) {
+          const label = m[1];
+          const title = strip(m[2]);
+          options.push({ label, text: `${label}) ${title}` });
+          continue;
+        }
+      }
+
+      return options.length >= 2 ? options : [];
     },
 
     // Time formatting
