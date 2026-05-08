@@ -2986,56 +2986,11 @@ Please review this PR and provide feedback.`;
       return `${esc(msg.content)}${time}`;
     },
 
-    // Detect numbered/lettered options in assistant messages for the option selector UI
+    // Detect numbered/lettered options in assistant messages for the option selector UI.
+    // Logic lives in option-selector.js (loaded as <script type="module">) for testability.
     extractOptions(content) {
-      if (!content) return [];
-      const options = [];
-      const lines = content.split('\n');
-      // Strip markdown formatting from a line
-      const strip = (s) => s.replace(/^\s*#{1,6}\s*/, '').replace(/\*\*/g, '').replace(/\*/g, '').replace(/^[-*]\s+/, '').replace(/:$/, '').trim();
-
-      for (const line of lines) {
-        const c = strip(line);
-        if (!c) continue;
-        let m;
-
-        // "Option A: Title", "Option B - Title", "Option 1: Title" etc.
-        m = c.match(/^option\s+([a-zA-Z]|\d+)\s*[:\-.]\s*(.+)/i);
-        if (m) {
-          const label = `Option ${m[1].toUpperCase()}`;
-          const title = strip(m[2]);
-          options.push({ label, text: title ? `${label}: ${title}` : label });
-          continue;
-        }
-
-        // "Option A" alone (no separator/title)
-        m = c.match(/^option\s+([a-zA-Z]|\d+)\s*$/i);
-        if (m) {
-          const label = `Option ${m[1].toUpperCase()}`;
-          options.push({ label, text: label });
-          continue;
-        }
-
-        // "A. Title" or "B. Title" (capital letter + dot — letter-choice style)
-        m = c.match(/^([A-Z])\.\s+(.+)/);
-        if (m) {
-          const label = m[1];
-          const title = strip(m[2]);
-          options.push({ label, text: `${label}. ${title}` });
-          continue;
-        }
-
-        // "a) Title" / "A) Title" / "1) Title" (parenthesis style)
-        m = c.match(/^([a-zA-Z]|\d+)\)\s+(.+)/);
-        if (m) {
-          const label = m[1];
-          const title = strip(m[2]);
-          options.push({ label, text: `${label}) ${title}` });
-          continue;
-        }
-      }
-
-      return options.length >= 2 ? options : [];
+      if (typeof window._ccExtractOptions === 'function') return window._ccExtractOptions(content);
+      return [];
     },
 
     // Time formatting
