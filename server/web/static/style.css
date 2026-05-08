@@ -443,6 +443,32 @@ body {
 }
 .chat-bubble.user .bubble-time { color: rgba(255,255,255,0.7); }
 
+/* Option selector buttons — rendered below assistant messages with detected choices */
+.option-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+}
+
+.option-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.option-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 .chat-bubble.waiting {
   border-color: var(--green);
   background: var(--card-pending-bg);

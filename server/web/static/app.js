@@ -277,6 +277,13 @@ document.addEventListener('alpine:init', () => {
       this.$watch('mobileMenuOpen', (open) => {
         document.body.style.overflow = open ? 'hidden' : '';
       });
+      // Option selector: handle clicks on detected option buttons (rendered via x-html)
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-option-send]');
+        if (!btn) return;
+        this.inputText = btn.dataset.optionSend;
+        this.$nextTick(() => this.handleInput());
+      });
     },
 
     // Auth
@@ -2948,7 +2955,18 @@ Please review this PR and provide feedback.`;
           };
           const html = marked.parse(msg.content || '', { renderer: r, breaks: true });
           const eyebrow = msg.command ? `<div class="command-label">${esc(msg.command)}</div>` : '';
-          return `${imgHtml}${eyebrow}<div class="markdown-content">${html}</div>${time}`;
+          let optionsHtml = '';
+          if (msg.role === 'assistant') {
+            const opts = this.extractOptions(msg.content);
+            if (opts.length > 0) {
+              optionsHtml = '<div class="option-buttons">' + opts.map(o => {
+                const safe = o.text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const display = o.label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<button class="option-btn" data-option-send="${safe}">${display}</button>`;
+              }).join('') + '</div>';
+            }
+          }
+          return `${imgHtml}${eyebrow}<div class="markdown-content">${html}</div>${optionsHtml}${time}`;
         }
         return `${imgHtml}${esc(msg.content)}${time}`;
       }
@@ -2966,6 +2984,13 @@ Please review this PR and provide feedback.`;
         return `<div class="tool-label">Bash</div><div>${esc(msg.content)}</div>${cmd}${time}`;
       }
       return `${esc(msg.content)}${time}`;
+    },
+
+    // Detect numbered/lettered options in assistant messages for the option selector UI.
+    // Logic lives in option-selector.js (loaded as <script type="module">) for testability.
+    extractOptions(content) {
+      if (typeof window._ccExtractOptions === 'function') return window._ccExtractOptions(content);
+      return [];
     },
 
     // Time formatting
