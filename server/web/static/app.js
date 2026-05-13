@@ -192,6 +192,10 @@ document.addEventListener('alpine:init', () => {
     stalenessTimer: null,
     heartbeatTimer: null,
     lastEventTime: null,
+
+    // Agent View
+    agentInvocations: [],
+    agentViewOpen: false,
     currentPillStart: null,
 
     // Sidebar collapse/resize state
@@ -896,6 +900,7 @@ document.addEventListener('alpine:init', () => {
         this.stopVoiceChat();
       }
       this.clearActivityPills();
+      this.clearAgentInvocations();
       this.closeFileViewer();
       this.slashCommands = [];
       this.slashCommandsLoaded = false;
@@ -2064,6 +2069,7 @@ document.addEventListener('alpine:init', () => {
           }
           if (data.type === 'done') {
             this.pendingPermission = null;
+            this.finalizeAgentInvocations();
             this.stopSessionSSE();
             return;
           }
@@ -2074,6 +2080,7 @@ document.addEventListener('alpine:init', () => {
               if (block.type === 'tool_use') {
                 const label = this.extractToolContext(block);
                 this.addActivityPill(label, 'active');
+                this.trackAgentInvocation(block, label);
               }
             }
           }
@@ -2081,6 +2088,7 @@ document.addEventListener('alpine:init', () => {
           // Activity pill: tool_result means Claude is thinking again
           if (data.type === 'tool_result') {
             this.addActivityPill('Thinking...', 'active');
+            this.completeLastAgentInvocation(data);
           }
 
           // Capture model name from system init event
@@ -2857,20 +2865,37 @@ Please review this PR and provide feedback.`;
         this.clearStalenessTimer();
     },
 
-    extractToolContext(block) {
-        const name = block.name || 'Tool';
-        const input = block.input || {};
-        let context = '';
-        if (input.file_path) {
-            const parts = input.file_path.split('/');
-            context = parts[parts.length - 1];
-        } else if (input.command) {
-            context = input.command.substring(0, 30);
-        } else if (input.pattern) {
-            context = input.pattern.substring(0, 30);
+    // --- Agent View ---
+
+    trackAgentInvocation(block, label) {
+        const tracker = window._ccAgentTracker;
+        if (tracker) {
+            this.agentInvocations = tracker.applyToolUse(this.agentInvocations, block, label);
         }
-        const full = context ? `${name} ${context}` : name;
-        return full.length > 40 ? full.substring(0, 37) + '...' : full;
+    },
+
+    completeLastAgentInvocation(data) {
+        const tracker = window._ccAgentTracker;
+        if (tracker) {
+            this.agentInvocations = tracker.applyToolResult(this.agentInvocations, data);
+        }
+    },
+
+    finalizeAgentInvocations() {
+        const tracker = window._ccAgentTracker;
+        if (tracker) {
+            this.agentInvocations = tracker.finalizeAll(this.agentInvocations);
+        }
+    },
+
+    clearAgentInvocations() {
+        this.agentInvocations = [];
+        this.agentViewOpen = false;
+    },
+
+    extractToolContext(block) {
+        const tracker = window._ccAgentTracker;
+        return tracker ? tracker.extractToolContext(block) : (block.name || 'Tool');
     },
 
     resetStalenessTimer() {
