@@ -139,9 +139,12 @@ test('returns empty array for null/undefined', () => {
   assert.deepEqual(extractOptions(undefined), []);
 });
 
-test('does not treat regular numbered list (1. 2. 3.) as options', () => {
-  const content = `Steps:\n1. Install dependencies\n2. Run the server\n3. Open the browser`;
+test('detects 1. / 2. / 3. / 4. numbered dot options', () => {
+  const content = `What would you like to do?\n\n1. Merge back to main locally\n2. Push and create a Pull Request\n3. Keep the branch as-is (I'll handle it later)\n4. Discard this work`;
   const result = extractOptions(content);
-  // "1." pattern is NOT detected — only "1)" parenthesis and "Option N:" forms are
-  assert.deepEqual(result, []);
+  assert.equal(result.length, 4);
+  assert.equal(result[0].label, '1');
+  assert.equal(result[0].text, '1. Merge back to main locally');
+  assert.equal(result[1].text, '2. Push and create a Pull Request');
+  assert.equal(result[3].text, '4. Discard this work');
 });

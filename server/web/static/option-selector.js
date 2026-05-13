@@ -7,6 +7,7 @@
  * Detected patterns:
  *   Option A: Title  |  Option 1: Title  |  Option A (alone)
  *   A. Title         (capital letter + dot)
+ *   1. Title         (number + dot)
  *   a) Title  |  A) Title  |  1) Title   (parenthesis)
  */
 export function extractOptions(content) {
@@ -60,6 +61,15 @@ export function extractOptions(content) {
       const label = m[1];
       const title = strip(m[2]);
       options.push({ label, text: `${label} — ${title}` });
+      continue;
+    }
+
+    // "1. Title" / "2. Title" (numbered dot style)
+    m = c.match(/^(\d+)\.\s+(.+)/);
+    if (m) {
+      const label = m[1];
+      const title = strip(m[2]);
+      options.push({ label, text: `${label}. ${title}` });
       continue;
     }
 
