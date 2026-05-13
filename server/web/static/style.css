@@ -304,6 +304,27 @@ body {
 .turns-monitor { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 0.8rem; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
 .turns-monitor.hidden { display: none; }
 
+/* Agent View Pixel Bar */
+.agent-pixel {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.agent-pixel:hover {
+  transform: scale(1.6);
+  opacity: 0.9;
+}
+.agent-pixel-running {
+  animation: agent-pulse 1.2s ease-in-out infinite;
+}
+@keyframes agent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 /* Chat area */
 .chat-area {
   flex: 1;

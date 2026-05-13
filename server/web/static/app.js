@@ -192,6 +192,10 @@ document.addEventListener('alpine:init', () => {
     stalenessTimer: null,
     heartbeatTimer: null,
     lastEventTime: null,
+
+    // Agent View
+    agentInvocations: [],
+    agentViewOpen: false,
     currentPillStart: null,
 
     // Sidebar collapse/resize state
@@ -896,6 +900,7 @@ document.addEventListener('alpine:init', () => {
         this.stopVoiceChat();
       }
       this.clearActivityPills();
+      this.clearAgentInvocations();
       this.closeFileViewer();
       this.slashCommands = [];
       this.slashCommandsLoaded = false;
@@ -2064,6 +2069,7 @@ document.addEventListener('alpine:init', () => {
           }
           if (data.type === 'done') {
             this.pendingPermission = null;
+            this.finalizeAgentInvocations();
             this.stopSessionSSE();
             return;
           }
@@ -2074,6 +2080,7 @@ document.addEventListener('alpine:init', () => {
               if (block.type === 'tool_use') {
                 const label = this.extractToolContext(block);
                 this.addActivityPill(label, 'active');
+                this.trackAgentInvocation(block, label);
               }
             }
           }
@@ -2081,6 +2088,7 @@ document.addEventListener('alpine:init', () => {
           // Activity pill: tool_result means Claude is thinking again
           if (data.type === 'tool_result') {
             this.addActivityPill('Thinking...', 'active');
+            this.completeLastAgentInvocation(data);
           }
 
           // Capture model name from system init event
@@ -2855,6 +2863,62 @@ Please review this PR and provide feedback.`;
         this.chatMessages = this.chatMessages.filter(m => m.role !== 'activity');
         this.currentPillStart = null;
         this.clearStalenessTimer();
+    },
+
+    // --- Agent View ---
+
+    trackAgentInvocation(block, label) {
+        // Complete any currently-running invocation before starting a new one
+        const running = [...this.agentInvocations].reverse().find(a => a.status === 'running');
+        if (running) {
+            running.status = 'completed';
+            running.endTime = Date.now();
+            running.duration = Math.round((Date.now() - running.startTime) / 1000) + 's';
+        }
+        this.agentInvocations.push({
+            id: block.id || ('inv-' + Date.now()),
+            name: block.name || 'Tool',
+            label,
+            status: 'running',
+            startTime: Date.now(),
+            endTime: null,
+            duration: null,
+            lastOutput: null,
+        });
+    },
+
+    completeLastAgentInvocation(data) {
+        const running = [...this.agentInvocations].reverse().find(a => a.status === 'running');
+        if (!running) return;
+        running.status = 'completed';
+        running.endTime = Date.now();
+        running.duration = Math.round((Date.now() - running.startTime) / 1000) + 's';
+        // Capture a snippet of the tool result output
+        if (data && data.content) {
+            let text = '';
+            if (typeof data.content === 'string') {
+                text = data.content;
+            } else if (Array.isArray(data.content)) {
+                const textBlock = data.content.find(b => b.type === 'text');
+                if (textBlock) text = textBlock.text || '';
+            }
+            if (text) running.lastOutput = text.substring(0, 120);
+        }
+    },
+
+    finalizeAgentInvocations() {
+        for (const inv of this.agentInvocations) {
+            if (inv.status === 'running') {
+                inv.status = 'completed';
+                inv.endTime = Date.now();
+                inv.duration = Math.round((Date.now() - inv.startTime) / 1000) + 's';
+            }
+        }
+    },
+
+    clearAgentInvocations() {
+        this.agentInvocations = [];
+        this.agentViewOpen = false;
     },
 
     extractToolContext(block) {
