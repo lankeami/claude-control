@@ -40,6 +40,35 @@ test('detects options in markdown list items (- **Option A: ...**)', () => {
   assert.equal(result[0].text, 'Option A: Rewrite');
 });
 
+// --- Capital letter + em/en dash pattern (Claude brainstorm style) ---
+
+test('detects A — / B — / C — options (em dash)', () => {
+  const content = `**A — Make enrichIssue() async**\nSome description.\n\n**B — Separate pass after enrichment**\nAnother description.\n\n**C — Fetch in background.js**\nFinal description.`;
+  const result = extractOptions(content);
+  assert.equal(result.length, 3);
+  assert.equal(result[0].label, 'A');
+  assert.equal(result[0].text, 'A — Make enrichIssue() async');
+  assert.equal(result[1].label, 'B');
+  assert.equal(result[2].label, 'C');
+});
+
+test('detects A – / B – options (en dash)', () => {
+  const content = `A – First option\nB – Second option`;
+  const result = extractOptions(content);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].label, 'A');
+  assert.equal(result[0].text, 'A — First option');
+  assert.equal(result[1].label, 'B');
+});
+
+test('detects Option A — Title (em dash with Option prefix)', () => {
+  const content = `Option A — Use SQLite\nOption B — Use PostgreSQL`;
+  const result = extractOptions(content);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].label, 'Option A');
+  assert.equal(result[0].text, 'Option A: Use SQLite');
+});
+
 // --- Capital letter + dot pattern ---
 
 test('detects A. / B. / C. options', () => {
