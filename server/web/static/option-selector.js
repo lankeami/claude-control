@@ -28,8 +28,8 @@ export function extractOptions(content) {
     if (!c) continue;
     let m;
 
-    // "Option A: Title", "Option B - Title", "Option 1. Title" etc.
-    m = c.match(/^option\s+([a-zA-Z]|\d+)\s*[:\-.]\s*(.+)/i);
+    // "Option A: Title", "Option B - Title", "Option A — Title" etc.
+    m = c.match(/^option\s+([a-zA-Z]|\d+)\s*[:\-.—–]\s*(.+)/i);
     if (m) {
       const label = `Option ${m[1].toUpperCase()}`;
       const title = strip(m[2]);
@@ -51,6 +51,15 @@ export function extractOptions(content) {
       const label = m[1];
       const title = strip(m[2]);
       options.push({ label, text: `${label}. ${title}` });
+      continue;
+    }
+
+    // "A — Title" or "A – Title" (capital letter + em/en dash — Claude brainstorm style)
+    m = c.match(/^([A-Z])\s+[—–]\s+(.+)/);
+    if (m) {
+      const label = m[1];
+      const title = strip(m[2]);
+      options.push({ label, text: `${label} — ${title}` });
       continue;
     }
 
