@@ -2868,51 +2868,23 @@ Please review this PR and provide feedback.`;
     // --- Agent View ---
 
     trackAgentInvocation(block, label) {
-        // Complete any currently-running invocation before starting a new one
-        const running = [...this.agentInvocations].reverse().find(a => a.status === 'running');
-        if (running) {
-            running.status = 'completed';
-            running.endTime = Date.now();
-            running.duration = Math.round((Date.now() - running.startTime) / 1000) + 's';
+        const tracker = window._ccAgentTracker;
+        if (tracker) {
+            this.agentInvocations = tracker.applyToolUse(this.agentInvocations, block, label);
         }
-        this.agentInvocations.push({
-            id: block.id || ('inv-' + Date.now()),
-            name: block.name || 'Tool',
-            label,
-            status: 'running',
-            startTime: Date.now(),
-            endTime: null,
-            duration: null,
-            lastOutput: null,
-        });
     },
 
     completeLastAgentInvocation(data) {
-        const running = [...this.agentInvocations].reverse().find(a => a.status === 'running');
-        if (!running) return;
-        running.status = 'completed';
-        running.endTime = Date.now();
-        running.duration = Math.round((Date.now() - running.startTime) / 1000) + 's';
-        // Capture a snippet of the tool result output
-        if (data && data.content) {
-            let text = '';
-            if (typeof data.content === 'string') {
-                text = data.content;
-            } else if (Array.isArray(data.content)) {
-                const textBlock = data.content.find(b => b.type === 'text');
-                if (textBlock) text = textBlock.text || '';
-            }
-            if (text) running.lastOutput = text.substring(0, 120);
+        const tracker = window._ccAgentTracker;
+        if (tracker) {
+            this.agentInvocations = tracker.applyToolResult(this.agentInvocations, data);
         }
     },
 
     finalizeAgentInvocations() {
-        for (const inv of this.agentInvocations) {
-            if (inv.status === 'running') {
-                inv.status = 'completed';
-                inv.endTime = Date.now();
-                inv.duration = Math.round((Date.now() - inv.startTime) / 1000) + 's';
-            }
+        const tracker = window._ccAgentTracker;
+        if (tracker) {
+            this.agentInvocations = tracker.finalizeAll(this.agentInvocations);
         }
     },
 
@@ -2922,19 +2894,8 @@ Please review this PR and provide feedback.`;
     },
 
     extractToolContext(block) {
-        const name = block.name || 'Tool';
-        const input = block.input || {};
-        let context = '';
-        if (input.file_path) {
-            const parts = input.file_path.split('/');
-            context = parts[parts.length - 1];
-        } else if (input.command) {
-            context = input.command.substring(0, 30);
-        } else if (input.pattern) {
-            context = input.pattern.substring(0, 30);
-        }
-        const full = context ? `${name} ${context}` : name;
-        return full.length > 40 ? full.substring(0, 37) + '...' : full;
+        const tracker = window._ccAgentTracker;
+        return tracker ? tracker.extractToolContext(block) : (block.name || 'Tool');
     },
 
     resetStalenessTimer() {
