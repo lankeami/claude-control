@@ -1210,6 +1210,7 @@
         <button class="modal-close-btn" @click="showResumePicker = false" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
+        <p style="font-size:11px; color:var(--text-muted); margin:0 0 12px 0;">Rename a session from the sidebar to identify it here.</p>
         <template x-if="resumeLoading">
           <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:13px;">Loading sessions...</div>
         </template>
@@ -1217,11 +1218,11 @@
           <div style="padding:2rem; text-align:center; color:var(--text-muted); font-size:13px;">No sessions to resume</div>
         </template>
         <template x-for="rs in resumableSessions" :key="rs.session_id">
-          <div @click="resumeSession(rs.session_id, rs.summary)"
+          <div @click="resumeSession(rs.session_id, rs.label || rs.summary)"
                style="padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.15s;"
                onmouseenter="this.style.background='var(--hover)'"
                onmouseleave="this.style.background='transparent'">
-            <div style="font-weight:600; font-size:14px; margin-bottom:2px;" x-text="rs.summary || 'Untitled session'"></div>
+            <div style="font-weight:600; font-size:14px; margin-bottom:2px;" x-text="rs.label || rs.summary || rs.first_prompt || 'Untitled session'"></div>
             <div style="font-size:12px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="rs.first_prompt"></div>
             <div style="display:flex; gap:8px; margin-top:4px; font-size:11px; color:var(--text-muted);">
               <span x-show="rs.git_branch" x-text="rs.git_branch" style="background:var(--input-bg); padding:1px 5px; border-radius:3px;"></span>

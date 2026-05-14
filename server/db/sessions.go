@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -217,6 +218,38 @@ func (s *Store) UpdateSessionName(id, name string) error {
 		return fmt.Errorf("session %s not found", id)
 	}
 	return nil
+}
+
+// GetManagedSessionNamesByCliIDs returns a map of claude_session_id → name
+// for managed sessions that have a matching CLI session ID and a non-empty name.
+// Returns an empty map immediately if ids is empty (SQLite IN () is a syntax error).
+func (s *Store) GetManagedSessionNamesByCliIDs(ids []string) (map[string]string, error) {
+	if len(ids) == 0 {
+		return map[string]string{}, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.db.Query(
+		`SELECT claude_session_id, name FROM sessions WHERE claude_session_id IN (`+placeholders+`) AND name != ''`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get managed session names by cli ids: %w", err)
+	}
+	defer rows.Close()
+	result := map[string]string{}
+	for rows.Next() {
+		var cliID, name string
+		if err := rows.Scan(&cliID, &name); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		result[cliID] = name
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) ResetStaleActivityStates() error {

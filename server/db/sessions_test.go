@@ -329,3 +329,64 @@ func TestResetStaleActivityStates(t *testing.T) {
 		t.Errorf("s2: expected 'waiting' (unchanged), got %q", got2.ActivityState)
 	}
 }
+
+func TestGetManagedSessionNamesByCliIDs(t *testing.T) {
+	store := newTestStore(t)
+
+	// Create managed session with a CLI session ID and a user-defined name
+	sess1, err := store.CreateManagedSession("/tmp/proj-a", "", 10, 5.0, 0)
+	if err != nil {
+		t.Fatalf("create managed session 1: %v", err)
+	}
+	if _, err := store.db.Exec(
+		`UPDATE sessions SET claude_session_id = ?, name = ? WHERE id = ?`,
+		"cli-uuid-named", "auth JWT refactor", sess1.ID,
+	); err != nil {
+		t.Fatalf("set cli session id + name: %v", err)
+	}
+
+	// Create managed session with a CLI session ID but NO name
+	sess2, err := store.CreateManagedSession("/tmp/proj-b", "", 10, 5.0, 0)
+	if err != nil {
+		t.Fatalf("create managed session 2: %v", err)
+	}
+	if _, err := store.db.Exec(
+		`UPDATE sessions SET claude_session_id = ? WHERE id = ?`,
+		"cli-uuid-unnamed", sess2.ID,
+	); err != nil {
+		t.Fatalf("set cli session id: %v", err)
+	}
+
+	t.Run("returns name for matching CLI session with name set", func(t *testing.T) {
+		got, err := store.GetManagedSessionNamesByCliIDs([]string{"cli-uuid-named", "cli-uuid-unnamed", "cli-uuid-unknown"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("expected 1 entry, got %d: %v", len(got), got)
+		}
+		if got["cli-uuid-named"] != "auth JWT refactor" {
+			t.Errorf("expected 'auth JWT refactor', got %q", got["cli-uuid-named"])
+		}
+	})
+
+	t.Run("returns empty map for empty input without querying", func(t *testing.T) {
+		got, err := store.GetManagedSessionNamesByCliIDs([]string{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("expected empty map, got %v", got)
+		}
+	})
+
+	t.Run("returns empty map when no IDs match", func(t *testing.T) {
+		got, err := store.GetManagedSessionNamesByCliIDs([]string{"does-not-exist"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("expected empty map, got %v", got)
+		}
+	})
+}

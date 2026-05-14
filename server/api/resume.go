@@ -74,6 +74,7 @@ type resumableSession struct {
 	SessionID    string `json:"session_id"`
 	Summary      string `json:"summary"`
 	FirstPrompt  string `json:"first_prompt"`
+	Label        string `json:"label"`
 	MessageCount int    `json:"message_count"`
 	Created      string `json:"created"`
 	Modified     string `json:"modified"`
@@ -276,6 +277,23 @@ func (s *Server) handleResumableList(w http.ResponseWriter, r *http.Request) {
 			Modified:     e.Modified,
 			GitBranch:    e.GitBranch,
 		})
+	}
+
+	// Bulk-lookup managed session names by CLI session ID.
+	// Non-fatal: if the lookup fails, proceed without labels.
+	if len(results) > 0 {
+		cliIDs := make([]string, len(results))
+		for i, r := range results {
+			cliIDs[i] = r.SessionID
+		}
+		nameMap, err := s.store.GetManagedSessionNamesByCliIDs(cliIDs)
+		if err != nil {
+			log.Printf("resume: label lookup failed: %v", err)
+			nameMap = map[string]string{}
+		}
+		for i := range results {
+			results[i].Label = nameMap[results[i].SessionID]
+		}
 	}
 
 	// Sort by modified descending
