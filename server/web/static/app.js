@@ -1073,6 +1073,7 @@ document.addEventListener('alpine:init', () => {
       this.chatMessages.push({ role: 'user', content: input, msg_type: 'text', timestamp: new Date().toISOString() });
       this.$nextTick(() => this.scrollToBottom(true));
       this.inputText = '';
+      this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
 
       switch (cmdName) {
         case '/resume':
@@ -1386,6 +1387,7 @@ document.addEventListener('alpine:init', () => {
         if (resp.status === 401) { this.disconnect(); return; }
         if (resp.ok) {
           this.inputText = '';
+          this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
           this.inputSuccess = true;
           setTimeout(() => this.inputSuccess = false, 1500);
         }
@@ -1672,6 +1674,7 @@ document.addEventListener('alpine:init', () => {
       if ((!this.inputText.trim() && !this.pendingImageId) || !this.selectedSessionId) return;
       const msg = this.inputText.trim();
       this.inputText = '';
+      this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
       this.interimTranscript = '';
       this.inputSending = true;
 
@@ -1718,6 +1721,7 @@ document.addEventListener('alpine:init', () => {
       if (!this.inputText.trim() || !this.selectedSessionId) return;
       const cmd = this.inputText.trim();
       this.inputText = '';
+      this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
       this.inputSending = true;
 
       // Generate ID client-side so placeholders and SSE are ready before
