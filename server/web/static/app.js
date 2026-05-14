@@ -2022,6 +2022,7 @@ document.addEventListener('alpine:init', () => {
 
           if (data.type === 'compact_complete') {
             this.isCompacting = false;
+            this.clearAgentInvocations();
             this.chatMessages.push({
               id: 'compact-done-' + Date.now(),
               role: 'system',
