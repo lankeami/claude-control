@@ -1089,6 +1089,7 @@ document.addEventListener('alpine:init', () => {
               this.chatMessages.push({ role: 'system', content: `Clear failed: ${errText}`, msg_type: 'text', timestamp: new Date().toISOString() });
             } else {
               this.chatMessages = [];
+              this.clearAgentInvocations();
             }
           } catch (e) {
             this.chatMessages.push({ role: 'system', content: `Clear failed: ${e.message}`, msg_type: 'text', timestamp: new Date().toISOString() });
