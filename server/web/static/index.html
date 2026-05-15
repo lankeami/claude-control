@@ -187,24 +187,25 @@
                       : 'background:var(--border); color:var(--text-muted); cursor:default; opacity:0.5;'">
               Stop
             </button>
-            <template x-if="currentSession?.mode === 'managed' && agentInvocations.length > 0">
-              <div style="display:flex; align-items:center; gap:3px; flex-wrap:wrap; padding-left:4px; border-left:1px solid var(--border);">
-                <template x-for="(inv, i) in agentInvocations" :key="i">
-                  <div @click="agentViewOpen = true"
-                       :title="inv.label + ' · ' + inv.status + (inv.duration ? ' · ' + inv.duration : '')"
-                       class="agent-pixel"
-                       :class="{ 'agent-pixel-running': inv.status === 'running' }"
-                       :style="'background:' + (inv.status === 'running' ? '#f39c12' : '#22c55e')">
-                  </div>
-                </template>
-                <button @click="agentViewOpen = true"
-                        style="margin-left:6px; font-size:11px; color:var(--text-muted); background:none; border:none; cursor:pointer; padding:0; text-decoration:underline; flex-shrink:0;"
-                        x-text="agentInvocations.length + (agentInvocations.length === 1 ? ' tool call' : ' tool calls')">
-                </button>
-              </div>
-            </template>
           </div>
         </div>
+        <!-- Agent View Pixel Bar (managed sessions only) -->
+        <template x-if="currentSession?.mode === 'managed' && agentInvocations.length > 0">
+          <div style="display:flex; align-items:center; gap:3px; flex-wrap:wrap; width:100%; padding-top:6px;">
+            <template x-for="(inv, i) in agentInvocations" :key="i">
+              <div @click="agentViewOpen = true"
+                   :title="inv.label + ' · ' + inv.status + (inv.duration ? ' · ' + inv.duration : '')"
+                   class="agent-pixel"
+                   :class="{ 'agent-pixel-running': inv.status === 'running' }"
+                   :style="'background:' + (inv.status === 'running' ? '#f39c12' : '#22c55e')">
+              </div>
+            </template>
+            <button @click="agentViewOpen = true"
+                    style="margin-left:6px; font-size:11px; color:var(--text-muted); background:none; border:none; cursor:pointer; padding:0; text-decoration:underline; flex-shrink:0;"
+                    x-text="agentInvocations.length + (agentInvocations.length === 1 ? ' tool call' : ' tool calls')">
+            </button>
+          </div>
+        </template>
 
         <div class="main-content-split">
           <div class="chat-column" :class="{ 'has-viewer': viewerFile || selectedIssue || selectedPull }">
