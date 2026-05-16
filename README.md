@@ -38,6 +38,20 @@ Two modes of operation:
 | Hooks | Bash (macOS) + PowerShell (Windows) | `hooks/` |
 | iOS App | Swift / SwiftUI (iOS 17+) | `ios/` |
 
+## New? Start Here
+
+If you're setting up Claude Controller for the first time, one command does everything:
+
+```bash
+make quickstart
+```
+
+This checks for Go, installs dependencies, builds the server, and opens the web UI at **http://localhost:9999** automatically.
+
+See **[docs/getting-started.md](docs/getting-started.md)** for a full walkthrough including prerequisites, troubleshooting, and ngrok setup for remote access.
+
+---
+
 ## Quick Start
 
 ### 1. Start the server
