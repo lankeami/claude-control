@@ -164,6 +164,36 @@
                 :title="selectedSessionId ? 'Double-click to rename' : ''"
                 :style="selectedSessionId ? 'cursor:pointer' : ''"></h2>
           </template>
+          <!-- Usage rate limit widget -->
+          <div x-show="usageData && !usageError"
+               style="display:flex; align-items:center; gap:10px; margin-right:8px;">
+            <!-- 5-hour bar -->
+            <template x-if="usageData?.five_hour">
+              <div style="display:flex; align-items:center; gap:4px;"
+                   :title="'5hr resets at ' + new Date(usageData.five_hour.resets_at).toLocaleTimeString()">
+                <span style="font-size:11px; opacity:0.6; white-space:nowrap;">5hr</span>
+                <div style="width:60px; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
+                  <div :style="'width:' + Math.round(usageData.five_hour.utilization * 100) + '%; height:100%; border-radius:2px; background:' + usageBarColor(usageData.five_hour.utilization) + '; transition:width 0.3s ease'"></div>
+                </div>
+                <span x-text="Math.round(usageData.five_hour.utilization * 100) + '%'"
+                      style="font-size:11px; font-weight:600; min-width:28px;"
+                      :style="'color:' + usageBarColor(usageData.five_hour.utilization)"></span>
+              </div>
+            </template>
+            <!-- 7-day bar -->
+            <template x-if="usageData?.seven_day">
+              <div style="display:flex; align-items:center; gap:4px;"
+                   :title="'7d resets at ' + new Date(usageData.seven_day.resets_at).toLocaleDateString()">
+                <span style="font-size:11px; opacity:0.6; white-space:nowrap;">7d</span>
+                <div style="width:60px; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
+                  <div :style="'width:' + Math.round(usageData.seven_day.utilization * 100) + '%; height:100%; border-radius:2px; background:' + usageBarColor(usageData.seven_day.utilization) + '; transition:width 0.3s ease'"></div>
+                </div>
+                <span x-text="Math.round(usageData.seven_day.utilization * 100) + '%'"
+                      style="font-size:11px; font-weight:600; min-width:28px;"
+                      :style="'color:' + usageBarColor(usageData.seven_day.utilization)"></span>
+              </div>
+            </template>
+          </div>
           <div :class="currentSession?.mode === 'managed' ? 'turns-monitor' : 'turns-monitor hidden'">
             <span x-show="currentSession?.max_turns > 0" style="opacity:0.7;">Turns</span>
             <span x-show="currentSession?.max_turns > 0"

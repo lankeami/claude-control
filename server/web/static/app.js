@@ -327,6 +327,12 @@ document.addEventListener('alpine:init', () => {
 
     disconnect() {
       this.stopSSE();
+      if (this.usagePollInterval) {
+        clearInterval(this.usagePollInterval);
+        this.usagePollInterval = null;
+      }
+      this.usageData = null;
+      this.usageError = false;
       this.authenticated = false;
       this.apiKey = '';
       this.loginKey = '';
