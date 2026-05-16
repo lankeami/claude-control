@@ -20,6 +20,8 @@ type Server struct {
 	shutdownFunc      func() // called to trigger server restart
 	restartInProgress atomic.Bool
 	serverID          string // unique ID per server instance, used by clients to detect restart
+	usageUpstreamURL  string // override for tests; empty means use real Anthropic URL
+	skipKeychain      bool   // skip macOS keychain lookup in tests
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string) http.Handler {
@@ -91,6 +93,9 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("GET /api/settings/exists", s.handleSettingsExists)
 	apiMux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	apiMux.HandleFunc("PUT /api/settings", s.handlePutSettings)
+
+	// Usage endpoint
+	apiMux.HandleFunc("GET /api/usage", s.handleUsage)
 
 	// Server management
 	apiMux.HandleFunc("POST /api/restart", s.handleRestart)
