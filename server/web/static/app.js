@@ -18,11 +18,15 @@ document.addEventListener('alpine:init', () => {
     responseText: '',
     responseSending: false,
     connected: true,
+    // Usage / rate limit state
+    usageData: null,
+    usageError: false,
 
     // SSE
     eventSource: null,
     sseFailCount: 0,
     pollInterval: null,
+    usagePollInterval: null,
 
     // Unified input (replaces old instructionText)
     inputText: '',
@@ -277,6 +281,9 @@ document.addEventListener('alpine:init', () => {
         await this.loadScheduledTasks();
         await this.checkSettingsFirstRun();
         this.loadShortcuts();
+        // Usage rate limit polling
+        this.fetchUsage();
+        this.usagePollInterval = setInterval(() => this.fetchUsage(), 60_000);
       }
       this.$watch('mobileMenuOpen', (open) => {
         document.body.style.overflow = open ? 'hidden' : '';
@@ -320,6 +327,12 @@ document.addEventListener('alpine:init', () => {
 
     disconnect() {
       this.stopSSE();
+      if (this.usagePollInterval) {
+        clearInterval(this.usagePollInterval);
+        this.usagePollInterval = null;
+      }
+      this.usageData = null;
+      this.usageError = false;
       this.authenticated = false;
       this.apiKey = '';
       this.loginKey = '';
@@ -751,6 +764,30 @@ document.addEventListener('alpine:init', () => {
       const sess = this.selectedSession;
       if (!sess || sess.mode !== 'managed' || !sess.max_turns) return 0;
       return Math.min(100, Math.round((sess.turn_count / sess.max_turns) * 100));
+    },
+
+    async fetchUsage() {
+      try {
+        const resp = await fetch('/api/usage', {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        if (!resp.ok) {
+          this.usageData = null;
+          this.usageError = true;
+          return;
+        }
+        this.usageData = await resp.json();
+        this.usageError = false;
+      } catch (e) {
+        this.usageData = null;
+        this.usageError = true;
+      }
+    },
+
+    usageBarColor(utilization) {
+      if (utilization > 0.9) return '#e74c3c';
+      if (utilization > 0.7) return '#f39c12';
+      return '#22c55e';
     },
 
     turnBarColor() {
