@@ -253,3 +253,62 @@ func TestStreamNDJSON_SignalsTurnDone(t *testing.T) {
 		t.Error("expected turnDone signal for result message")
 	}
 }
+
+func TestStreamNDJSON_TransformReplacesLine(t *testing.T) {
+	input := `{"type":"result","subtype":"success"}` + "\n"
+	b := NewBroadcaster()
+	ch := b.Subscribe()
+
+	received := make(chan string, 1)
+	go func() {
+		for msg := range ch {
+			received <- msg
+			return
+		}
+	}()
+
+	transform := func(line string) string {
+		return `{"type":"result","subtype":"success","cost":0.001,"model":"claude-haiku-4-5-20251001"}`
+	}
+
+	StreamNDJSON(strings.NewReader(input), b, nil, nil, transform)
+	b.Close()
+
+	select {
+	case msg := <-received:
+		if !strings.Contains(msg, `"cost":0.001`) {
+			t.Errorf("transform not applied; got: %s", msg)
+		}
+		if !strings.Contains(msg, `"model"`) {
+			t.Errorf("model field missing; got: %s", msg)
+		}
+	case <-time.After(time.Second):
+		t.Error("timed out waiting for transformed broadcast")
+	}
+}
+
+func TestStreamNDJSON_NilTransformBroadcastsRaw(t *testing.T) {
+	input := `{"type":"result","subtype":"success"}` + "\n"
+	b := NewBroadcaster()
+	ch := b.Subscribe()
+
+	received := make(chan string, 1)
+	go func() {
+		for msg := range ch {
+			received <- msg
+			return
+		}
+	}()
+
+	StreamNDJSON(strings.NewReader(input), b, nil, nil)
+	b.Close()
+
+	select {
+	case msg := <-received:
+		if strings.Contains(msg, "cost") {
+			t.Errorf("raw line should not have cost field; got: %s", msg)
+		}
+	case <-time.After(time.Second):
+		t.Error("timed out waiting for broadcast message")
+	}
+}
