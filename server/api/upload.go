@@ -90,14 +90,6 @@ func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove any existing files in the dir (one image at a time).
-	existing, _ := os.ReadDir(dir)
-	for _, entry := range existing {
-		if !entry.IsDir() {
-			os.Remove(filepath.Join(dir, entry.Name()))
-		}
-	}
-
 	// Save with UUID filename + original extension.
 	imageID := uuid.New().String()
 	ext := strings.ToLower(filepath.Ext(header.Filename))

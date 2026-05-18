@@ -260,6 +260,65 @@ func TestFormatUserTurnWithImages_MultipleImages(t *testing.T) {
 	}
 }
 
+func TestUploadMultipleImagesAccumulate(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	cwd := t.TempDir()
+	body := `{"cwd": "` + cwd + `"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/create", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	var sess map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&sess)
+	resp.Body.Close()
+	sessID := sess["id"].(string)
+
+	uploadOnePNG := func() string {
+		pngData := createTestPNG()
+		multiBody, contentType := createMultipartBody("test.png", pngData)
+		uploadReq, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sessID+"/upload", multiBody)
+		uploadReq.Header.Set("Authorization", "Bearer test-api-key")
+		uploadReq.Header.Set("Content-Type", contentType)
+		uploadResp, err := http.DefaultClient.Do(uploadReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer uploadResp.Body.Close()
+		if uploadResp.StatusCode != 200 {
+			t.Fatalf("upload status=%d, want 200", uploadResp.StatusCode)
+		}
+		var result map[string]interface{}
+		json.NewDecoder(uploadResp.Body).Decode(&result)
+		return result["image_id"].(string)
+	}
+
+	id1 := uploadOnePNG()
+	id2 := uploadOnePNG()
+
+	// Both files should exist on disk
+	dir := filepath.Join(cwd, ".claude-controller-uploads", sessID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("failed to read upload dir: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("expected 2 files in upload dir, got %d", len(entries))
+	}
+
+	// Both IDs should be findable
+	path1, _ := findUploadedImage(cwd, sessID, id1)
+	if path1 == "" {
+		t.Error("image 1 not found after second upload")
+	}
+	path2, _ := findUploadedImage(cwd, sessID, id2)
+	if path2 == "" {
+		t.Error("image 2 not found after second upload")
+	}
+}
+
 func TestDeleteSessionCleansUpUploads(t *testing.T) {
 	ts, store := setupTestServer(t)
 	defer ts.Close()
