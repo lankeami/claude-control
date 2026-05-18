@@ -178,24 +178,22 @@ func TestUploadImageHookMode(t *testing.T) {
 	}
 }
 
-func TestFormatUserTurnWithImage(t *testing.T) {
-	result := formatUserTurnWithImage("describe this", "abc123base64data", "image/png")
+func TestFormatUserTurnWithImages_SingleWithText(t *testing.T) {
+	images := []imageData{{base64: "abc123", mediaType: "image/png"}}
+	result := formatUserTurnWithImages("describe this", images)
 
 	var parsed map[string]interface{}
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 		t.Fatal(err)
 	}
-
 	if parsed["type"] != "user" {
 		t.Errorf("type=%v, want user", parsed["type"])
 	}
-
 	msg := parsed["message"].(map[string]interface{})
 	content := msg["content"].([]interface{})
 	if len(content) != 2 {
 		t.Fatalf("expected 2 content blocks, got %d", len(content))
 	}
-
 	imgBlock := content[0].(map[string]interface{})
 	if imgBlock["type"] != "image" {
 		t.Errorf("first block type=%v, want image", imgBlock["type"])
@@ -204,29 +202,61 @@ func TestFormatUserTurnWithImage(t *testing.T) {
 	if source["media_type"] != "image/png" {
 		t.Errorf("media_type=%v, want image/png", source["media_type"])
 	}
-
 	textBlock := content[1].(map[string]interface{})
-	if textBlock["type"] != "text" {
-		t.Errorf("second block type=%v, want text", textBlock["type"])
-	}
-	if textBlock["text"] != "describe this" {
-		t.Errorf("text=%v, want 'describe this'", textBlock["text"])
+	if textBlock["type"] != "text" || textBlock["text"] != "describe this" {
+		t.Errorf("unexpected text block: %v", textBlock)
 	}
 }
 
-func TestFormatUserTurnImageOnly(t *testing.T) {
-	result := formatUserTurnWithImage("", "abc123base64data", "image/png")
+func TestFormatUserTurnWithImages_ImageOnly(t *testing.T) {
+	images := []imageData{{base64: "abc123", mediaType: "image/png"}}
+	result := formatUserTurnWithImages("", images)
 
 	var parsed map[string]interface{}
 	json.Unmarshal([]byte(result), &parsed)
 	msg := parsed["message"].(map[string]interface{})
 	content := msg["content"].([]interface{})
-
 	if len(content) != 1 {
 		t.Fatalf("expected 1 content block (image only), got %d", len(content))
 	}
 	if content[0].(map[string]interface{})["type"] != "image" {
 		t.Error("expected image block")
+	}
+}
+
+func TestFormatUserTurnWithImages_MultipleImages(t *testing.T) {
+	images := []imageData{
+		{base64: "data1", mediaType: "image/png"},
+		{base64: "data2", mediaType: "image/jpeg"},
+	}
+	result := formatUserTurnWithImages("compare these", images)
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	msg := parsed["message"].(map[string]interface{})
+	content := msg["content"].([]interface{})
+	if len(content) != 3 {
+		t.Fatalf("expected 3 content blocks, got %d", len(content))
+	}
+	if content[0].(map[string]interface{})["type"] != "image" {
+		t.Errorf("block 0 should be image")
+	}
+	if content[1].(map[string]interface{})["type"] != "image" {
+		t.Errorf("block 1 should be image")
+	}
+	src0 := content[0].(map[string]interface{})["source"].(map[string]interface{})
+	if src0["media_type"] != "image/png" {
+		t.Errorf("block 0 media_type=%v, want image/png", src0["media_type"])
+	}
+	src1 := content[1].(map[string]interface{})["source"].(map[string]interface{})
+	if src1["media_type"] != "image/jpeg" {
+		t.Errorf("block 1 media_type=%v, want image/jpeg", src1["media_type"])
+	}
+	textBlock := content[2].(map[string]interface{})
+	if textBlock["type"] != "text" || textBlock["text"] != "compare these" {
+		t.Errorf("unexpected text block: %v", textBlock)
 	}
 }
 

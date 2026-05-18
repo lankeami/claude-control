@@ -343,7 +343,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			// Send the user message via stdin
 			var userTurn string
 			if imageBase64 != "" {
-				userTurn = formatUserTurnWithImage(currentMessage, imageBase64, imageMediaType)
+				userTurn = formatUserTurnWithImages(currentMessage, []imageData{{base64: imageBase64, mediaType: imageMediaType}})
 				imageBase64 = "" // Only include image on the first turn, not auto-continues
 			} else {
 				userTurn = formatUserTurn(currentMessage)
