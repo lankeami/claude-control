@@ -36,7 +36,7 @@ document.addEventListener('alpine:init', () => {
     // Browser notifications
     prevActivityStates: {},
 
-    selectedModel: localStorage.getItem('claude-controller-model') || 'claude-sonnet-4-6',
+    selectedModel: localStorage.getItem('claude-controller-model') || '',
 
     // Managed session state
     showNewSessionModal: false,
@@ -2095,13 +2095,13 @@ document.addEventListener('alpine:init', () => {
           }
 
           if (data.type === 'done' || data.type === 'result') {
-            // Skip result events from compact process — they'd pollute cost/pill state
-            if (data.type === 'result' && this.isCompacting) {
-              return;
-            }
-            // Track cost from result events
+            // Track cost from result events — always, including compact turns
             if (data.type === 'result' && data.cost != null) {
               this.sessionCost = (this.sessionCost || 0) + data.cost;
+            }
+            // Skip pill state updates during compact to avoid UI artifacts
+            if (data.type === 'result' && this.isCompacting) {
+              return;
             }
             // Mark the current active pill as completed (don't clear — pills persist until next message)
             const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
@@ -2134,6 +2134,11 @@ document.addEventListener('alpine:init', () => {
           if (data.type === 'tool_result') {
             this.addActivityPill('Thinking...', 'active');
             this.completeLastAgentInvocation(data);
+          }
+
+          // Update displayed model when server applies routing
+          if (data.type === 'model_selected' && data.model) {
+            this.sessionModel = data.model;
           }
 
           // Capture model name from system init event
