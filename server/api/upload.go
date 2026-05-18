@@ -29,6 +29,12 @@ var extensionToMIME = map[string]string{
 	".webp": "image/webp",
 }
 
+// imageData holds base64-encoded image bytes and its MIME type.
+type imageData struct {
+	base64    string
+	mediaType string
+}
+
 // uploadDir returns the directory where uploaded images are stored for a session.
 func uploadDir(sessionCWD, sessionID string) string {
 	return filepath.Join(sessionCWD, ".claude-controller-uploads", sessionID)
@@ -82,14 +88,6 @@ func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		http.Error(w, "failed to create upload directory", http.StatusInternalServerError)
 		return
-	}
-
-	// Remove any existing files in the dir (one image at a time).
-	existing, _ := os.ReadDir(dir)
-	for _, entry := range existing {
-		if !entry.IsDir() {
-			os.Remove(filepath.Join(dir, entry.Name()))
-		}
 	}
 
 	// Save with UUID filename + original extension.
@@ -171,27 +169,26 @@ func findUploadedImage(sessionCWD, sessionID, imageID string) (string, string) {
 	return "", ""
 }
 
-// formatUserTurnWithImage builds a stream-json user turn with an image content block
-// and an optional text block, matching the structure of formatUserTurn.
-func formatUserTurnWithImage(message, imageBase64, mediaType string) string {
+// formatUserTurnWithImages builds a stream-json user turn with one image content
+// block per entry in images, followed by an optional text block.
+func formatUserTurnWithImages(message string, images []imageData) string {
 	var content []interface{}
-
-	content = append(content, map[string]interface{}{
-		"type": "image",
-		"source": map[string]string{
-			"type":       "base64",
-			"media_type": mediaType,
-			"data":       imageBase64,
-		},
-	})
-
+	for _, img := range images {
+		content = append(content, map[string]interface{}{
+			"type": "image",
+			"source": map[string]string{
+				"type":       "base64",
+				"media_type": img.mediaType,
+				"data":       img.base64,
+			},
+		})
+	}
 	if message != "" {
 		content = append(content, map[string]string{
 			"type": "text",
 			"text": message,
 		})
 	}
-
 	turn := map[string]interface{}{
 		"type": "user",
 		"message": map[string]interface{}{

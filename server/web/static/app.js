@@ -157,9 +157,7 @@ document.addEventListener('alpine:init', () => {
     isCompacting: false,
 
     // Image upload state
-    pendingImageId: null,
-    pendingImagePreview: null,
-    pendingImageFilename: null,
+    pendingImages: [],   // [{id, preview, filename}]
     imageUploading: false,
 
     // Shell mode
@@ -1661,68 +1659,72 @@ document.addEventListener('alpine:init', () => {
     },
 
     async uploadImage(event) {
-      const file = event.target.files?.[0];
-      if (!file || !this.selectedSessionId) return;
+      const files = Array.from(event.target.files || []);
+      if (!files.length || !this.selectedSessionId) return;
 
-      if (!file.type.startsWith('image/')) {
-        this.toast('Please select an image file');
-        event.target.value = '';
-        return;
-      }
-      if (file.size > 20 * 1024 * 1024) {
-        this.toast('Image must be under 20MB');
+      if (this.pendingImages.length + files.length > 7) {
+        this.toast('Maximum 7 images per message');
         event.target.value = '';
         return;
       }
 
       this.imageUploading = true;
-      try {
-        const formData = new FormData();
-        formData.append('image', file);
-
-        const res = await fetch(`/api/sessions/${this.selectedSessionId}/upload`, {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + this.apiKey },
-          body: formData
-        });
-        if (!res.ok) throw new Error(await res.text());
-
-        const data = await res.json();
-        this.pendingImageId = data.image_id;
-        this.pendingImageFilename = data.filename;
-
-        const reader = new FileReader();
-        reader.onload = (e) => { this.pendingImagePreview = e.target.result; };
-        reader.readAsDataURL(file);
-      } catch (e) {
-        this.toast('Upload failed: ' + e.message);
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+          this.toast(`${file.name}: not an image, skipped`);
+          continue;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+          this.toast(`${file.name}: must be under 20MB, skipped`);
+          continue;
+        }
+        try {
+          const formData = new FormData();
+          formData.append('image', file);
+          const res = await fetch(`/api/sessions/${this.selectedSessionId}/upload`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + this.apiKey },
+            body: formData
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          const preview = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+          });
+          this.pendingImages.push({ id: data.image_id, preview, filename: data.filename });
+        } catch (e) {
+          this.toast('Upload failed: ' + e.message);
+        }
       }
       this.imageUploading = false;
       event.target.value = '';
     },
 
-    clearPendingImage() {
-      this.pendingImageId = null;
-      this.pendingImagePreview = null;
-      this.pendingImageFilename = null;
+    clearPendingImages() {
+      this.pendingImages = [];
+    },
+
+    removePendingImage(index) {
+      this.pendingImages.splice(index, 1);
     },
 
     async sendManagedMessage() {
-      if ((!this.inputText.trim() && !this.pendingImageId) || !this.selectedSessionId) return;
+      if ((!this.inputText.trim() && !this.pendingImages.length) || !this.selectedSessionId) return;
       const msg = this.inputText.trim();
       this.inputText = '';
       this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
       this.interimTranscript = '';
       this.inputSending = true;
 
-      const imageId = this.pendingImageId;
-      const imagePreview = this.pendingImagePreview;
-      const imageFilename = this.pendingImageFilename;
-      this.clearPendingImage();
+      const images = [...this.pendingImages];
+      this.clearPendingImages();
 
       try {
         const body = { message: msg, model: this.selectedModel };
-        if (imageId) body.image_id = imageId;
+        if (images.length) body.image_ids = images.map(img => img.id);
 
         const res = await fetch(`/api/sessions/${this.selectedSessionId}/message`, {
           method: 'POST',
@@ -1732,10 +1734,10 @@ document.addEventListener('alpine:init', () => {
         if (!res.ok) throw new Error(await res.text());
 
         // Add user message to chat immediately
-        const userMsg = { role: 'user', content: msg || `[Screenshot: ${imageFilename}]`, msg_type: 'text', timestamp: new Date().toISOString() };
-        if (imagePreview) {
-          userMsg.imagePreview = imagePreview;
-          userMsg.imageFilename = imageFilename;
+        const label = images.length === 1 ? `[Screenshot: ${images[0].filename}]` : `[${images.length} images]`;
+        const userMsg = { role: 'user', content: msg || label, msg_type: 'text', timestamp: new Date().toISOString() };
+        if (images.length) {
+          userMsg.images = images.map(img => ({ preview: img.preview, filename: img.filename }));
         }
         this.chatMessages.push(userMsg);
         this.$nextTick(() => this.scrollToBottom(true));
@@ -3009,7 +3011,12 @@ Please review this PR and provide feedback.`;
 
       if (msg.msg_type === 'text') {
         let imgHtml = '';
-        if (msg.imagePreview) {
+        if (msg.images && msg.images.length) {
+          imgHtml = msg.images.map(img =>
+            `<img src="${esc(img.preview)}" style="max-width:200px;max-height:150px;border-radius:6px;margin-bottom:4px;margin-right:4px;cursor:pointer;display:inline-block" onclick="window.open(this.src,'_blank')" title="${esc(img.filename)}">`
+          ).join('');
+        } else if (msg.imagePreview) {
+          // backward compat: messages sent before this change
           imgHtml = `<img src="${msg.imagePreview}" style="max-width:200px;max-height:150px;border-radius:6px;margin-bottom:4px;cursor:pointer;display:block" onclick="window.open(this.src,'_blank')">`;
         }
         if ((msg.role === 'assistant' || msg.role === 'user' || msg.command) && typeof marked !== 'undefined') {

@@ -318,7 +318,7 @@
 
             <!-- Input bar (managed mode messages OR hook-mode instructions) -->
             <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt" style="position:relative">
-              <input type="file" x-ref="imageInput" accept="image/*"
+              <input type="file" x-ref="imageInput" accept="image/*" multiple
                      @change="uploadImage($event)" style="display:none">
 
               <!-- Slash command autocomplete -->
@@ -337,11 +337,15 @@
 
               <div class="input-row">
                 <div class="input-wrapper">
-                  <!-- Image preview -->
-                  <div class="image-preview-strip" x-show="pendingImagePreview" x-cloak>
-                    <img :src="pendingImagePreview" class="image-preview-thumb">
-                    <span class="image-preview-name" x-text="pendingImageFilename"></span>
-                    <button class="image-preview-remove" @click="clearPendingImage()" title="Remove image">&times;</button>
+                  <!-- Multi-image preview strip -->
+                  <div class="image-preview-strip" x-show="pendingImages.length > 0" x-cloak style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 0">
+                    <template x-for="(img, idx) in pendingImages" :key="idx">
+                      <div class="image-preview-item" style="position:relative;display:inline-flex;flex-direction:column;align-items:center;gap:2px">
+                        <img :src="img.preview" class="image-preview-thumb">
+                        <span class="image-preview-name" x-text="img.filename"></span>
+                        <button class="image-preview-remove" @click="removePendingImage(idx)" title="Remove image">&times;</button>
+                      </div>
+                    </template>
                   </div>
 
                   <textarea x-ref="promptInput" x-model="inputText" rows="1"
@@ -352,7 +356,7 @@
                          @blur="setTimeout(() => showSlashMenu = false, 150)"
                          :disabled="inputSending"></textarea>
                 </div>
-                <button class="btn btn-primary btn-sm" :disabled="(!inputText.trim() && !pendingImageId) || inputSending"
+                <button class="btn btn-primary btn-sm" :disabled="(!inputText.trim() && !pendingImages.length) || inputSending"
                         @click="handleInput()" style="width:auto">
                   <span x-show="!inputSuccess">Send</span>
                   <span x-show="inputSuccess" style="color:#16a34a">Sent!</span>
