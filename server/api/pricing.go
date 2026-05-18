@@ -1,12 +1,14 @@
 package api
 
+import "unicode/utf8"
+
 const (
 	ModelHaiku  = "claude-haiku-4-5-20251001"
 	ModelSonnet = "claude-sonnet-4-6"
 	ModelOpus   = "claude-opus-4-6"
 
-	// EscalateAfterChars is the message length threshold above which
-	// selectModel auto-escalates to Sonnet 4.6.
+	// EscalateAfterChars is the message length threshold (in Unicode code points)
+	// above which selectModel auto-escalates to Sonnet 4.6.
 	EscalateAfterChars = 500
 )
 
@@ -21,11 +23,12 @@ var modelPrices = map[string]struct{ InputPer1M, OutputPer1M float64 }{
 
 // selectModel picks the model for a managed session turn.
 // Priority: explicit user override > image presence > message length > default (Haiku).
+// Message length is measured in Unicode code points, not bytes.
 func selectModel(message string, hasImages bool, userOverride string) string {
 	if userOverride != "" {
 		return userOverride
 	}
-	if hasImages || len(message) > EscalateAfterChars {
+	if hasImages || utf8.RuneCountInString(message) > EscalateAfterChars {
 		return ModelSonnet
 	}
 	return ModelHaiku

@@ -226,8 +226,20 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		// Model routing — once per user message, before spawning the process.
-		selectedModel := selectModel(req.Message, len(req.ImageIDs) > 0, req.Model)
+		// Model routing — applied only when no warm process exists.
+		// If the process is already running, its --model flag is fixed at spawn
+		// time and cannot be changed mid-session without restarting.
+		var selectedModel string
+		if req.Model != "" {
+			// Explicit user override always wins.
+			selectedModel = req.Model
+		} else if s.manager.IsRunning(sessionID) {
+			// Keep the model the warm process was spawned with.
+			selectedModel = sess.Model
+		} else {
+			// No warm process — apply the length/image heuristic.
+			selectedModel = selectModel(req.Message, len(req.ImageIDs) > 0, "")
+		}
 		if sess.Model != selectedModel {
 			sess.Model = selectedModel
 			_ = s.store.UpdateSessionModel(sessionID, selectedModel)
@@ -236,7 +248,8 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		if req.Model != "" {
 			reason = "user"
 		}
-		broadcaster.Send(fmt.Sprintf(`{"type":"model_selected","model":%q,"reason":%q}`, selectedModel, reason))
+		modelEvt, _ := json.Marshal(map[string]string{"type": "model_selected", "model": selectedModel, "reason": reason})
+		broadcaster.Send(string(modelEvt))
 
 		// transform enriches result events with cost + model before broadcast.
 		// Captures sess.Model so it stays in sync if updated.
@@ -862,7 +875,7 @@ func enrichResultLine(line string, model string) string {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 	}
-	if json.Unmarshal(usageBytes, &usage) != nil || usage.InputTokens == 0 {
+	if json.Unmarshal(usageBytes, &usage) != nil {
 		return line
 	}
 

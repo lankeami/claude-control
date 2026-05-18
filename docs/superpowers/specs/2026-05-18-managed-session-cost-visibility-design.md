@@ -18,7 +18,7 @@
 ## Out of Scope
 
 - Replacing `claude -p` with interactive PTY mode (tracked separately as Approach A).
-- Persisting token counts or cost to the database (no schema changes).
+- Persisting token counts or cost to the database (no cost/token schema changes; `sessions.model` column was added to support model routing).
 - Querying Anthropic's SDK credit balance via API (no endpoint exists yet).
 - Prompt caching headers (separate future optimization).
 
@@ -32,7 +32,7 @@ Three concerns, each bounded to specific files:
 2. **Cost enrichment** — server-side, `onLine` callback in `handleSendMessage`, enriches `result` events before broadcast.
 3. **UI** — four touch points in `server/web/static/app.js` and `server/web/static/index.html`.
 
-No DB schema changes. No new API endpoints.
+One DB schema change: `sessions.model TEXT NOT NULL DEFAULT ''` column added via migration. No new API endpoints.
 
 ---
 
