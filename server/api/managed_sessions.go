@@ -143,16 +143,16 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
 	var req struct {
-		Message string `json:"message"`
-		ImageID string `json:"image_id"`
-		Model   string `json:"model"`
+		Message  string   `json:"message"`
+		ImageIDs []string `json:"image_ids"`
+		Model    string   `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
-	if req.Message == "" && req.ImageID == "" {
-		http.Error(w, "message or image_id is required", http.StatusBadRequest)
+	if req.Message == "" && len(req.ImageIDs) == 0 {
+		http.Error(w, "message or image_ids is required", http.StatusBadRequest)
 		return
 	}
 
@@ -184,26 +184,31 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.UpdateActivityState(sessionID, "waiting")
 	}
 
-	// Load uploaded image if provided
-	var imageBase64, imageMediaType string
-	if req.ImageID != "" {
-		imgPath, mediaType := findUploadedImage(sess.CWD, sessionID, req.ImageID)
-		if imgPath != "" {
-			imgData, readErr := os.ReadFile(imgPath)
-			if readErr == nil {
-				imageBase64 = base64.StdEncoding.EncodeToString(imgData)
-				imageMediaType = mediaType
-			} else {
-				log.Printf("session %s: failed to read image %s: %v", sessionID, req.ImageID, readErr)
-			}
-		} else {
-			log.Printf("session %s: uploaded image %s not found", sessionID, req.ImageID)
+	var images []imageData
+	for _, id := range req.ImageIDs {
+		imgPath, mediaType := findUploadedImage(sess.CWD, sessionID, id)
+		if imgPath == "" {
+			log.Printf("session %s: uploaded image %s not found", sessionID, id)
+			continue
 		}
+		imgBytes, readErr := os.ReadFile(imgPath)
+		if readErr != nil {
+			log.Printf("session %s: failed to read image %s: %v", sessionID, id, readErr)
+			continue
+		}
+		images = append(images, imageData{
+			base64:    base64.StdEncoding.EncodeToString(imgBytes),
+			mediaType: mediaType,
+		})
 	}
 
 	displayMsg := req.Message
-	if imageBase64 != "" {
-		displayMsg = formatImageUploadMessage(req.Message, req.ImageID)
+	if len(images) > 0 {
+		label := fmt.Sprintf("%d image", len(images))
+		if len(images) > 1 {
+			label += "s"
+		}
+		displayMsg = formatImageUploadMessage(req.Message, label)
 	}
 	_, _ = s.store.CreateMessage(sessionID, "user", displayMsg)
 	_ = s.store.Heartbeat(sessionID) // Update last_seen_at so sidebar highlights recently active sessions
@@ -342,9 +347,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 			// Send the user message via stdin
 			var userTurn string
-			if imageBase64 != "" {
-				userTurn = formatUserTurnWithImages(currentMessage, []imageData{{base64: imageBase64, mediaType: imageMediaType}})
-				imageBase64 = "" // Only include image on the first turn, not auto-continues
+			if len(images) > 0 {
+				userTurn = formatUserTurnWithImages(currentMessage, images)
+				images = nil // Only include images on the first turn, not auto-continues
 			} else {
 				userTurn = formatUserTurn(currentMessage)
 			}
