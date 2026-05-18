@@ -612,6 +612,76 @@ func TestBuildPersistentArgs_WithModel(t *testing.T) {
 	}
 }
 
+func TestHandleSendMessage_HaikuDefault(t *testing.T) {
+	// selectModel with short message and no images should pick Haiku
+	model := selectModel("short msg", false, "")
+	if model != ModelHaiku {
+		t.Errorf("expected Haiku default, got %q", model)
+	}
+}
+
+func TestHandleSendMessage_SonnetEscalation_LongMessage(t *testing.T) {
+	long := make([]byte, EscalateAfterChars+1)
+	for i := range long {
+		long[i] = 'x'
+	}
+	model := selectModel(string(long), false, "")
+	if model != ModelSonnet {
+		t.Errorf("expected Sonnet escalation for long message, got %q", model)
+	}
+}
+
+func TestHandleSendMessage_SonnetEscalation_Images(t *testing.T) {
+	model := selectModel("short", true, "")
+	if model != ModelSonnet {
+		t.Errorf("expected Sonnet escalation for images, got %q", model)
+	}
+}
+
+func TestHandleSendMessage_UserOverride(t *testing.T) {
+	model := selectModel("short", false, ModelOpus)
+	if model != ModelOpus {
+		t.Errorf("expected user override Opus, got %q", model)
+	}
+}
+
+func TestEnrichResultLine_AddsModelAndCost(t *testing.T) {
+	line := `{"type":"result","subtype":"success","usage":{"input_tokens":1000,"output_tokens":100}}`
+	enriched := enrichResultLine(line, ModelHaiku)
+
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(enriched), &obj); err != nil {
+		t.Fatalf("enriched line is not valid JSON: %v", err)
+	}
+	if _, ok := obj["cost"]; !ok {
+		t.Error("enriched line missing 'cost' field")
+	}
+	if obj["model"] != ModelHaiku {
+		t.Errorf("model=%v, want %q", obj["model"], ModelHaiku)
+	}
+	// 1000 input at $0.80/M + 100 output at $4.00/M = 0.0008 + 0.0004 = 0.0012
+	cost, _ := obj["cost"].(float64)
+	if cost == 0 {
+		t.Error("cost should be non-zero for known model and non-zero token counts")
+	}
+}
+
+func TestEnrichResultLine_PassesThroughNonResult(t *testing.T) {
+	line := `{"type":"assistant","message":{"content":"hello"}}`
+	got := enrichResultLine(line, ModelHaiku)
+	if got != line {
+		t.Errorf("non-result line should be unchanged; got %q", got)
+	}
+}
+
+func TestEnrichResultLine_PassesThroughMissingUsage(t *testing.T) {
+	line := `{"type":"result","subtype":"error_during_execution"}`
+	got := enrichResultLine(line, ModelHaiku)
+	if got != line {
+		t.Errorf("result without usage should be unchanged; got %q", got)
+	}
+}
+
 func TestStaleState_ServerRestart(t *testing.T) {
 	dir := t.TempDir()
 	store, err := db.Open(dir + "/test.db")

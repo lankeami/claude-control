@@ -67,8 +67,9 @@ func (b *Broadcaster) Close() {
 // onLine is called synchronously per line (use for persistence/turn counting).
 // If turnDone is non-nil, a signal is sent on each "result" message (turn delimiter).
 // A heartbeat JSON message is broadcast at HeartbeatInterval; onLine is NOT called for heartbeats.
+// If transform is provided, it is called on each line before broadcasting (onLine still receives original).
 // Blocks until r is closed/EOF.
-func StreamNDJSON(r io.Reader, b *Broadcaster, onLine func(string), turnDone chan<- struct{}) {
+func StreamNDJSON(r io.Reader, b *Broadcaster, onLine func(string), turnDone chan<- struct{}, transform ...func(string) string) {
 	type result struct {
 		line string
 		err  error
@@ -105,7 +106,11 @@ func StreamNDJSON(r io.Reader, b *Broadcaster, onLine func(string), turnDone cha
 				log.Printf("StreamNDJSON scanner error: %v", res.err)
 				return
 			}
-			b.Send(res.line)
+			line := res.line
+			if len(transform) > 0 && transform[0] != nil {
+				line = transform[0](res.line)
+			}
+			b.Send(line)
 			if onLine != nil {
 				onLine(res.line)
 			}

@@ -144,6 +144,7 @@ func migrate(db *sql.DB) error {
 		)`,
 		`ALTER TABLE sessions ADD COLUMN compact_every_n_continues INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE scheduled_tasks ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
 	}
 
 	for _, m := range migrations {

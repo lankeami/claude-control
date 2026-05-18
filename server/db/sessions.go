@@ -33,7 +33,7 @@ type Session struct {
 	Model                  string `json:"-"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,''), compact_every_n_continues`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,''), compact_every_n_continues, COALESCE(model,'')`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -43,7 +43,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
 		&sess.ClaudeSessionID, &sess.MaxContinuations, &sess.ActivityState,
-		&sess.Name, &sess.CompactEveryNContinues,
+		&sess.Name, &sess.CompactEveryNContinues, &sess.Model,
 	)
 	if err != nil {
 		return sess, err
@@ -205,6 +205,11 @@ func (s *Store) SetSessionStatus(id, status string) error {
 
 func (s *Store) UpdateActivityState(id, state string) error {
 	_, err := s.db.Exec("UPDATE sessions SET activity_state = ? WHERE id = ?", state, id)
+	return err
+}
+
+func (s *Store) UpdateSessionModel(id, model string) error {
+	_, err := s.db.Exec("UPDATE sessions SET model = ? WHERE id = ?", model, id)
 	return err
 }
 

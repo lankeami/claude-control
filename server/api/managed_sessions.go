@@ -226,10 +226,40 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
+		// Model routing — applied only when no warm process exists.
+		// If the process is already running, its --model flag is fixed at spawn
+		// time and cannot be changed mid-session without restarting.
+		var selectedModel string
+		if req.Model != "" {
+			// Explicit user override always wins.
+			selectedModel = req.Model
+		} else if s.manager.IsRunning(sessionID) {
+			// Keep the model the warm process was spawned with.
+			selectedModel = sess.Model
+		} else {
+			// No warm process — apply the length/image heuristic.
+			selectedModel = selectModel(req.Message, len(req.ImageIDs) > 0, "")
+		}
+		if sess.Model != selectedModel {
+			sess.Model = selectedModel
+			_ = s.store.UpdateSessionModel(sessionID, selectedModel)
+		}
+		reason := "auto"
+		if req.Model != "" {
+			reason = "user"
+		}
+		modelEvt, _ := json.Marshal(map[string]string{"type": "model_selected", "model": selectedModel, "reason": reason})
+		broadcaster.Send(string(modelEvt))
+
+		// transform enriches result events with cost + model before broadcast.
+		// Captures sess.Model so it stays in sync if updated.
+		transform := func(line string) string {
+			return enrichResultLine(line, sess.Model)
+		}
+
 		ctx := context.Background()
 		continuationCount := 0
 		currentMessage := req.Message
-		sess.Model = req.Model
 
 		// --- Per-turn mutable state, shared with onLine callback ---
 		// onLine runs in the StreamNDJSON goroutine, which lives for the
@@ -341,7 +371,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				procStarted = true
 				SafeGo("StreamNDJSON:"+sessionID, func() {
 					defer close(streamDone)
-					managed.StreamNDJSON(proc.Stdout, broadcaster, onLine, turnDone)
+					managed.StreamNDJSON(proc.Stdout, broadcaster, onLine, turnDone, transform)
 				})
 			}
 
@@ -819,6 +849,45 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+// enrichResultLine injects "cost" and "model" fields into a result NDJSON event.
+// Returns the original line unchanged if it is not a result event, has no usage,
+// or cannot be parsed. Called by the StreamNDJSON transform hook.
+func enrichResultLine(line string, model string) string {
+	var typ struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal([]byte(line), &typ) != nil || typ.Type != "result" {
+		return line
+	}
+
+	var raw map[string]json.RawMessage
+	if json.Unmarshal([]byte(line), &raw) != nil {
+		return line
+	}
+
+	usageBytes, ok := raw["usage"]
+	if !ok {
+		return line
+	}
+	var usage struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	}
+	if json.Unmarshal(usageBytes, &usage) != nil {
+		return line
+	}
+
+	cost := calcCost(model, usage.InputTokens, usage.OutputTokens)
+	raw["cost"], _ = json.Marshal(cost)
+	raw["model"], _ = json.Marshal(model)
+
+	enriched, err := json.Marshal(raw)
+	if err != nil {
+		return line
+	}
+	return string(enriched)
 }
 
 // extractSessionFiles pulls file paths from tool_use content blocks in NDJSON lines.
