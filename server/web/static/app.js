@@ -1688,9 +1688,10 @@ document.addEventListener('alpine:init', () => {
           });
           if (!res.ok) throw new Error(await res.text());
           const data = await res.json();
-          const preview = await new Promise(resolve => {
+          const preview = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => reject(new Error('Failed to read file'));
             reader.readAsDataURL(file);
           });
           this.pendingImages.push({ id: data.image_id, preview, filename: data.filename });
@@ -3012,7 +3013,7 @@ Please review this PR and provide feedback.`;
         let imgHtml = '';
         if (msg.images && msg.images.length) {
           imgHtml = msg.images.map(img =>
-            `<img src="${img.preview}" style="max-width:200px;max-height:150px;border-radius:6px;margin-bottom:4px;margin-right:4px;cursor:pointer;display:inline-block" onclick="window.open(this.src,'_blank')" title="${esc(img.filename)}">`
+            `<img src="${esc(img.preview)}" style="max-width:200px;max-height:150px;border-radius:6px;margin-bottom:4px;margin-right:4px;cursor:pointer;display:inline-block" onclick="window.open(this.src,'_blank')" title="${esc(img.filename)}">`
           ).join('');
         } else if (msg.imagePreview) {
           // backward compat: messages sent before this change
