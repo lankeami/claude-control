@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"sync"
 	"sync/atomic"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
@@ -22,6 +23,8 @@ type Server struct {
 	serverID          string // unique ID per server instance, used by clients to detect restart
 	usageUpstreamURL  string // override for tests; empty means use real Anthropic URL
 	skipKeychain      bool   // skip macOS keychain lookup in tests
+	usageCache        *UsageCache
+	usageCacheMu      sync.RWMutex
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string) http.Handler {

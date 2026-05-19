@@ -13,6 +13,14 @@ import (
 
 const defaultUsageUpstreamURL = "https://api.anthropic.com/api/oauth/usage"
 
+// UsageCache holds cached usage data with timestamp for TTL checking.
+type UsageCache struct {
+	Data      []byte    // Raw JSON from Anthropic
+	Timestamp time.Time
+}
+
+const UsageCacheTTL = 60 * time.Second // Cache for 60 seconds
+
 func (s *Server) getUsageUpstreamURL() string {
 	if s.usageUpstreamURL != "" {
 		return s.usageUpstreamURL
