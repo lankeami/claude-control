@@ -111,6 +111,11 @@ func (s *Store) GetSessionByID(id string) (*Session, error) {
 	return &sess, nil
 }
 
+// GetSession retrieves a session by ID.
+func (s *Store) GetSession(id string) (*Session, error) {
+	return s.GetSessionByID(id)
+}
+
 func (s *Store) CreateManagedSession(cwd, allowedTools string, maxTurns int, maxBudgetUSD float64, compactEveryNContinues int) (*Session, error) {
 	id := uuid.New().String()
 	// Use "__managed__" as computer_name and cwd as project_path to avoid
