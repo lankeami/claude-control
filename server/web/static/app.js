@@ -766,8 +766,11 @@ document.addEventListener('alpine:init', () => {
 
     async fetchUsage() {
       try {
-        const resp = await fetch('/api/usage', {
-          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        const sessionId = this.selectedSessionId;
+        const queryString = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+        const resp = await fetch(`/api/usage${queryString}`, {
+          method: 'GET',
+          credentials: 'include',
         });
         if (!resp.ok) {
           this.usageData = null;
@@ -776,7 +779,7 @@ document.addEventListener('alpine:init', () => {
         }
         this.usageData = await resp.json();
         this.usageError = false;
-      } catch (e) {
+      } catch (err) {
         this.usageData = null;
         this.usageError = true;
       }
