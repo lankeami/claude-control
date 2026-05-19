@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
@@ -17,7 +18,8 @@ func openTestDB(t *testing.T, dir string) (*db.Store, error) {
 }
 
 // newUsageTestServer creates a test server with a mock upstream usage URL injected.
-func newUsageTestServer(t *testing.T, upstreamURL string) *httptest.Server {
+// Returns the test server and the session ID for requests.
+func newUsageTestServer(t *testing.T, upstreamURL string) (*httptest.Server, string) {
 	t.Helper()
 	tmpDir := t.TempDir()
 	store, err := openTestDB(t, tmpDir)
@@ -25,13 +27,20 @@ func newUsageTestServer(t *testing.T, upstreamURL string) *httptest.Server {
 		t.Fatalf("Open: %v", err)
 	}
 	envPath := filepath.Join(tmpDir, ".env")
-	s := &Server{store: store, envPath: envPath, skipKeychain: true}
+	s := &Server{store: store, envPath: envPath, skipKeychain: true, usageCache: &UsageCache{}, usageCacheMu: sync.RWMutex{}}
 	s.usageUpstreamURL = upstreamURL
+
+	// Create a test session
+	sess, err := store.CreateManagedSession(tmpDir, "", 0, 0, 0)
+	if err != nil {
+		t.Fatalf("CreateManagedSession: %v", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/usage", s.handleUsage)
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
-	return ts
+	return ts, sess.ID
 }
 
 func TestUsage_NoToken(t *testing.T) {
@@ -42,8 +51,8 @@ func TestUsage_NoToken(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	ts := newUsageTestServer(t, upstream.URL)
-	resp, err := http.Get(ts.URL + "/api/usage")
+	ts, sessionID := newUsageTestServer(t, upstream.URL)
+	resp, err := http.Get(ts.URL + "/api/usage?sessionId=" + sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,8 +63,8 @@ func TestUsage_NoToken(t *testing.T) {
 	}
 	var body map[string]string
 	json.NewDecoder(resp.Body).Decode(&body)
-	if body["error"] != "no_token" {
-		t.Errorf("expected error=no_token, got %q", body["error"])
+	if body["error"] != "no_oauth_token" {
+		t.Errorf("expected error=no_oauth_token, got %q", body["error"])
 	}
 }
 
@@ -73,9 +82,9 @@ func TestUsage_EnvToken_Success(t *testing.T) {
 	defer upstream.Close()
 
 	t.Setenv("CLAUDE_OAUTH_TOKEN", "test-oauth-token")
-	ts := newUsageTestServer(t, upstream.URL)
+	ts, sessionID := newUsageTestServer(t, upstream.URL)
 
-	resp, err := http.Get(ts.URL + "/api/usage")
+	resp, err := http.Get(ts.URL + "/api/usage?sessionId=" + sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,9 +108,9 @@ func TestUsage_EnvToken_UpstreamError(t *testing.T) {
 	defer upstream.Close()
 
 	t.Setenv("CLAUDE_OAUTH_TOKEN", "expired-token")
-	ts := newUsageTestServer(t, upstream.URL)
+	ts, sessionID := newUsageTestServer(t, upstream.URL)
 
-	resp, err := http.Get(ts.URL + "/api/usage")
+	resp, err := http.Get(ts.URL + "/api/usage?sessionId=" + sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,5 +123,80 @@ func TestUsage_EnvToken_UpstreamError(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&body)
 	if body["error"] != "upstream_error" {
 		t.Errorf("expected error=upstream_error, got %v", body["error"])
+	}
+}
+
+func TestHandleUsage_MissingSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := openTestDB(t, tmpDir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	envPath := filepath.Join(tmpDir, ".env")
+	s := &Server{store: store, envPath: envPath, skipKeychain: true}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/usage", s.handleUsage)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/usage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleUsage_ValidSession(t *testing.T) {
+	mockAnthropicServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"five_hour":{"utilization":0.42,"resets_at":"2026-05-19T18:00:00.000Z"}}`))
+	}))
+	defer mockAnthropicServer.Close()
+
+	tmpDir := t.TempDir()
+	store, err := openTestDB(t, tmpDir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	envPath := filepath.Join(tmpDir, ".env")
+
+	sess, err := store.CreateManagedSession(tmpDir, "", 0, 0, 0)
+	if err != nil {
+		t.Fatalf("CreateManagedSession: %v", err)
+	}
+
+	s := &Server{
+		store:            store,
+		envPath:          envPath,
+		usageUpstreamURL: mockAnthropicServer.URL,
+		skipKeychain:     true,
+		usageCache:       &UsageCache{},
+		usageCacheMu:     sync.RWMutex{},
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/usage", s.handleUsage)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	t.Setenv("CLAUDE_OAUTH_TOKEN", "test-token")
+	resp, err := http.Get(ts.URL + "/api/usage?sessionId=" + sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&body)
+	if _, ok := body["five_hour"]; !ok {
+		t.Error("expected five_hour in response")
 	}
 }
