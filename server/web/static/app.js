@@ -21,6 +21,7 @@ document.addEventListener('alpine:init', () => {
     // Usage / rate limit state
     usageData: null,
     usageError: false,
+    showCostDetails: false,
 
     // SSE
     eventSource: null,
@@ -770,7 +771,7 @@ document.addEventListener('alpine:init', () => {
         const queryString = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
         const resp = await fetch(`/api/usage${queryString}`, {
           method: 'GET',
-          credentials: 'include',
+          headers: { 'Authorization': `Bearer ${this.apiKey}` },
         });
         if (!resp.ok) {
           this.usageData = null;
