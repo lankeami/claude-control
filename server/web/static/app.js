@@ -281,8 +281,8 @@ document.addEventListener('alpine:init', () => {
         await this.checkSettingsFirstRun();
         this.loadShortcuts();
         // Usage rate limit polling
-        this.fetchUsage();
-        this.usagePollInterval = setInterval(() => this.fetchUsage(), 60_000);
+        this.fetchCostSummary();
+        this.usagePollInterval = setInterval(() => this.fetchCostSummary(), 60_000);
       }
       this.$watch('mobileMenuOpen', (open) => {
         document.body.style.overflow = open ? 'hidden' : '';
@@ -765,13 +765,13 @@ document.addEventListener('alpine:init', () => {
       return Math.min(100, Math.round((sess.turn_count / sess.max_turns) * 100));
     },
 
-    async fetchUsage() {
+    async fetchCostSummary() {
       try {
         const sessionId = this.selectedSessionId;
         const queryString = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
-        const resp = await fetch(`/api/usage${queryString}`, {
+        const resp = await fetch(`/api/cost-summary${queryString}`, {
           method: 'GET',
-          headers: { 'Authorization': `Bearer ${this.apiKey}` },
+          credentials: 'include',
         });
         if (!resp.ok) {
           this.usageData = null;

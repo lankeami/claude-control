@@ -210,7 +210,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		displayMsg = formatImageUploadMessage(req.Message, label)
 	}
-	_, _ = s.store.CreateMessage(sessionID, "user", displayMsg)
+	_, _ = s.store.CreateMessage(sessionID, "user", displayMsg, 0)
 	_ = s.store.Heartbeat(sessionID) // Update last_seen_at so sidebar highlights recently active sessions
 	_ = s.store.UpdateActivityState(sessionID, "working")
 
@@ -295,7 +295,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 						mu.Unlock()
 						if len(res.Errors) > 0 {
 							errText := strings.Join(res.Errors, "; ")
-							_, _ = s.store.CreateMessage(sessionID, "assistant", errText)
+							_, _ = s.store.CreateMessage(sessionID, "assistant", errText, 0)
 						}
 					}
 					if res.Subtype == "error_max_turns" {
@@ -308,10 +308,12 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			if role == "assistant" {
 				text := extractAssistantText(line)
 				if text != "" {
-					_, _ = s.store.CreateMessage(sessionID, role, text)
+					// Extract cost from the enriched result event if present
+					cost := extractCostFromLine(line)
+					_, _ = s.store.CreateMessage(sessionID, role, text, cost)
 				}
 				for _, toolName := range extractToolNames(line) {
-					_, _ = s.store.CreateMessage(sessionID, "activity", toolName)
+					_, _ = s.store.CreateMessage(sessionID, "activity", toolName, 0)
 				}
 				mu.Lock()
 				assistantEventCount++
@@ -426,7 +428,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 				if proc.ExitCode != 0 && len(stderrBytes) > 0 {
 					errMsg := fmt.Sprintf(`{"type":"system","error":true,"stderr":%q,"exit_code":%d}`, string(stderrBytes), proc.ExitCode)
-					_, _ = s.store.CreateMessageWithExitCode(sessionID, "system", errMsg, proc.ExitCode)
+					_, _ = s.store.CreateMessageWithExitCode(sessionID, "system", errMsg, proc.ExitCode, 0)
 					broadcaster.Send(errMsg)
 				}
 
@@ -476,7 +478,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			// Progress guard: if Claude produced < 2 assistant events, it's done or stuck
 			if continuationCount > 0 && events < 2 {
 				log.Printf("session %s not making progress (%d events), stopping auto-continue", sessionID, events)
-				_, _ = s.store.CreateMessage(sessionID, "system", "Auto-continue stopped: not making progress")
+				_, _ = s.store.CreateMessage(sessionID, "system", "Auto-continue stopped: not making progress", 0)
 				noProgressMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d,"reason":"no_progress"}`, continuationCount)
 				broadcaster.Send(noProgressMsg)
 				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
@@ -494,7 +496,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				exhaustedMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(exhaustedMsg)
 				_, _ = s.store.CreateMessage(sessionID, "system",
-					fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations))
+				fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations), 0)
 				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
 				<-streamDone
 				_ = s.store.UpdateActivityState(sessionID, "waiting")
@@ -508,25 +510,25 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				continuationCount, sess.MaxContinuations)
 			broadcaster.Send(continuingMsg)
 			_, _ = s.store.CreateMessage(sessionID, "system",
-				fmt.Sprintf("Auto-continuing (%d/%d)...", continuationCount, sess.MaxContinuations))
+				fmt.Sprintf("Auto-continuing (%d/%d)...", continuationCount, sess.MaxContinuations), 0)
 
 			// Compact step — send /compact as a user turn via stdin on the warm process.
 			// No need to spawn a separate process since the warm process is still alive.
 			if sess.CompactEveryNContinues > 0 && continuationCount%sess.CompactEveryNContinues == 0 {
 				compactingMsg := fmt.Sprintf(`{"type":"compacting","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(compactingMsg)
-				_, _ = s.store.CreateMessage(sessionID, "system", "Running /compact to reduce context size...")
+				_, _ = s.store.CreateMessage(sessionID, "system", "Running /compact to reduce context size...", 0)
 
 				compactTurn := formatUserTurn("/compact")
 				if err := s.manager.SendTurn(sessionID, compactTurn); err != nil {
 					log.Printf("session %s: compact send failed: %v", sessionID, err)
-					_, _ = s.store.CreateMessage(sessionID, "system", fmt.Sprintf("Compact failed: %v, continuing without it.", err))
+					_, _ = s.store.CreateMessage(sessionID, "system", fmt.Sprintf("Compact failed: %v, continuing without it.", err), 0)
 				} else {
 					// Wait for compact to complete (result event)
 					select {
 					case <-turnDone:
 						log.Printf("session %s: compact completed", sessionID)
-						_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.")
+						_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.", 0)
 					case <-proc.Done:
 						log.Printf("session %s: process died during compact", sessionID)
 						_ = s.store.UpdateActivityState(sessionID, "idle")
@@ -767,7 +769,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _ = s.store.CreateMessage(sessionID, "shell", req.Command)
+	_, _ = s.store.CreateMessage(sessionID, "shell", req.Command, 0)
 	_ = s.store.UpdateActivityState(sessionID, "working")
 
 	broadcaster := s.manager.GetBroadcaster(sessionID)
@@ -829,7 +831,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 
 		outputJSON := fmt.Sprintf(`{"stdout":%s,"stderr":%s,"exit_code":%d,"timed_out":%t}`,
 			jsonString(stdoutStr), jsonString(stderrStr), proc.ExitCode, timedOut)
-		_, _ = s.store.CreateMessage(sessionID, "shell_output", outputJSON)
+		_, _ = s.store.CreateMessage(sessionID, "shell_output", outputJSON, 0)
 
 		exitMsg := fmt.Sprintf(`{"type":"shell_exit","code":%d,"id":%s,"timeout":%t}`,
 			proc.ExitCode, jsonString(commandID), timedOut)
@@ -849,6 +851,16 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+// extractCostFromLine extracts the cost value from a JSON line if present.
+// Returns 0 if cost field is not found or cannot be parsed.
+func extractCostFromLine(line string) float64 {
+	var result struct {
+		Cost float64 `json:"cost"`
+	}
+	json.Unmarshal([]byte(line), &result)
+	return result.Cost
 }
 
 // enrichResultLine injects "cost" and "model" fields into a result NDJSON event.
