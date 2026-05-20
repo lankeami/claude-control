@@ -260,8 +260,8 @@ func TestClearSession(t *testing.T) {
 	}
 
 	// Simulate some usage: add messages, set initialized
-	store.CreateMessage(sess.ID, "user", "hello")
-	store.CreateMessage(sess.ID, "assistant", "hi there")
+	store.CreateMessage(sess.ID, "user", "hello", 0)
+	store.CreateMessage(sess.ID, "assistant", "hi there", 0)
 	store.SetInitialized(sess.ID)
 	store.UpdateActivityState(sess.ID, "waiting")
 

@@ -194,6 +194,55 @@
               </div>
             </template>
           </div>
+          <!-- Expandable session cost breakdown -->
+          <div x-show="usageData && !usageError" style="margin-top:12px;">
+            <button @click="showCostDetails = !showCostDetails"
+                    style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:0.85rem;">
+              <span x-text="showCostDetails ? '▼' : '▶'"></span> Details
+            </button>
+
+            <template x-if="showCostDetails && usageData?.five_hour?.sessions">
+              <div style="margin-top:8px; font-size:0.8rem;">
+                <div style="margin-bottom:6px; font-weight:600;">5hr Sessions:</div>
+                <table style="width:100%; border-collapse:collapse;">
+                  <thead>
+                    <tr style="border-bottom:1px solid var(--border);">
+                      <th style="text-align:left; padding:4px;">Session</th>
+                      <th style="text-align:right; padding:4px;">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="session in usageData.five_hour.sessions" :key="session.id">
+                      <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                            :title="session.id" x-text="session.id.substring(0, 12)"></td>
+                        <td style="text-align:right; padding:4px;" x-text="'$' + session.total_cost.toFixed(2)"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+
+                <div style="margin-top:12px; margin-bottom:6px; font-weight:600;">7d Sessions:</div>
+                <table style="width:100%; border-collapse:collapse;">
+                  <thead>
+                    <tr style="border-bottom:1px solid var(--border);">
+                      <th style="text-align:left; padding:4px;">Session</th>
+                      <th style="text-align:right; padding:4px;">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="session in usageData.seven_day.sessions" :key="session.id">
+                      <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                            :title="session.id" x-text="session.id.substring(0, 12)"></td>
+                        <td style="text-align:right; padding:4px;" x-text="'$' + session.total_cost.toFixed(2)"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+          </div>
           <div :class="currentSession?.mode === 'managed' ? 'turns-monitor' : 'turns-monitor hidden'">
             <span x-show="currentSession?.max_turns > 0" style="opacity:0.7;">Turns</span>
             <span x-show="currentSession?.max_turns > 0"
