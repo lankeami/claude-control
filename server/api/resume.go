@@ -390,7 +390,7 @@ func (s *Server) handleResumeSession(w http.ResponseWriter, r *http.Request) {
 		log.Printf("resume: loaded %d recent messages from %s", len(recentMessages), jsonlPath)
 		// Persist to DB so they survive session switches
 		for _, m := range recentMessages {
-			_, _ = s.store.CreateMessage(sessionID, m.Role, m.Content)
+			_, _ = s.store.CreateMessage(sessionID, m.Role, m.Content, 0)
 		}
 	} else {
 		log.Printf("resume: JSONL not found at %s: %v", jsonlPath, err)

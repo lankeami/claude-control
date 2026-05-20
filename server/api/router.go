@@ -100,6 +100,9 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	// Usage endpoint
 	apiMux.HandleFunc("GET /api/usage", s.handleUsage)
 
+	// Cost summary endpoint
+	apiMux.HandleFunc("GET /api/cost-summary", s.handleCostSummary)
+
 	// Server management
 	apiMux.HandleFunc("POST /api/restart", s.handleRestart)
 
