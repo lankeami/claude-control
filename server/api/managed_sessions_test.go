@@ -93,8 +93,8 @@ func TestListMessagesAPI(t *testing.T) {
 	defer store.Close()
 
 	sess, _ := store.CreateManagedSession("/tmp/test", `["Read"]`, 50, 5.0, 0)
-	store.CreateMessage(sess.ID, "user", "hello")
-	store.CreateMessage(sess.ID, "assistant", `{"type":"assistant","content":"hi"}`)
+	store.CreateMessage(sess.ID, "user", "hello", 0)
+	store.CreateMessage(sess.ID, "assistant", `{"type":"assistant","content":"hi"}`, 0)
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID+"/messages", nil)
 	req.Header.Set("Authorization", "Bearer test-api-key")
@@ -391,8 +391,8 @@ func TestClearSessionAPI(t *testing.T) {
 	defer store.Close()
 
 	sess, _ := store.CreateManagedSession("/tmp/test-clear-api", `["Read"]`, 50, 5.0, 0)
-	store.CreateMessage(sess.ID, "user", "hello")
-	store.CreateMessage(sess.ID, "assistant", "hi")
+	store.CreateMessage(sess.ID, "user", "hello", 0)
+	store.CreateMessage(sess.ID, "assistant", "hi", 0)
 	store.SetInitialized(sess.ID)
 
 	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/clear", nil)

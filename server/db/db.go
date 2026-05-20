@@ -48,6 +48,11 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// QueryRows executes a query and returns the result rows
+func (s *Store) QueryRows(query string, args ...interface{}) (*sql.Rows, error) {
+	return s.db.Query(query, args...)
+}
+
 func migrate(db *sql.DB) error {
 	migrations := []string{
 		`CREATE TABLE IF NOT EXISTS sessions (
@@ -145,6 +150,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE sessions ADD COLUMN compact_every_n_continues INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE scheduled_tasks ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE messages ADD COLUMN cost REAL DEFAULT 0`,
 	}
 
 	for _, m := range migrations {

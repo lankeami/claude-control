@@ -18,7 +18,7 @@ func TestCreateAndListMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msg1, err := store.CreateMessage(sess.ID, "user", `{"type":"user","content":"hello"}`)
+	msg1, err := store.CreateMessage(sess.ID, "user", `{"type":"user","content":"hello"}`, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestCreateAndListMessages(t *testing.T) {
 		t.Errorf("msg1: role=%s seq=%d, want user/1", msg1.Role, msg1.Seq)
 	}
 
-	msg2, err := store.CreateMessage(sess.ID, "assistant", `{"type":"assistant","content":"hi"}`)
+	msg2, err := store.CreateMessage(sess.ID, "assistant", `{"type":"assistant","content":"hi"}`, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +58,8 @@ func TestDeleteSessionCascadesMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.CreateMessage(sess.ID, "user", "hello")
-	store.CreateMessage(sess.ID, "assistant", "hi")
+	store.CreateMessage(sess.ID, "user", "hello", 0)
+	store.CreateMessage(sess.ID, "assistant", "hi", 0)
 
 	err = store.DeleteSession(sess.ID)
 	if err != nil {
@@ -69,5 +69,27 @@ func TestDeleteSessionCascadesMessages(t *testing.T) {
 	msgs, _ := store.ListMessages(sess.ID)
 	if len(msgs) != 0 {
 		t.Errorf("got %d messages after delete, want 0", len(msgs))
+	}
+}
+
+func TestCreateMessage_WithCost(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	sess, err := store.CreateManagedSession("/tmp/project", `["Read"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg, err := store.CreateMessage(sess.ID, "assistant", "Hello", 0.05)
+	if err != nil {
+		t.Fatalf("CreateMessage failed: %v", err)
+	}
+	if msg.Cost != 0.05 {
+		t.Errorf("expected cost 0.05, got %v", msg.Cost)
 	}
 }
