@@ -771,7 +771,7 @@ document.addEventListener('alpine:init', () => {
         const queryString = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
         const resp = await fetch(`/api/cost-summary${queryString}`, {
           method: 'GET',
-          credentials: 'include',
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
         });
         if (!resp.ok) {
           this.usageData = null;
