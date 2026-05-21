@@ -53,7 +53,7 @@ func (s *Store) CreateMessageWithExitCode(sessionID, role, content string, exitC
 }
 
 func (s *Store) ListMessages(sessionID string) ([]Message, error) {
-	rows, err := s.db.Query(`SELECT id, session_id, seq, role, content, exit_code, created_at, cost FROM messages WHERE session_id = ? ORDER BY seq`, sessionID)
+	rows, err := s.db.Query(`SELECT id, session_id, seq, role, content, exit_code, created_at, cost FROM messages WHERE session_id = ? AND cleared_at IS NULL ORDER BY seq`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
 	}
