@@ -304,13 +304,16 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 						mu.Unlock()
 					}
 				}
+				// Compute and persist turn cost from the result event's usage data
+				cost := extractCostFromResult(line, sess.Model)
+				if cost > 0 {
+					_, _ = s.store.CreateMessage(sessionID, "cost", fmt.Sprintf("%.6f", cost), cost)
+				}
 			}
 			if role == "assistant" {
 				text := extractAssistantText(line)
 				if text != "" {
-					// Extract cost from the enriched result event if present
-					cost := extractCostFromLine(line)
-					_, _ = s.store.CreateMessage(sessionID, role, text, cost)
+					_, _ = s.store.CreateMessage(sessionID, role, text, 0)
 				}
 				for _, toolName := range extractToolNames(line) {
 					_, _ = s.store.CreateMessage(sessionID, "activity", toolName, 0)
@@ -861,6 +864,25 @@ func extractCostFromLine(line string) float64 {
 	}
 	json.Unmarshal([]byte(line), &result)
 	return result.Cost
+}
+
+// extractCostFromResult computes cost from a raw result event's usage data.
+// Returns 0 if the line is not a result event or has no usage.
+func extractCostFromResult(line string, model string) float64 {
+	var raw struct {
+		Type  string `json:"type"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if json.Unmarshal([]byte(line), &raw) != nil || raw.Type != "result" {
+		return 0
+	}
+	if raw.Usage.InputTokens == 0 && raw.Usage.OutputTokens == 0 {
+		return 0
+	}
+	return calcCost(model, raw.Usage.InputTokens, raw.Usage.OutputTokens)
 }
 
 // enrichResultLine injects "cost" and "model" fields into a result NDJSON event.

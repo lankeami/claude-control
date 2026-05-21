@@ -23,6 +23,8 @@ type settingsPayload struct {
 	ClaudeArgs             string     `json:"claude_args"`
 	ClaudeEnv              string     `json:"claude_env"`
 	CompactEveryNContinues string     `json:"compact_every_n_continues"`
+	UsageLimit5hr          string     `json:"usage_limit_5hr"`
+	UsageLimit7day         string     `json:"usage_limit_7day"`
 	GithubToken            string     `json:"github_token"`
 	JiraURL                string     `json:"jira_url"`
 	JiraToken              string     `json:"jira_token"`
@@ -84,6 +86,8 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		ClaudeArgs:             vals["CLAUDE_ARGS"],
 		ClaudeEnv:              vals["CLAUDE_ENV"],
 		CompactEveryNContinues: vals["COMPACT_EVERY_N_CONTINUES"],
+		UsageLimit5hr:          vals["USAGE_LIMIT_5HR"],
+		UsageLimit7day:         vals["USAGE_LIMIT_7DAY"],
 		GithubToken:            vals["GITHUB_TOKEN"],
 		JiraURL:                vals["JIRA_URL"],
 		JiraToken:              vals["JIRA_TOKEN"],
@@ -212,6 +216,13 @@ func formatEnvFile(p settingsPayload) string {
 	}
 	if p.CompactEveryNContinues != "" && p.CompactEveryNContinues != "0" {
 		b.WriteString("COMPACT_EVERY_N_CONTINUES=" + p.CompactEveryNContinues + "\n")
+	}
+	b.WriteString("\n# Usage limits\n")
+	if p.UsageLimit5hr != "" {
+		b.WriteString("USAGE_LIMIT_5HR=" + p.UsageLimit5hr + "\n")
+	}
+	if p.UsageLimit7day != "" {
+		b.WriteString("USAGE_LIMIT_7DAY=" + p.UsageLimit7day + "\n")
 	}
 	b.WriteString("\n# GitHub\n")
 	if p.GithubToken != "" {
