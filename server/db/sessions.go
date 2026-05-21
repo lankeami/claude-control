@@ -161,8 +161,8 @@ func (s *Store) ClearSession(id string) error {
 		return fmt.Errorf("begin clear transaction: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id = ?`, id); err != nil {
-		return fmt.Errorf("delete messages: %w", err)
+	if _, err := tx.Exec(`UPDATE messages SET cleared_at = datetime('now') WHERE session_id = ? AND cleared_at IS NULL`, id); err != nil {
+		return fmt.Errorf("clear messages: %w", err)
 	}
 	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 0, activity_state = 'idle' WHERE id = ?`, newClaudeSessionID, id); err != nil {
 		return fmt.Errorf("reset session state: %w", err)
