@@ -483,7 +483,7 @@
               <template x-if="statusLineConfig.cost">
                 <span class="status-line-item">
                   <span class="status-line-label">Cost</span>
-                  <span x-text="sessionCost != null ? '$' + sessionCost.toFixed(4) : '$0.0000'"></span>
+                  <span x-text="usageData?.five_hour?.total_cost != null ? '$' + usageData.five_hour.total_cost.toFixed(4) : '$0.0000'"></span>
                 </span>
               </template>
               <template x-if="statusLineConfig.turns && currentSession?.max_turns > 0">

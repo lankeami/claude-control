@@ -961,6 +961,8 @@ document.addEventListener('alpine:init', () => {
         if (sess.activity_state === 'working') {
           this.startSessionSSE(this.selectedSessionId);
         }
+        // Fetch cost summary immediately when switching to a managed session
+        await this.fetchCostSummary();
       } else {
         await this.fetchTranscript(this.selectedSessionId, true);
       }
