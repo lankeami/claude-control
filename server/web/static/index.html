@@ -73,6 +73,83 @@
           </button>
         </div>
         <div class="session-list">
+          <!-- Usage rate limit widget -->
+          <div x-show="usageData && !usageError && !leftCollapsed"
+               style="margin-bottom:8px; padding:8px; background:var(--surface); border:1px solid var(--border); border-radius:6px; font-size:11px;">
+            <!-- 5-hour bar -->
+            <template x-if="usageData?.five_hour">
+              <div style="display:flex; align-items:center; gap:4px; margin-bottom:4px;"
+                   :title="'5hr resets at ' + new Date(usageData.five_hour.resets_at).toLocaleTimeString()">
+                <span style="opacity:0.6; white-space:nowrap; min-width:20px;">5hr</span>
+                <div style="flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
+                  <div :style="'width:' + Math.round(usageData.five_hour.utilization * 100) + '%; height:100%; border-radius:2px; background:' + usageBarColor(usageData.five_hour.utilization) + '; transition:width 0.3s ease'"></div>
+                </div>
+                <span x-text="Math.round(usageData.five_hour.utilization * 100) + '%'"
+                      style="font-weight:600; min-width:28px; text-align:right;"
+                      :style="'color:' + usageBarColor(usageData.five_hour.utilization)"></span>
+              </div>
+            </template>
+            <!-- 7-day bar -->
+            <template x-if="usageData?.seven_day">
+              <div style="display:flex; align-items:center; gap:4px;"
+                   :title="'7d resets at ' + new Date(usageData.seven_day.resets_at).toLocaleDateString()">
+                <span style="opacity:0.6; white-space:nowrap; min-width:20px;">7d</span>
+                <div style="flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
+                  <div :style="'width:' + Math.round(usageData.seven_day.utilization * 100) + '%; height:100%; border-radius:2px; background:' + usageBarColor(usageData.seven_day.utilization) + '; transition:width 0.3s ease'"></div>
+                </div>
+                <span x-text="Math.round(usageData.seven_day.utilization * 100) + '%'"
+                      style="font-weight:600; min-width:28px; text-align:right;"
+                      :style="'color:' + usageBarColor(usageData.seven_day.utilization)"></span>
+              </div>
+            </template>
+            <!-- Expandable session cost breakdown -->
+            <div style="margin-top:6px; border-top:1px solid var(--border); padding-top:6px;">
+              <button @click="showCostDetails = !showCostDetails"
+                      style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; padding:0;">
+                <span x-text="showCostDetails ? '▼' : '▶'"></span> Cost Details
+              </button>
+              <template x-if="showCostDetails && usageData?.five_hour?.sessions">
+                <div style="margin-top:6px; font-size:11px;">
+                  <div style="margin-bottom:4px; font-weight:600; opacity:0.7;">5hr Window</div>
+                  <table style="width:100%; border-collapse:collapse;">
+                    <thead>
+                      <tr style="border-bottom:1px solid var(--border);">
+                        <th style="text-align:left; padding:3px 4px; font-weight:500; opacity:0.6;">Session</th>
+                        <th style="text-align:right; padding:3px 4px; font-weight:500; opacity:0.6;">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="session in usageData.five_hour.sessions" :key="session.id">
+                        <tr style="border-bottom:1px solid var(--border);">
+                          <td style="padding:3px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;"
+                              :title="session.id" x-text="session.id.substring(0, 12)"></td>
+                          <td style="text-align:right; padding:3px 4px; font-variant-numeric:tabular-nums; font-weight:500;" x-text="'$' + session.total_cost.toFixed(2)"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                  <div style="margin-top:8px; margin-bottom:4px; font-weight:600; opacity:0.7;">7d Window</div>
+                  <table style="width:100%; border-collapse:collapse;">
+                    <thead>
+                      <tr style="border-bottom:1px solid var(--border);">
+                        <th style="text-align:left; padding:3px 4px; font-weight:500; opacity:0.6;">Session</th>
+                        <th style="text-align:right; padding:3px 4px; font-weight:500; opacity:0.6;">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="session in usageData.seven_day.sessions" :key="session.id">
+                        <tr style="border-bottom:1px solid var(--border);">
+                          <td style="padding:3px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;"
+                              :title="session.id" x-text="session.id.substring(0, 12)"></td>
+                          <td style="text-align:right; padding:3px 4px; font-variant-numeric:tabular-nums; font-weight:500;" x-text="'$' + session.total_cost.toFixed(2)"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
+            </div>
+          </div>
           <button class="btn btn-sm btn-primary" @click="openNewSessionModal()"
                   style="width:100%; margin-bottom:8px; font-size:13px;">
             + New Session
@@ -164,85 +241,6 @@
                 :title="selectedSessionId ? 'Double-click to rename' : ''"
                 :style="selectedSessionId ? 'cursor:pointer' : ''"></h2>
           </template>
-          <!-- Usage rate limit widget -->
-          <div x-show="usageData && !usageError"
-               style="display:flex; align-items:center; gap:10px; margin-right:8px;">
-            <!-- 5-hour bar -->
-            <template x-if="usageData?.five_hour">
-              <div style="display:flex; align-items:center; gap:4px;"
-                   :title="'5hr resets at ' + new Date(usageData.five_hour.resets_at).toLocaleTimeString()">
-                <span style="font-size:11px; opacity:0.6; white-space:nowrap;">5hr</span>
-                <div style="width:60px; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
-                  <div :style="'width:' + Math.round(usageData.five_hour.utilization * 100) + '%; height:100%; border-radius:2px; background:' + usageBarColor(usageData.five_hour.utilization) + '; transition:width 0.3s ease'"></div>
-                </div>
-                <span x-text="Math.round(usageData.five_hour.utilization * 100) + '%'"
-                      style="font-size:11px; font-weight:600; min-width:28px;"
-                      :style="'color:' + usageBarColor(usageData.five_hour.utilization)"></span>
-              </div>
-            </template>
-            <!-- 7-day bar -->
-            <template x-if="usageData?.seven_day">
-              <div style="display:flex; align-items:center; gap:4px;"
-                   :title="'7d resets at ' + new Date(usageData.seven_day.resets_at).toLocaleDateString()">
-                <span style="font-size:11px; opacity:0.6; white-space:nowrap;">7d</span>
-                <div style="width:60px; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
-                  <div :style="'width:' + Math.round(usageData.seven_day.utilization * 100) + '%; height:100%; border-radius:2px; background:' + usageBarColor(usageData.seven_day.utilization) + '; transition:width 0.3s ease'"></div>
-                </div>
-                <span x-text="Math.round(usageData.seven_day.utilization * 100) + '%'"
-                      style="font-size:11px; font-weight:600; min-width:28px;"
-                      :style="'color:' + usageBarColor(usageData.seven_day.utilization)"></span>
-              </div>
-            </template>
-          </div>
-          <!-- Expandable session cost breakdown -->
-          <div x-show="usageData && !usageError" style="margin-top:12px;">
-            <button @click="showCostDetails = !showCostDetails"
-                    style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:0.85rem;">
-              <span x-text="showCostDetails ? '▼' : '▶'"></span> Details
-            </button>
-
-            <template x-if="showCostDetails && usageData?.five_hour?.sessions">
-              <div style="margin-top:8px; font-size:0.8rem;">
-                <div style="margin-bottom:6px; font-weight:600;">5hr Sessions:</div>
-                <table style="width:100%; border-collapse:collapse;">
-                  <thead>
-                    <tr style="border-bottom:1px solid var(--border);">
-                      <th style="text-align:left; padding:4px;">Session</th>
-                      <th style="text-align:right; padding:4px;">Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <template x-for="session in usageData.five_hour.sessions" :key="session.id">
-                      <tr style="border-bottom:1px solid var(--border);">
-                        <td style="padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
-                            :title="session.id" x-text="session.id.substring(0, 12)"></td>
-                        <td style="text-align:right; padding:4px;" x-text="'$' + session.total_cost.toFixed(2)"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-
-                <div style="margin-top:12px; margin-bottom:6px; font-weight:600;">7d Sessions:</div>
-                <table style="width:100%; border-collapse:collapse;">
-                  <thead>
-                    <tr style="border-bottom:1px solid var(--border);">
-                      <th style="text-align:left; padding:4px;">Session</th>
-                      <th style="text-align:right; padding:4px;">Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <template x-for="session in usageData.seven_day.sessions" :key="session.id">
-                      <tr style="border-bottom:1px solid var(--border);">
-                        <td style="padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
-                            :title="session.id" x-text="session.id.substring(0, 12)"></td>
-                        <td style="text-align:right; padding:4px;" x-text="'$' + session.total_cost.toFixed(2)"></td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-            </template>
-          </div>
           <div :class="currentSession?.mode === 'managed' ? 'turns-monitor' : 'turns-monitor hidden'">
             <span x-show="currentSession?.max_turns > 0" style="opacity:0.7;">Turns</span>
             <span x-show="currentSession?.max_turns > 0"
@@ -1519,6 +1517,24 @@
               <input x-model="settingsForm.compact_every_n_continues" type="number" min="0" placeholder="0" class="modal-input" :style="isFieldChanged('compact_every_n_continues') ? 'border-color:var(--yellow)' : ''">
               <div class="modal-hint">Run /compact every N auto-continues to reduce token usage. 0 = disabled.</div>
             </div>
+
+            <div style="display:flex;gap:12px">
+              <div style="flex:1">
+                <label class="modal-label">
+                  5-Hour Usage Limit ($)
+                  <span x-show="isFieldChanged('usage_limit_5hr')" class="settings-change-badge">changed</span>
+                </label>
+                <input x-model="settingsForm.usage_limit_5hr" type="number" min="0" step="0.5" placeholder="5" class="modal-input" :style="isFieldChanged('usage_limit_5hr') ? 'border-color:var(--yellow)' : ''">
+              </div>
+              <div style="flex:1">
+                <label class="modal-label">
+                  7-Day Usage Limit ($)
+                  <span x-show="isFieldChanged('usage_limit_7day')" class="settings-change-badge">changed</span>
+                </label>
+                <input x-model="settingsForm.usage_limit_7day" type="number" min="0" step="1" placeholder="50" class="modal-input" :style="isFieldChanged('usage_limit_7day') ? 'border-color:var(--yellow)' : ''">
+              </div>
+            </div>
+            <div class="modal-hint">Anthropic usage limits for utilization bars. Defaults: $5 / 5hr, $50 / 7day.</div>
           </div>
 
           <!-- Integrations tab -->

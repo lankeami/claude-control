@@ -136,7 +136,7 @@ document.addEventListener('alpine:init', () => {
     // Settings state
     showSettingsModal: false,
     settingsFirstRun: false,
-    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] },
+    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', usage_limit_5hr: '', usage_limit_7day: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] },
     settingsError: '',
     settingsSaving: false,
     settingsRestartRequired: false,
@@ -548,6 +548,8 @@ document.addEventListener('alpine:init', () => {
           claude_args: data.claude_args || '',
           claude_env: data.claude_env || '',
           compact_every_n_continues: data.compact_every_n_continues || '',
+          usage_limit_5hr: data.usage_limit_5hr || '',
+          usage_limit_7day: data.usage_limit_7day || '',
           github_token: data.github_token || '',
           jira_url: data.jira_url || '',
           jira_token: data.jira_token || '',
@@ -789,7 +791,7 @@ document.addEventListener('alpine:init', () => {
     usageBarColor(utilization) {
       if (utilization > 0.9) return '#e74c3c';
       if (utilization > 0.7) return '#f39c12';
-      return '#22c55e';
+      return '#16a34a';
     },
 
     turnBarColor() {

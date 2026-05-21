@@ -3,15 +3,37 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
 )
 
+// Default Anthropic usage limits (used when not configured in .env)
+const (
+	DefaultFiveHourLimitUSD  = 5.0
+	DefaultSevenDayLimitUSD  = 50.0
+)
+
+func (s *Server) usageLimits() (fiveHr, sevenDay float64) {
+	fiveHr = DefaultFiveHourLimitUSD
+	sevenDay = DefaultSevenDayLimitUSD
+	vals := readEnvFile(s.envPath)
+	if v, err := strconv.ParseFloat(vals["USAGE_LIMIT_5HR"], 64); err == nil && v > 0 {
+		fiveHr = v
+	}
+	if v, err := strconv.ParseFloat(vals["USAGE_LIMIT_7DAY"], 64); err == nil && v > 0 {
+		sevenDay = v
+	}
+	return
+}
+
 // CostSummary represents the cost breakdown for a time window
 type CostSummary struct {
-	TotalCost float64              `json:"total_cost"`
-	Sessions  []SessionCostDetail  `json:"sessions"`
+	TotalCost   float64              `json:"total_cost"`
+	Utilization float64              `json:"utilization"`
+	ResetsAt    string               `json:"resets_at"`
+	Sessions    []SessionCostDetail  `json:"sessions"`
 }
 
 // SessionCostDetail represents cost for a single session with per-model breakdown
@@ -22,7 +44,7 @@ type SessionCostDetail struct {
 }
 
 // aggregateCosts sums costs from messages in the given time window, grouped by session + model
-func (s *Server) aggregateCosts(windowStart, windowEnd time.Time) (*CostSummary, error) {
+func (s *Server) aggregateCosts(windowStart, windowEnd time.Time, limit float64) (*CostSummary, error) {
 	query := `
 	SELECT COALESCE(m.session_id, '') as session_id, COALESCE(ms.model, '') as model, SUM(COALESCE(m.cost, 0)) as total
 	FROM messages m
@@ -66,6 +88,14 @@ func (s *Server) aggregateCosts(windowStart, windowEnd time.Time) (*CostSummary,
 		summary.Sessions = append(summary.Sessions, *detail)
 	}
 
+	summary.ResetsAt = windowEnd.UTC().Format(time.RFC3339)
+	if limit > 0 {
+		summary.Utilization = summary.TotalCost / limit
+		if summary.Utilization > 1.0 {
+			summary.Utilization = 1.0
+		}
+	}
+
 	return summary, nil
 }
 
@@ -94,8 +124,9 @@ func (s *Server) handleCostSummary(w http.ResponseWriter, r *http.Request) {
 	sevenDayStart, sevenDayEnd := db.SevenDayWindow(now)
 
 	// Aggregate costs for each window
-	fiveHrSummary, _ := s.aggregateCosts(fiveHrStart, fiveHrEnd)
-	sevenDaySummary, _ := s.aggregateCosts(sevenDayStart, sevenDayEnd)
+	fiveHrLimit, sevenDayLimit := s.usageLimits()
+	fiveHrSummary, _ := s.aggregateCosts(fiveHrStart, fiveHrEnd, fiveHrLimit)
+	sevenDaySummary, _ := s.aggregateCosts(sevenDayStart, sevenDayEnd, sevenDayLimit)
 
 	// Return response
 	w.Header().Set("Content-Type", "application/json")
