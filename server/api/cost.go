@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -39,6 +40,7 @@ type CostSummary struct {
 // SessionCostDetail represents cost for a single session with per-model breakdown
 type SessionCostDetail struct {
 	SessionID string             `json:"id"`
+	Name      string             `json:"name"`
 	TotalCost float64            `json:"total_cost"`
 	ByModel   map[string]float64 `json:"by_model"`
 }
@@ -46,7 +48,8 @@ type SessionCostDetail struct {
 // aggregateCosts sums costs from messages in the given time window, grouped by session + model
 func (s *Server) aggregateCosts(windowStart, windowEnd time.Time, limit float64) (*CostSummary, error) {
 	query := `
-	SELECT COALESCE(m.session_id, '') as session_id, COALESCE(ms.model, '') as model, SUM(COALESCE(m.cost, 0)) as total
+	SELECT COALESCE(m.session_id, '') as session_id, COALESCE(ms.model, '') as model, SUM(COALESCE(m.cost, 0)) as total,
+	       COALESCE(ms.name, '') as sess_name, COALESCE(ms.cwd, '') as sess_cwd
 	FROM messages m
 	LEFT JOIN sessions ms ON m.session_id = ms.id
 	WHERE m.created_at >= ? AND m.created_at < ? AND m.cost > 0
@@ -65,15 +68,20 @@ func (s *Server) aggregateCosts(windowStart, windowEnd time.Time, limit float64)
 	sessionMap := make(map[string]*SessionCostDetail)
 
 	for rows.Next() {
-		var sessionID, model string
+		var sessionID, model, sessName, sessCWD string
 		var cost float64
-		if err := rows.Scan(&sessionID, &model, &cost); err != nil {
+		if err := rows.Scan(&sessionID, &model, &cost, &sessName, &sessCWD); err != nil {
 			return nil, err
 		}
 
 		if _, exists := sessionMap[sessionID]; !exists {
+			displayName := sessName
+			if displayName == "" && sessCWD != "" {
+				displayName = filepath.Base(sessCWD)
+			}
 			sessionMap[sessionID] = &SessionCostDetail{
 				SessionID: sessionID,
+				Name:      displayName,
 				ByModel:   make(map[string]float64),
 			}
 		}
