@@ -71,7 +71,7 @@ func (s *Store) UpsertSession(computerName, projectPath, transcriptPath string) 
 }
 
 func (s *Store) getSessionByKey(computerName, projectPath string) (*Session, error) {
-	row := s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE computer_name = ? AND project_path = ?`,
+	row := s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE computer_name = ? AND project_path = ? AND deleted_at IS NULL`,
 		computerName, projectPath)
 	sess, err := scanSession(row)
 	if err != nil {
@@ -81,9 +81,9 @@ func (s *Store) getSessionByKey(computerName, projectPath string) (*Session, err
 }
 
 func (s *Store) ListSessions(includeArchived bool) ([]Session, error) {
-	query := "SELECT " + sessionColumns + " FROM sessions"
+	query := "SELECT " + sessionColumns + " FROM sessions WHERE deleted_at IS NULL"
 	if !includeArchived {
-		query += " WHERE archived = 0"
+		query += " AND archived = 0"
 	}
 	query += " ORDER BY last_seen_at DESC"
 	rows, err := s.db.Query(query)
@@ -103,7 +103,7 @@ func (s *Store) ListSessions(includeArchived bool) ([]Session, error) {
 }
 
 func (s *Store) GetSessionByID(id string) (*Session, error) {
-	row := s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id = ? AND deleted_at IS NULL`, id)
 	sess, err := scanSession(row)
 	if err != nil {
 		return nil, fmt.Errorf("get session by id: %w", err)
@@ -172,7 +172,7 @@ func (s *Store) ClearSession(id string) error {
 
 func (s *Store) GetTranscriptPath(sessionID string) (string, error) {
 	var path sql.NullString
-	err := s.db.QueryRow("SELECT transcript_path FROM sessions WHERE id = ?", sessionID).Scan(&path)
+	err := s.db.QueryRow("SELECT transcript_path FROM sessions WHERE id = ? AND deleted_at IS NULL", sessionID).Scan(&path)
 	if err != nil {
 		return "", fmt.Errorf("get transcript path: %w", err)
 	}
@@ -183,7 +183,7 @@ func (s *Store) GetTranscriptPath(sessionID string) (string, error) {
 }
 
 func (s *Store) Heartbeat(id string) error {
-	res, err := s.db.Exec("UPDATE sessions SET last_seen_at = datetime('now') WHERE id = ?", id)
+	res, err := s.db.Exec("UPDATE sessions SET last_seen_at = datetime('now') WHERE id = ? AND deleted_at IS NULL", id)
 	if err != nil {
 		return fmt.Errorf("heartbeat: %w", err)
 	}
@@ -209,7 +209,7 @@ func (s *Store) SetSessionStatus(id, status string) error {
 }
 
 func (s *Store) UpdateActivityState(id, state string) error {
-	_, err := s.db.Exec("UPDATE sessions SET activity_state = ? WHERE id = ?", state, id)
+	_, err := s.db.Exec("UPDATE sessions SET activity_state = ? WHERE id = ? AND deleted_at IS NULL", state, id)
 	return err
 }
 
@@ -244,7 +244,7 @@ func (s *Store) GetManagedSessionNamesByCliIDs(ids []string) (map[string]string,
 		args[i] = id
 	}
 	rows, err := s.db.Query(
-		`SELECT claude_session_id, name FROM sessions WHERE claude_session_id IN (`+placeholders+`) AND name != ''`,
+		`SELECT claude_session_id, name FROM sessions WHERE claude_session_id IN (`+placeholders+`) AND name != '' AND deleted_at IS NULL`,
 		args...,
 	)
 	if err != nil {
@@ -263,14 +263,14 @@ func (s *Store) GetManagedSessionNamesByCliIDs(ids []string) (map[string]string,
 }
 
 func (s *Store) ResetStaleActivityStates() error {
-	_, err := s.db.Exec("UPDATE sessions SET activity_state = 'idle' WHERE activity_state = 'working'")
+	_, err := s.db.Exec("UPDATE sessions SET activity_state = 'idle' WHERE activity_state = 'working' AND deleted_at IS NULL")
 	return err
 }
 
 // SetWorkingToWaiting updates all sessions with activity_state='working' to 'waiting'.
 // Used during graceful restart to preserve conversation continuity.
 func (s *Store) SetWorkingToWaiting() error {
-	_, err := s.db.Exec("UPDATE sessions SET activity_state = 'waiting' WHERE activity_state = 'working'")
+	_, err := s.db.Exec("UPDATE sessions SET activity_state = 'waiting' WHERE activity_state = 'working' AND deleted_at IS NULL")
 	return err
 }
 
@@ -282,7 +282,6 @@ func (s *Store) DeleteSession(id string) error {
 	}
 	defer tx.Rollback()
 	for _, q := range []string{
-		"DELETE FROM messages WHERE session_id = ?",
 		"DELETE FROM prompts WHERE session_id = ?",
 		"DELETE FROM instructions WHERE session_id = ?",
 		"DELETE FROM session_files WHERE session_id = ?",
@@ -291,8 +290,9 @@ func (s *Store) DeleteSession(id string) error {
 			return fmt.Errorf("cascade delete: %w", err)
 		}
 	}
-	if _, err := tx.Exec("DELETE FROM sessions WHERE id = ?", id); err != nil {
-		return fmt.Errorf("delete session: %w", err)
+	// Soft-delete the session to preserve cost data in messages
+	if _, err := tx.Exec("UPDATE sessions SET deleted_at = datetime('now') WHERE id = ?", id); err != nil {
+		return fmt.Errorf("soft delete session: %w", err)
 	}
 	return tx.Commit()
 }
