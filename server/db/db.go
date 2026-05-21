@@ -152,6 +152,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE messages ADD COLUMN cost REAL DEFAULT 0`,
 		`ALTER TABLE messages ADD COLUMN cleared_at DATETIME`,
+		`ALTER TABLE sessions ADD COLUMN deleted_at DATETIME`,
 	}
 
 	for _, m := range migrations {

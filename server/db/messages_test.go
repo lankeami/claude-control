@@ -66,9 +66,16 @@ func TestDeleteSessionCascadesMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// After soft-delete, the session cannot be retrieved (deleted_at IS NOT NULL)
+	retrieved, _ := store.GetSessionByID(sess.ID)
+	if retrieved != nil {
+		t.Error("session should not be retrievable after deletion")
+	}
+
+	// But messages are preserved (for cost tracking)
 	msgs, _ := store.ListMessages(sess.ID)
-	if len(msgs) != 0 {
-		t.Errorf("got %d messages after delete, want 0", len(msgs))
+	if len(msgs) != 2 {
+		t.Errorf("got %d messages after delete, want 2 (preserved for cost tracking)", len(msgs))
 	}
 }
 
