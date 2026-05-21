@@ -122,7 +122,7 @@
                       <template x-for="session in usageData.five_hour.sessions" :key="session.id">
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:3px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;"
-                              :title="session.id" x-text="session.id.substring(0, 12)"></td>
+                              :title="session.name || session.id" x-text="session.name || session.id.substring(0, 12)"></td>
                           <td style="text-align:right; padding:3px 4px; font-variant-numeric:tabular-nums; font-weight:500;" x-text="'$' + session.total_cost.toFixed(2)"></td>
                         </tr>
                       </template>
@@ -140,7 +140,7 @@
                       <template x-for="session in usageData.seven_day.sessions" :key="session.id">
                         <tr style="border-bottom:1px solid var(--border);">
                           <td style="padding:3px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;"
-                              :title="session.id" x-text="session.id.substring(0, 12)"></td>
+                              :title="session.name || session.id" x-text="session.name || session.id.substring(0, 12)"></td>
                           <td style="text-align:right; padding:3px 4px; font-variant-numeric:tabular-nums; font-weight:500;" x-text="'$' + session.total_cost.toFixed(2)"></td>
                         </tr>
                       </template>

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestHandleCostSummary_ValidSession(t *testing.T) {
@@ -51,6 +53,73 @@ func TestHandleCostSummary_ValidSession(t *testing.T) {
 	}
 	if _, ok := body["seven_day"]; !ok {
 		t.Error("expected seven_day in response")
+	}
+}
+
+func TestAggregateCosts_UsesSessionName(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := openTestDB(t, tmpDir)
+	if err != nil {
+		t.Fatalf("openTestDB failed: %v", err)
+	}
+
+	sess, err := store.CreateManagedSession(tmpDir, "", 0, 0, 0)
+	if err != nil {
+		t.Fatalf("CreateManagedSession failed: %v", err)
+	}
+	if err := store.UpdateSessionName(sess.ID, "my-project"); err != nil {
+		t.Fatalf("UpdateSessionName failed: %v", err)
+	}
+
+	// Add a cost message so the session appears in results
+	store.CreateMessage(sess.ID, "cost", "0.010000", 0.01)
+
+	server := &Server{store: store, envPath: tmpDir + "/.env"}
+
+	now := time.Now().UTC()
+	summary, err := server.aggregateCosts(now.Add(-time.Hour), now.Add(time.Hour), 5.0)
+	if err != nil {
+		t.Fatalf("aggregateCosts failed: %v", err)
+	}
+
+	if len(summary.Sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(summary.Sessions))
+	}
+	if summary.Sessions[0].Name != "my-project" {
+		t.Errorf("expected Name 'my-project', got %q", summary.Sessions[0].Name)
+	}
+}
+
+func TestAggregateCosts_FallsBackToCWDBasename(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := openTestDB(t, tmpDir)
+	if err != nil {
+		t.Fatalf("openTestDB failed: %v", err)
+	}
+
+	// CreateManagedSession sets cwd = tmpDir, name stays empty
+	sess, err := store.CreateManagedSession(tmpDir, "", 0, 0, 0)
+	if err != nil {
+		t.Fatalf("CreateManagedSession failed: %v", err)
+	}
+
+	store.CreateMessage(sess.ID, "cost", "0.010000", 0.01)
+
+	server := &Server{store: store, envPath: tmpDir + "/.env"}
+
+	now := time.Now().UTC()
+	summary, err := server.aggregateCosts(now.Add(-time.Hour), now.Add(time.Hour), 5.0)
+	if err != nil {
+		t.Fatalf("aggregateCosts failed: %v", err)
+	}
+
+	if len(summary.Sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(summary.Sessions))
+	}
+	// Name should be the basename of tmpDir when session name is empty
+	expectedName := filepath.Base(tmpDir)
+	if summary.Sessions[0].Name != expectedName {
+		t.Errorf("expected Name %q (cwd basename), got %q", expectedName, summary.Sessions[0].Name)
 	}
 }
 
