@@ -108,17 +108,20 @@ test-api: ## Run API handler tests only
 run: build ## Build and run the server locally (web UI at http://localhost:PORT)
 	$(SERVER_BIN) --port $(PORT)
 
-local: ## Stop everything, rebuild, and start fresh
-ifeq ($(OS),Windows_NT)
-	-taskkill /F /IM claude-controller.exe $(DEVNULL)
-	-$(RM_F) $(SERVER_BIN) $(DEVNULL)
-else
-	-pkill -f 'claude-controller' $(DEVNULL) || true
-	-docker compose down $(DEVNULL) || true
-	$(RM_F) $(SERVER_BIN)
-endif
-	cd server && go build -o claude-controller$(EXE) .
-	$(SERVER_BIN) --port $(PORT)
+#local: ## Stop everything, rebuild, and start fresh
+#ifeq ($(OS),Windows_NT)
+#	-taskkill /F /IM claude-controller.exe $(DEVNULL)
+#	-$(RM_F) $(SERVER_BIN) $(DEVNULL)
+#else
+#	-pkill -f 'claude-controller' $(DEVNULL) || true
+#	-docker compose down $(DEVNULL) || true
+#	$(RM_F) $(SERVER_BIN)
+#endif
+#	cd server && go build -o claude-controller$(EXE) .
+#	$(SERVER_BIN) --port $(PORT)
+
+local: ## Stop everything, rebuild, start fresh
+local: stop build run
 
 stop: ## Stop the running Go server process
 ifeq ($(OS),Windows_NT)

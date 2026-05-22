@@ -55,10 +55,12 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 
 func (s *Store) UpsertSession(computerName, projectPath, transcriptPath string) (*Session, error) {
 	id := uuid.New().String()
+	// Conflict target matches the partial index `idx_hook_computer_project`;
+	// SQLite requires the partial index's WHERE clause to be restated here.
 	_, err := s.db.Exec(`
 		INSERT INTO sessions (id, computer_name, project_path, transcript_path, status, created_at, last_seen_at, archived)
 		VALUES (?, ?, ?, ?, 'active', datetime('now'), datetime('now'), 0)
-		ON CONFLICT(computer_name, project_path) DO UPDATE SET
+		ON CONFLICT(computer_name, project_path) WHERE mode = 'hook' AND deleted_at IS NULL DO UPDATE SET
 			last_seen_at = datetime('now'),
 			status = 'active',
 			transcript_path = ?
