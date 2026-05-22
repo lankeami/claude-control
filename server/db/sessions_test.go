@@ -239,9 +239,16 @@ func TestRecentDirectories_DeduplicatesCWD(t *testing.T) {
 	store := newTestStore(t)
 
 	// Create first session, then delete it so the unique constraint allows a second
-	sess1, _ := store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0, 0)
-	store.DeleteSession(sess1.ID)
-	store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0, 0)
+	sess1, err := store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	if err := store.DeleteSession(sess1.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := store.CreateManagedSession("/projects/same", `["Bash"]`, 50, 5.0, 0); err != nil {
+		t.Fatalf("recreate after soft-delete: %v", err)
+	}
 
 	dirs, err := store.RecentDirectories(5)
 	if err != nil {
@@ -249,6 +256,47 @@ func TestRecentDirectories_DeduplicatesCWD(t *testing.T) {
 	}
 	if len(dirs) != 1 {
 		t.Errorf("expected 1 deduplicated dir, got %d", len(dirs))
+	}
+}
+
+func TestCreateManagedSession_AfterSoftDelete(t *testing.T) {
+	store := newTestStore(t)
+
+	sess1, err := store.CreateManagedSession("/projects/recycle", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	if err := store.DeleteSession(sess1.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	sess2, err := store.CreateManagedSession("/projects/recycle", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatalf("recreate after soft-delete: %v", err)
+	}
+	if sess2.ID == sess1.ID {
+		t.Errorf("expected new session ID, got same: %s", sess2.ID)
+	}
+	if sess2.CWD != "/projects/recycle" {
+		t.Errorf("cwd=%s, want /projects/recycle", sess2.CWD)
+	}
+}
+
+func TestUpsertSession_AfterSoftDelete(t *testing.T) {
+	store := newTestStore(t)
+
+	s1, err := store.UpsertSession("mac1", "/proj", "")
+	if err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+	if err := store.DeleteSession(s1.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	s2, err := store.UpsertSession("mac1", "/proj", "")
+	if err != nil {
+		t.Fatalf("upsert after soft-delete: %v", err)
+	}
+	if s2.ID == s1.ID {
+		t.Errorf("expected new session ID after soft-delete, got same: %s", s2.ID)
 	}
 }
 

@@ -8,6 +8,17 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// sessionColumnList is the ordered list of every column on the `sessions`
+// table. Used by the rebuild migration to copy rows column-by-column rather
+// than relying on `SELECT *`, which is sensitive to the historical column
+// order produced by successive ALTER TABLE ADD COLUMN statements.
+var sessionColumnList = []string{
+	"id", "computer_name", "project_path", "status", "created_at", "last_seen_at", "archived",
+	"transcript_path", "mode", "cwd", "allowed_tools", "max_turns", "max_budget_usd", "initialized",
+	"claude_session_id", "turn_count", "auto_continue_threshold", "max_continuations", "activity_state",
+	"name", "compact_every_n_continues", "model", "deleted_at",
+}
+
 type Store struct {
 	db *sql.DB
 }
@@ -62,8 +73,7 @@ func migrate(db *sql.DB) error {
 			status TEXT NOT NULL DEFAULT 'active',
 			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
 			last_seen_at DATETIME NOT NULL DEFAULT (datetime('now')),
-			archived INTEGER NOT NULL DEFAULT 0,
-			UNIQUE(computer_name, project_path)
+			archived INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS prompts (
 			id TEXT PRIMARY KEY,
@@ -153,6 +163,9 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE messages ADD COLUMN cost REAL DEFAULT 0`,
 		`ALTER TABLE messages ADD COLUMN cleared_at DATETIME`,
 		`ALTER TABLE sessions ADD COLUMN deleted_at DATETIME`,
+		`DROP INDEX IF EXISTS idx_managed_cwd`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_cwd ON sessions(cwd) WHERE mode = 'managed' AND deleted_at IS NULL`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_hook_computer_project ON sessions(computer_name, project_path) WHERE mode = 'hook' AND deleted_at IS NULL`,
 	}
 
 	for _, m := range migrations {
@@ -163,5 +176,96 @@ func migrate(db *sql.DB) error {
 			}
 		}
 	}
+	if err := rebuildSessionsTableIfNeeded(db); err != nil {
+		return fmt.Errorf("rebuild sessions table: %w", err)
+	}
 	return nil
+}
+
+// rebuildSessionsTableIfNeeded drops the legacy table-level
+// `UNIQUE(computer_name, project_path)` constraint by rebuilding the table.
+// The legacy constraint is not partial, so it spuriously blocks creating a
+// new managed session in a cwd where a previous session was soft-deleted.
+// Hook-mode uniqueness is preserved via the partial index
+// `idx_hook_computer_project`. No-ops on fresh installs or DBs that have
+// already been rebuilt.
+func rebuildSessionsTableIfNeeded(db *sql.DB) error {
+	var schema string
+	err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'`).Scan(&schema)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read sessions schema: %w", err)
+	}
+	if !strings.Contains(schema, "UNIQUE(computer_name, project_path)") {
+		return nil
+	}
+
+	// PRAGMA foreign_keys can only be toggled outside a transaction.
+	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return fmt.Errorf("disable foreign_keys: %w", err)
+	}
+	defer func() { _, _ = db.Exec(`PRAGMA foreign_keys = ON`) }()
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	cols := strings.Join(sessionColumnList, ", ")
+	steps := []string{
+		`DROP INDEX IF EXISTS idx_managed_cwd`,
+		`DROP INDEX IF EXISTS idx_hook_computer_project`,
+		`CREATE TABLE sessions_new (
+			id TEXT PRIMARY KEY,
+			computer_name TEXT NOT NULL,
+			project_path TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'active',
+			created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			last_seen_at DATETIME NOT NULL DEFAULT (datetime('now')),
+			archived INTEGER NOT NULL DEFAULT 0,
+			transcript_path TEXT,
+			mode TEXT NOT NULL DEFAULT 'hook',
+			cwd TEXT,
+			allowed_tools TEXT,
+			max_turns INTEGER NOT NULL DEFAULT 50,
+			max_budget_usd REAL NOT NULL DEFAULT 5.0,
+			initialized INTEGER NOT NULL DEFAULT 0,
+			claude_session_id TEXT,
+			turn_count INTEGER NOT NULL DEFAULT 0,
+			auto_continue_threshold REAL NOT NULL DEFAULT 0.8,
+			max_continuations INTEGER NOT NULL DEFAULT 5,
+			activity_state TEXT NOT NULL DEFAULT 'idle',
+			name TEXT NOT NULL DEFAULT '',
+			compact_every_n_continues INTEGER NOT NULL DEFAULT 0,
+			model TEXT NOT NULL DEFAULT '',
+			deleted_at DATETIME
+		)`,
+		`INSERT INTO sessions_new (` + cols + `) SELECT ` + cols + ` FROM sessions`,
+		`DROP TABLE sessions`,
+		`ALTER TABLE sessions_new RENAME TO sessions`,
+		`CREATE UNIQUE INDEX idx_managed_cwd ON sessions(cwd) WHERE mode = 'managed' AND deleted_at IS NULL`,
+		`CREATE UNIQUE INDEX idx_hook_computer_project ON sessions(computer_name, project_path) WHERE mode = 'hook' AND deleted_at IS NULL`,
+	}
+	for _, s := range steps {
+		if _, err := tx.Exec(s); err != nil {
+			return fmt.Errorf("rebuild step %q: %w", firstLine(s), err)
+		}
+	}
+
+	// Note: we intentionally do not run PRAGMA foreign_key_check here.
+	// The rebuild copies all rows atomically inside a single transaction;
+	// any FK reference that was valid before stays valid after. Pre-existing
+	// orphans (from sessions that were hard-deleted before the soft-delete
+	// change) are not introduced by this migration and should not block it.
+	return tx.Commit()
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
