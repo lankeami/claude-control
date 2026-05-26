@@ -2045,6 +2045,12 @@ document.addEventListener('alpine:init', () => {
             return;
           }
 
+          if (data.type === 'turn_count') {
+            const sess = this.sessions.find(s => s.id === sessionId);
+            if (sess) sess.turn_count = data.turn_count;
+            return;
+          }
+
           if (data.type === 'auto_continuing') {
             this.continuationCount = data.continuation_count || 0;
             this.chatMessages.push({
