@@ -40,6 +40,34 @@ test('detects options in markdown list items (- **Option A: ...**)', () => {
   assert.equal(result[0].text, 'Option A: Rewrite');
 });
 
+// --- "Approach A/B/C:" pattern ---
+
+test('detects Approach A/B/C with titles', () => {
+  const content = `### **Approach A: Custom Stateless OAuth Routes + ExternalOAuthProvider (Recommended)**\nPro: Proven pattern.\n\n### **Approach B: Subclass OAuthProxy, Override Storage-Touching Methods**\nCon: Fragile.\n\n### **Approach C: Custom AsyncKeyValue Store + Sticky Sessions**\nCon: Not stateless.`;
+  const result = extractOptions(content);
+  assert.equal(result.length, 3);
+  assert.equal(result[0].label, 'Approach A');
+  assert.ok(result[0].text.startsWith('Approach A:'));
+  assert.equal(result[1].label, 'Approach B');
+  assert.equal(result[2].label, 'Approach C');
+});
+
+test('detects Approach alone (no title)', () => {
+  const content = `Approach A\nApproach B`;
+  const result = extractOptions(content);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].text, 'Approach A');
+  assert.equal(result[1].text, 'Approach B');
+});
+
+test('detects Choice and Strategy prefixes', () => {
+  const content = `Choice A: Use Redis\nChoice B: Use Memcached`;
+  const result = extractOptions(content);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].label, 'Choice A');
+  assert.equal(result[0].text, 'Choice A: Use Redis');
+});
+
 // --- Capital letter + em/en dash pattern (Claude brainstorm style) ---
 
 test('detects A — / B — / C — options (em dash)', () => {

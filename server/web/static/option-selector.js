@@ -6,6 +6,7 @@
  *
  * Detected patterns:
  *   Option A: Title  |  Option 1: Title  |  Option A (alone)
+ *   Approach A: Title  |  Choice A: Title  |  Strategy A: Title
  *   A. Title         (capital letter + dot)
  *   1. Title         (number + dot)
  *   a) Title  |  A) Title  |  1) Title   (parenthesis)
@@ -29,19 +30,21 @@ export function extractOptions(content) {
     if (!c) continue;
     let m;
 
-    // "Option A: Title", "Option B - Title", "Option A — Title" etc.
-    m = c.match(/^option\s+([a-zA-Z]|\d+)\s*[:\-.—–]\s*(.+)/i);
+    // "Option A: Title", "Approach B - Title", "Choice A — Title" etc.
+    m = c.match(/^(option|approach|choice|strategy)\s+([a-zA-Z]|\d+)\s*[:\-.—–]\s*(.+)/i);
     if (m) {
-      const label = `Option ${m[1].toUpperCase()}`;
-      const title = strip(m[2]);
+      const prefix = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+      const label = `${prefix} ${m[2].toUpperCase()}`;
+      const title = strip(m[3]);
       options.push({ label, text: title ? `${label}: ${title}` : label });
       continue;
     }
 
-    // "Option A" alone (no separator or title)
-    m = c.match(/^option\s+([a-zA-Z]|\d+)\s*$/i);
+    // "Option A" / "Approach B" alone (no separator or title)
+    m = c.match(/^(option|approach|choice|strategy)\s+([a-zA-Z]|\d+)\s*$/i);
     if (m) {
-      const label = `Option ${m[1].toUpperCase()}`;
+      const prefix = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+      const label = `${prefix} ${m[2].toUpperCase()}`;
       options.push({ label, text: label });
       continue;
     }
