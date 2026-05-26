@@ -28,12 +28,13 @@ type Session struct {
 	ClaudeSessionID       string  `json:"claude_session_id,omitempty"`
 	MaxContinuations      int     `json:"max_continuations"`
 	ActivityState         string  `json:"activity_state"`
+	TurnCount             int     `json:"turn_count"`
 	Name                  string  `json:"name"`
 	CompactEveryNContinues int    `json:"compact_every_n_continues"`
 	Model                  string `json:"-"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), COALESCE(name,''), compact_every_n_continues, COALESCE(model,'')`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), turn_count, COALESCE(name,''), compact_every_n_continues, COALESCE(model,'')`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -43,7 +44,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.Status, &sess.CreatedAt, &sess.LastSeenAt, &archived,
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
 		&sess.ClaudeSessionID, &sess.MaxContinuations, &sess.ActivityState,
-		&sess.Name, &sess.CompactEveryNContinues, &sess.Model,
+		&sess.TurnCount, &sess.Name, &sess.CompactEveryNContinues, &sess.Model,
 	)
 	if err != nil {
 		return sess, err
@@ -166,7 +167,7 @@ func (s *Store) ClearSession(id string) error {
 	if _, err := tx.Exec(`UPDATE messages SET cleared_at = datetime('now') WHERE session_id = ? AND cleared_at IS NULL`, id); err != nil {
 		return fmt.Errorf("clear messages: %w", err)
 	}
-	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 0, activity_state = 'idle' WHERE id = ?`, newClaudeSessionID, id); err != nil {
+	if _, err := tx.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 0, activity_state = 'idle', turn_count = 0 WHERE id = ?`, newClaudeSessionID, id); err != nil {
 		return fmt.Errorf("reset session state: %w", err)
 	}
 	return tx.Commit()
@@ -207,6 +208,17 @@ func (s *Store) SetArchived(id string, archived bool) error {
 
 func (s *Store) SetSessionStatus(id, status string) error {
 	_, err := s.db.Exec("UPDATE sessions SET status = ? WHERE id = ?", status, id)
+	return err
+}
+
+func (s *Store) IncrementTurnCount(id string) (int, error) {
+	var count int
+	err := s.db.QueryRow(`UPDATE sessions SET turn_count = turn_count + 1 WHERE id = ? AND deleted_at IS NULL RETURNING turn_count`, id).Scan(&count)
+	return count, err
+}
+
+func (s *Store) ResetTurnCount(id string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET turn_count = 0 WHERE id = ? AND deleted_at IS NULL`, id)
 	return err
 }
 

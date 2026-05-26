@@ -304,6 +304,11 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 						mu.Unlock()
 					}
 				}
+				// Increment persisted turn count
+				if newCount, err := s.store.IncrementTurnCount(sessionID); err == nil {
+					turnMsg, _ := json.Marshal(map[string]interface{}{"type": "turn_count", "turn_count": newCount})
+					broadcaster.Send(string(turnMsg))
+				}
 				// Compute and persist turn cost from the result event's usage data
 				cost := extractCostFromResult(line, sess.Model)
 				if cost > 0 {
