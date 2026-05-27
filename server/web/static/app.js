@@ -1134,6 +1134,8 @@ document.addEventListener('alpine:init', () => {
             } else {
               this.chatMessages = [];
               this.clearAgentInvocations();
+              const sess = this.sessions.find(s => s.id === this.selectedSessionId);
+              if (sess) sess.turn_count = 0;
             }
           } catch (e) {
             this.chatMessages.push({ role: 'system', content: `Clear failed: ${e.message}`, msg_type: 'text', timestamp: new Date().toISOString() });
