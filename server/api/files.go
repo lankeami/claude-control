@@ -247,8 +247,8 @@ func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate resolved path is within session CWD
-	if sess.CWD != "" {
+	// Validate resolved path is within session CWD or /tmp/
+	if sess.CWD != "" && !strings.HasPrefix(resolved, os.TempDir()+string(filepath.Separator)) {
 		resolvedCWD, err := filepath.EvalSymlinks(sess.CWD)
 		if err != nil {
 			resolvedCWD = sess.CWD
