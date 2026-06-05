@@ -265,6 +265,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     async init() {
+      window._ccOpenFile = (path) => this.openFileViewer(path);
       // Detect Web Speech API support
       this.voiceChatSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
       // Load status line config from localStorage
@@ -3049,7 +3050,8 @@ Please review this PR and provide feedback.`;
             const titleAttr = t ? ` title="${t}"` : '';
             return `<a href="${h}" target="_blank" rel="noopener noreferrer"${titleAttr}>${tx}</a>`;
           };
-          const html = marked.parse(msg.content || '', { renderer: r, breaks: true });
+          let html = marked.parse(msg.content || '', { renderer: r, breaks: true });
+          html = this.linkifyFilePaths(html);
           const eyebrow = msg.command ? `<div class="command-label">${esc(msg.command)}</div>` : '';
           let optionsHtml = '';
           if (msg.role === 'assistant') {
@@ -3590,6 +3592,15 @@ Please review this PR and provide feedback.`;
         const hrs = Math.floor(mins / 60);
         if (hrs < 24) return hrs + 'h ago';
         return Math.floor(hrs / 24) + 'd ago';
+    },
+
+    linkifyFilePaths(html) {
+      const re = /(<a\s[^>]*>[\s\S]*?<\/a>|<[^>]+>)|(\/(?:tmp|var|Users|home)\/[^\s<"'`,;)}\]]+\.html)\b/g;
+      return html.replace(re, (match, tag, path) => {
+        if (tag) return match;
+        const escaped = path.replace(/'/g, "\\'");
+        return `<a href="#" class="file-link" onclick="event.preventDefault();window._ccOpenFile('${escaped}')">${match}</a>`;
+      });
     },
 
     renderHTMLPreview(content) {
