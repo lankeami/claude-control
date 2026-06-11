@@ -907,7 +907,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .issues-title {

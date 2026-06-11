@@ -682,7 +682,7 @@
             </span>
             <button class="file-tree-refresh" x-show="skillsExpanded" @click.stop="fetchSkills(selectedSessionId)" title="Refresh skills">↻</button>
           </div>
-          <div x-show="skillsExpanded" x-collapse>
+          <div x-show="skillsExpanded" x-collapse style="padding-top:6px">
             <div x-show="skillsLoading" class="issues-loading">Loading...</div>
             <div x-show="!skillsLoading && skillsError" class="issues-error" x-text="skillsError"></div>
             <div x-show="!skillsLoading && !skillsError && skills.length === 0" class="issues-empty">No skills found</div>
@@ -738,7 +738,7 @@
                       @click="toggleIssueState('closed')">Closed</button>
             </div>
           </div>
-          <div x-show="issuesExpanded" x-collapse>
+          <div x-show="issuesExpanded" x-collapse style="padding-top:6px">
             <input type="text" class="issues-search" placeholder="Search issues..."
                    x-model="githubIssuesSearch"
                    @input="searchIssues()">
@@ -779,7 +779,7 @@
                       @click="togglePullState('closed')">Closed</button>
             </div>
           </div>
-          <div x-show="pullsExpanded" x-collapse>
+          <div x-show="pullsExpanded" x-collapse style="padding-top:6px">
             <input type="text" class="issues-search" placeholder="Search pull requests..."
                    x-model="githubPullsSearch"
                    @input="searchPulls()">
