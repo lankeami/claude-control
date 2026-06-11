@@ -688,10 +688,9 @@
             <div x-show="!skillsLoading && !skillsError && skills.length === 0" class="issues-empty">No skills found</div>
             <div class="issue-list" x-show="!skillsLoading && !skillsError && skills.length > 0">
               <template x-for="skill in skills" :key="skill.name">
-                <div class="issue-row" @click="sendSkill(skill.name)">
+                <div class="issue-row" @click="sendSkill(skill.name)" :title="skill.description || skill.name">
                   <div class="issue-row-content">
                     <div class="issue-row-title" x-text="skill.name"></div>
-                    <div class="issue-row-meta" x-show="skill.description" x-text="skill.description"></div>
                   </div>
                 </div>
               </template>
@@ -1105,10 +1104,9 @@
             <div x-show="!skillsLoading && !skillsError && skills.length === 0" class="issues-empty">No skills found</div>
             <div class="issue-list" x-show="!skillsLoading && !skillsError && skills.length > 0">
               <template x-for="skill in skills" :key="skill.name">
-                <div class="issue-row" @click="mobileMenuOpen=false; sendSkill(skill.name)">
+                <div class="issue-row" @click="mobileMenuOpen=false; sendSkill(skill.name)" :title="skill.description || skill.name">
                   <div class="issue-row-content">
                     <div class="issue-row-title" x-text="skill.name"></div>
-                    <div class="issue-row-meta" x-show="skill.description" x-text="skill.description"></div>
                   </div>
                 </div>
               </template>
