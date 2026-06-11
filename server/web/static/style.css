@@ -899,7 +899,6 @@ body {
 
 /* GitHub Issues Section */
 .issues-section {
-  padding: 8px 12px;
   border-top: 1px solid var(--border);
 }
 
@@ -908,6 +907,7 @@ body {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0;
+  padding: 8px 12px;
 }
 
 .issues-title {
