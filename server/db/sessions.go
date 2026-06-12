@@ -11,27 +11,27 @@ import (
 )
 
 type Session struct {
-	ID             string    `json:"id"`
-	ComputerName   string    `json:"computer_name"`
-	ProjectPath    string    `json:"project_path"`
-	TranscriptPath string    `json:"transcript_path,omitempty"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
-	LastSeenAt     time.Time `json:"last_seen_at"`
-	Archived       bool      `json:"archived"`
-	Mode           string    `json:"mode"`
-	CWD            string    `json:"cwd,omitempty"`
-	AllowedTools   string    `json:"allowed_tools,omitempty"`
-	MaxTurns       int       `json:"max_turns"`
-	MaxBudgetUSD   float64   `json:"max_budget_usd"`
-	Initialized     bool   `json:"initialized"`
-	ClaudeSessionID       string  `json:"claude_session_id,omitempty"`
-	MaxContinuations      int     `json:"max_continuations"`
-	ActivityState         string  `json:"activity_state"`
-	TurnCount             int     `json:"turn_count"`
-	Name                  string  `json:"name"`
-	CompactEveryNContinues int    `json:"compact_every_n_continues"`
-	Model                  string `json:"-"`
+	ID                     string    `json:"id"`
+	ComputerName           string    `json:"computer_name"`
+	ProjectPath            string    `json:"project_path"`
+	TranscriptPath         string    `json:"transcript_path,omitempty"`
+	Status                 string    `json:"status"`
+	CreatedAt              time.Time `json:"created_at"`
+	LastSeenAt             time.Time `json:"last_seen_at"`
+	Archived               bool      `json:"archived"`
+	Mode                   string    `json:"mode"`
+	CWD                    string    `json:"cwd,omitempty"`
+	AllowedTools           string    `json:"allowed_tools,omitempty"`
+	MaxTurns               int       `json:"max_turns"`
+	MaxBudgetUSD           float64   `json:"max_budget_usd"`
+	Initialized            bool      `json:"initialized"`
+	ClaudeSessionID        string    `json:"claude_session_id,omitempty"`
+	MaxContinuations       int       `json:"max_continuations"`
+	ActivityState          string    `json:"activity_state"`
+	TurnCount              int       `json:"turn_count"`
+	Name                   string    `json:"name"`
+	CompactEveryNContinues int       `json:"compact_every_n_continues"`
+	Model                  string    `json:"-"`
 }
 
 const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), turn_count, COALESCE(name,''), compact_every_n_continues, COALESCE(model,'')`
@@ -142,6 +142,18 @@ func (s *Store) SetInitialized(id string) error {
 	return err
 }
 
+// RotateClaudeSessionID assigns a fresh CLI session ID and clears the
+// initialized flag so the next spawn starts a brand-new Claude session.
+// Used to recover from "session ID already in use" / unresumable sessions.
+func (s *Store) RotateClaudeSessionID(id string) (string, error) {
+	newID := uuid.New().String()
+	_, err := s.db.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 0 WHERE id = ?`, newID, id)
+	if err != nil {
+		return "", fmt.Errorf("rotate claude_session_id: %w", err)
+	}
+	return newID, nil
+}
+
 func (s *Store) ResumeSession(id, claudeSessionID string) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -227,6 +239,11 @@ func (s *Store) UpdateActivityState(id, state string) error {
 	return err
 }
 
+func (s *Store) UpdateClaudeSessionID(id, claudeSessionID string) error {
+	_, err := s.db.Exec("UPDATE sessions SET claude_session_id = ? WHERE id = ? AND deleted_at IS NULL", claudeSessionID, id)
+	return err
+}
+
 func (s *Store) UpdateSessionModel(id, model string) error {
 	_, err := s.db.Exec("UPDATE sessions SET model = ? WHERE id = ?", model, id)
 	return err
@@ -287,7 +304,6 @@ func (s *Store) SetWorkingToWaiting() error {
 	_, err := s.db.Exec("UPDATE sessions SET activity_state = 'waiting' WHERE activity_state = 'working' AND deleted_at IS NULL")
 	return err
 }
-
 
 func (s *Store) DeleteSession(id string) error {
 	tx, err := s.db.Begin()

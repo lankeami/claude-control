@@ -25,6 +25,11 @@ type Server struct {
 	skipKeychain      bool   // skip macOS keychain lookup in tests
 	usageCache        *UsageCache
 	usageCacheMu      sync.RWMutex
+	// interactiveTurns maps sessionID -> *interactiveTurnState for the turn
+	// currently in flight. The transcript callback is registered once at
+	// process spawn and outlives individual turns, so it must look up the
+	// live turn state here instead of capturing it.
+	interactiveTurns sync.Map
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string) http.Handler {
@@ -37,6 +42,7 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("POST /api/sessions/register", s.handleRegisterSession)
 	apiMux.HandleFunc("POST /api/sessions/{id}/heartbeat", s.handleHeartbeat)
 	apiMux.HandleFunc("GET /api/sessions", s.handleListSessions)
+	apiMux.HandleFunc("GET /api/sessions/{id}", s.handleGetManagedSession)
 	apiMux.HandleFunc("PUT /api/sessions/{id}/archive", s.handleSetArchived)
 	apiMux.HandleFunc("DELETE /api/sessions/{id}", s.handleDeleteSession)
 	apiMux.HandleFunc("PUT /api/sessions/{id}/name", s.handleUpdateSessionName)
@@ -74,6 +80,7 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("POST /api/sessions/{id}/shell", s.handleShellExecute)
 	apiMux.HandleFunc("POST /api/sessions/{id}/upload", s.handleUploadImage)
 	apiMux.HandleFunc("POST /api/sessions/{id}/clear", s.handleClearSession)
+	apiMux.HandleFunc("POST /api/sessions/{id}/hook-event", s.handleHookEvent)
 	apiMux.HandleFunc("POST /api/sessions/{id}/permission-request", s.handlePermissionRequest)
 	apiMux.HandleFunc("POST /api/sessions/{id}/permission-respond", s.handlePermissionRespond)
 	apiMux.HandleFunc("GET /api/sessions/{id}/pending-permission", s.handlePendingPermission)

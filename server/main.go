@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/jaychinthrajah/claude-controller/server/api"
 	"github.com/jaychinthrajah/claude-controller/server/db"
+	"github.com/jaychinthrajah/claude-controller/server/hooksignal"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
 	"github.com/jaychinthrajah/claude-controller/server/mcp"
 	"github.com/jaychinthrajah/claude-controller/server/scheduler"
@@ -44,8 +46,24 @@ func main() {
 		return
 	}
 
+	if len(os.Args) >= 2 && os.Args[1] == "hook-signal" {
+		fs := flag.NewFlagSet("hook-signal", flag.ExitOnError)
+		event := fs.String("event", "", "hook event name (session_start|stop|notification)")
+		sessionID := fs.String("session-id", "", "managed session ID")
+		hookPort := fs.Int("port", 8080, "server port")
+		keyFile := fs.String("key-file", "", "path to api.key (default ~/.claude-controller/api.key)")
+		fs.Parse(os.Args[2:])
+		// Errors are intentionally swallowed: a broken relay must never
+		// block Claude from finishing its turn.
+		if err := hooksignal.Run(*event, *sessionID, *hookPort, *keyFile, os.Stdin); err != nil {
+			log.Printf("hook-signal: %v", err)
+		}
+		return
+	}
+
 	port := flag.Int("port", 0, "port to listen on (default: 8080, auto-detect if occupied)")
 	dbPath := flag.String("db", "", "path to SQLite database (default: ~/.claude-controller/data.db)")
+	managedModeFlag := flag.String("managed-mode", "", "managed session backend: interactive or print (default: MANAGED_MODE env, then interactive)")
 	flag.Parse()
 
 	if *port == 0 {
@@ -86,11 +104,13 @@ func main() {
 	envPath, _ := filepath.Abs(".env")
 	binaryPath, _ := os.Executable()
 	managedCfg := managed.Config{
-		ClaudeBin:  envOrDefault("CLAUDE_BIN", "claude"),
-		ClaudeArgs: strings.Fields(os.Getenv("CLAUDE_ARGS")),
-		ClaudeEnv:  splitEnv(os.Getenv("CLAUDE_ENV")),
-		ServerPort: *port,
-		BinaryPath: binaryPath,
+		ClaudeBin:   envOrDefault("CLAUDE_BIN", "claude"),
+		ClaudeArgs:  strings.Fields(os.Getenv("CLAUDE_ARGS")),
+		ClaudeEnv:   splitEnv(os.Getenv("CLAUDE_ENV")),
+		ServerPort:  *port,
+		BinaryPath:  binaryPath,
+		KeyFilePath: filepath.Join(filepath.Dir(*dbPath), "api.key"),
+		Mode:        managedMode(*managedModeFlag),
 	}
 	mgr := managed.NewManager(managedCfg)
 	mgr.StartReaper()
@@ -255,6 +275,28 @@ func loadDotEnv(path string) {
 			os.Setenv(strings.TrimSpace(k), strings.TrimSpace(v))
 		}
 	}
+}
+
+// managedMode picks the managed-session backend. "interactive" (default)
+// drives a long-lived interactive Claude Code process billed against the
+// subscription; "print" is the legacy claude -p path kept for one release as
+// a rollback. Precedence: --managed-mode flag > MANAGED_MODE env (incl. .env)
+// > "interactive". Windows has no ConPTY support yet, so it always uses
+// print mode.
+func managedMode(flagValue string) string {
+	mode := flagValue
+	if mode == "" {
+		mode = envOrDefault("MANAGED_MODE", "interactive")
+	}
+	if runtime.GOOS == "windows" && mode == "interactive" {
+		log.Printf("interactive managed mode is not supported on Windows yet; falling back to print mode")
+		return "print"
+	}
+	if mode != "interactive" && mode != "print" {
+		log.Printf("unknown MANAGED_MODE %q, defaulting to interactive", mode)
+		return "interactive"
+	}
+	return mode
 }
 
 func envOrDefault(key, fallback string) string {

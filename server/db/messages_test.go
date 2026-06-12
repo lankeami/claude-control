@@ -100,3 +100,61 @@ func TestCreateMessage_WithCost(t *testing.T) {
 		t.Errorf("expected cost 0.05, got %v", msg.Cost)
 	}
 }
+
+func TestSessionCostTotal(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	sess, err := store.CreateManagedSession("/tmp/cost-project", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	total, err := store.SessionCostTotal(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 0 {
+		t.Errorf("empty session total = %f, want 0", total)
+	}
+
+	store.CreateMessage(sess.ID, "cost", "0.5", 0.5)
+	store.CreateMessage(sess.ID, "cost", "0.25", 0.25)
+	store.CreateMessage(sess.ID, "assistant", "not a cost", 99) // wrong role, excluded
+
+	total, err = store.SessionCostTotal(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 0.75 {
+		t.Errorf("total = %f, want 0.75", total)
+	}
+}
+
+func TestUpdateClaudeSessionID(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	sess, err := store.CreateManagedSession("/tmp/csid-project", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateClaudeSessionID(sess.ID, "new-cli-uuid"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetSessionByID(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ClaudeSessionID != "new-cli-uuid" {
+		t.Errorf("claude_session_id = %s, want new-cli-uuid", got.ClaudeSessionID)
+	}
+}

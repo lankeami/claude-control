@@ -2056,7 +2056,8 @@ document.addEventListener('alpine:init', () => {
               outputMsg.complete = true;
             }
             this.activeShellId = null;
-            this.stopSessionSSE();
+            // Keep SSE open — the stream is shared with chat events and a
+            // turn may still be in flight. Heartbeats keep it alive when idle.
             return;
           }
 
@@ -2123,6 +2124,26 @@ document.addEventListener('alpine:init', () => {
             return;
           }
 
+          if (data.type === 'notification') {
+            this.chatMessages.push({
+              id: 'notification-' + Date.now(),
+              role: 'system',
+              content: data.message || 'Claude sent a notification'
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+            return;
+          }
+
+          if (data.type === 'budget_exceeded') {
+            this.chatMessages.push({
+              id: 'budget-' + Date.now(),
+              role: 'system',
+              content: `Budget limit reached ($${(data.total || 0).toFixed(2)} of $${(data.budget || 0).toFixed(2)}). Session paused.`
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+            return;
+          }
+
           if (data.type === 'done' || data.type === 'result') {
             // Track cost from result events — always, including compact turns
             if (data.type === 'result' && data.cost != null) {
@@ -2144,7 +2165,10 @@ document.addEventListener('alpine:init', () => {
           if (data.type === 'done') {
             this.pendingPermission = null;
             this.finalizeAgentInvocations();
-            this.stopSessionSSE();
+            // Keep the SSE connection open: in interactive mode the Claude
+            // process outlives the turn and can produce more output (e.g.
+            // resuming after a background task completes). Server heartbeats
+            // keep the idle connection alive.
             return;
           }
 
@@ -2269,28 +2293,21 @@ document.addEventListener('alpine:init', () => {
       this.sseReconnectAttempts++;
 
       this.sseReconnectTimer = setTimeout(async () => {
-        // Check session state to decide reconnect strategy
+        if (sessionId !== this.selectedSessionId) return;
+        // Reachability probe — never give up silently on a bad response;
+        // retry with backoff until the attempt cap handles it.
         try {
           const resp = await fetch(`/api/sessions/${sessionId}`, {
             headers: { 'Authorization': `Bearer ${this.apiKey}` }
           });
-          if (!resp.ok) return;
-          const session = await resp.json();
-          if (session.activity_state !== 'working') {
-            // Session not currently working — reload messages to catch anything missed
-            await this.fetchManagedMessages(sessionId);
-            // Still reconnect SSE so we're listening if the session resumes
-            // (e.g., after compact finishes and new process starts)
-            this.startSessionSSE(sessionId);
-            return;
-          }
+          if (!resp.ok) throw new Error(`session fetch ${resp.status}`);
         } catch (e) {
-          // Server unreachable, try again later
           this.attemptSSEReconnect(sessionId);
           return;
         }
-
-        // Session still working — reconnect SSE
+        // Reload messages to catch anything broadcast while disconnected —
+        // events are not replayed on reconnect, only persisted to the DB.
+        await this.fetchManagedMessages(sessionId);
         this.startSessionSSE(sessionId);
       }, delay);
     },

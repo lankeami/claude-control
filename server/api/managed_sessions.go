@@ -107,7 +107,7 @@ func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
 			"mcpServers": map[string]interface{}{
 				"controller": map[string]interface{}{
 					"command": cfg.BinaryPath,
-					"args":   []string{"mcp-bridge", "--session-id", sess.ID, "--port", fmt.Sprintf("%d", cfg.ServerPort)},
+					"args":    []string{"mcp-bridge", "--session-id", sess.ID, "--port", fmt.Sprintf("%d", cfg.ServerPort)},
 				},
 			},
 		}
@@ -174,14 +174,24 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	// because activity_state can be stale — the cleanup goroutine updates the
 	// DB after GracefulShutdown (up to 10s), or the goroutine may have exited
 	// without updating state (panic, unexpected error path).
+	interactive := s.manager.Config().Mode == "interactive"
 	if sess.ActivityState == "working" {
-		if s.manager.IsRunning(sessionID) {
+		busy := s.manager.IsRunning(sessionID)
+		if interactive {
+			busy = s.manager.IsInteractiveRunning(sessionID)
+		}
+		if busy {
 			http.Error(w, "session is currently processing (may be auto-continuing — wait for it to finish or interrupt first)", http.StatusConflict)
 			return
 		}
 		// No process running — state is stale. Reset and proceed.
 		log.Printf("session %s: activity_state is 'working' but no process running, resetting to allow new message", sessionID)
 		_ = s.store.UpdateActivityState(sessionID, "waiting")
+	}
+
+	if interactive {
+		s.handleSendMessageInteractive(w, sess, req.Message, req.Model, req.ImageIDs)
+		return
 	}
 
 	var images []imageData
@@ -504,7 +514,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				exhaustedMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(exhaustedMsg)
 				_, _ = s.store.CreateMessage(sessionID, "system",
-				fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations), 0)
+					fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations), 0)
 				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
 				<-streamDone
 				_ = s.store.UpdateActivityState(sessionID, "waiting")
@@ -560,7 +570,20 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleInterrupt(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
-	if err := s.manager.Interrupt(sessionID); err != nil {
+	if s.manager.IsInteractiveRunning(sessionID) {
+		// ESC gracefully aborts the current turn; the process stays alive.
+		if err := s.manager.InterruptInteractive(sessionID); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		// The Stop hook may not fire for interrupted turns — nudge the
+		// orchestrator so it doesn't wait forever. Spurious signals are
+		// drained at the start of the next turn.
+		SafeGo("interrupt-fallback:"+sessionID, func() {
+			time.Sleep(escStopFallback)
+			s.manager.SignalStop(sessionID)
+		})
+	} else if err := s.manager.Interrupt(sessionID); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -610,6 +633,12 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 	// can broadcast events before the SSE subscriber is ready.
 	flusher.Flush()
 
+	// Per-connection heartbeat: the interactive backend can go silent for
+	// minutes mid-turn (long thinking, long tool runs), and the web UI treats
+	// >30s of SSE silence as a dead connection.
+	heartbeat := time.NewTicker(managed.HeartbeatInterval)
+	defer heartbeat.Stop()
+
 	for {
 		select {
 		case msg, ok := <-ch:
@@ -618,10 +647,25 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 			}
 			fmt.Fprintf(w, "data: %s\n\n", msg)
 			flusher.Flush()
+		case <-heartbeat.C:
+			fmt.Fprintf(w, "data: {\"type\":\"heartbeat\",\"ts\":%d}\n\n", time.Now().UnixMilli())
+			flusher.Flush()
 		case <-r.Context().Done():
 			return
 		}
 	}
+}
+
+// handleGetManagedSession returns a single session by ID. The web UI fetches
+// this when deciding how to recover a dropped SSE connection.
+func (s *Server) handleGetManagedSession(w http.ResponseWriter, r *http.Request) {
+	sess, err := s.store.GetSessionByID(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sess)
 }
 
 func parseRole(line string) string {
@@ -985,7 +1029,10 @@ func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a managed session", http.StatusBadRequest)
 		return
 	}
-	if sess.ActivityState == "working" {
+	// Only an active print-mode turn blocks clearing. Interactive processes
+	// are torn down below, and a "working" state with no live process is a
+	// stuck session that clear must be able to recover.
+	if sess.ActivityState == "working" && s.manager.IsRunning(sessionID) {
 		http.Error(w, "cannot clear while session is working", http.StatusConflict)
 		return
 	}

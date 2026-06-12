@@ -52,6 +52,14 @@ func (s *Store) CreateMessageWithExitCode(sessionID, role, content string, exitC
 	return &msg, nil
 }
 
+// SessionCostTotal sums the cost of all cost messages for a session,
+// including cleared ones (budget enforcement must survive /clear).
+func (s *Store) SessionCostTotal(sessionID string) (float64, error) {
+	var total float64
+	err := s.db.QueryRow(`SELECT COALESCE(SUM(cost), 0) FROM messages WHERE session_id = ? AND role = 'cost'`, sessionID).Scan(&total)
+	return total, err
+}
+
 func (s *Store) ListMessages(sessionID string) ([]Message, error) {
 	rows, err := s.db.Query(`SELECT id, session_id, seq, role, content, exit_code, created_at, cost FROM messages WHERE session_id = ? AND cleared_at IS NULL ORDER BY seq`, sessionID)
 	if err != nil {

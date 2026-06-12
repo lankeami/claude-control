@@ -32,12 +32,28 @@ type MockManager struct {
 	OnTeardown         func(sessionID string, timeout time.Duration) error
 	OnSpawnShell       func(sessionID string, opts managed.ShellOpts) (*managed.Process, error)
 	ConfigValue        managed.Config
+
+	// Interactive mode
+	interactiveRunning        map[string]bool
+	stopChans                 map[string]chan struct{}
+	TranscriptLineFns         map[string]func(string) // captured OnTranscriptLine per session
+	SetTranscriptCalls        []string
+	SentPrompts               []string
+	SentKeys                  []string
+	InterruptInteractiveCalls int
+	TouchInteractiveCalls     int
+	OnEnsureInteractive       func(sessionID string, opts managed.InteractiveOpts) (*managed.InteractiveProc, error)
+	OnSendPrompt              func(sessionID, text string) error
+	OnShutdownInteractive     func(sessionID string, timeout time.Duration) error
 }
 
 func NewMockManager() *MockManager {
 	return &MockManager{
-		broadcasters: make(map[string]*managed.Broadcaster),
-		running:      make(map[string]bool),
+		broadcasters:       make(map[string]*managed.Broadcaster),
+		running:            make(map[string]bool),
+		interactiveRunning: make(map[string]bool),
+		stopChans:          make(map[string]chan struct{}),
+		TranscriptLineFns:  make(map[string]func(string)),
 	}
 }
 
@@ -121,6 +137,136 @@ func (m *MockManager) UpdateConfig(cfg managed.Config) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.ConfigValue = cfg
+}
+
+// --- Interactive mode ---
+
+func (m *MockManager) EnsureInteractive(sessionID string, opts managed.InteractiveOpts) (*managed.InteractiveProc, error) {
+	m.mu.Lock()
+	m.interactiveRunning[sessionID] = true
+	m.TranscriptLineFns[sessionID] = opts.OnTranscriptLine
+	if _, ok := m.stopChans[sessionID]; !ok {
+		m.stopChans[sessionID] = make(chan struct{}, 4)
+	}
+	m.mu.Unlock()
+	if m.OnEnsureInteractive != nil {
+		return m.OnEnsureInteractive(sessionID, opts)
+	}
+	return &managed.InteractiveProc{Done: make(chan struct{})}, nil
+}
+
+func (m *MockManager) IsInteractiveRunning(sessionID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.interactiveRunning[sessionID]
+}
+
+func (m *MockManager) SetInteractiveRunning(sessionID string, running bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.interactiveRunning[sessionID] = running
+	if _, ok := m.stopChans[sessionID]; !ok {
+		m.stopChans[sessionID] = make(chan struct{}, 4)
+	}
+}
+
+func (m *MockManager) SendPrompt(sessionID, text string) error {
+	m.mu.Lock()
+	m.SentPrompts = append(m.SentPrompts, text)
+	m.mu.Unlock()
+	if m.OnSendPrompt != nil {
+		return m.OnSendPrompt(sessionID, text)
+	}
+	return nil
+}
+
+func (m *MockManager) SentPromptsCopy() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string{}, m.SentPrompts...)
+}
+
+func (m *MockManager) SendKeys(sessionID, seq string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.SentKeys = append(m.SentKeys, seq)
+	return nil
+}
+
+func (m *MockManager) SentKeysCopy() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string{}, m.SentKeys...)
+}
+
+func (m *MockManager) InterruptInteractive(sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.InterruptInteractiveCalls++
+	return nil
+}
+
+func (m *MockManager) InterruptInteractiveCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.InterruptInteractiveCalls
+}
+
+func (m *MockManager) TouchInteractive(sessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.TouchInteractiveCalls++
+}
+
+func (m *MockManager) TouchInteractiveCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.TouchInteractiveCalls
+}
+
+func (m *MockManager) SetTranscript(sessionID, path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.SetTranscriptCalls = append(m.SetTranscriptCalls, sessionID+":"+path)
+}
+
+func (m *MockManager) SignalStop(sessionID string) {
+	m.mu.Lock()
+	ch, ok := m.stopChans[sessionID]
+	m.mu.Unlock()
+	if !ok {
+		return
+	}
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+func (m *MockManager) StopEvents(sessionID string) <-chan struct{} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.stopChans[sessionID]
+}
+
+func (m *MockManager) ShutdownInteractive(sessionID string, timeout time.Duration) error {
+	m.mu.Lock()
+	m.interactiveRunning[sessionID] = false
+	m.mu.Unlock()
+	if m.OnShutdownInteractive != nil {
+		return m.OnShutdownInteractive(sessionID, timeout)
+	}
+	return nil
+}
+
+// EmitTranscriptLine simulates the transcript tailer delivering a line.
+func (m *MockManager) EmitTranscriptLine(sessionID, line string) {
+	m.mu.Lock()
+	fn := m.TranscriptLineFns[sessionID]
+	m.mu.Unlock()
+	if fn != nil {
+		fn(line)
+	}
 }
 
 // --- Process simulation helpers ---
