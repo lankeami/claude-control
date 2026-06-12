@@ -174,14 +174,24 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	// because activity_state can be stale — the cleanup goroutine updates the
 	// DB after GracefulShutdown (up to 10s), or the goroutine may have exited
 	// without updating state (panic, unexpected error path).
+	interactive := s.manager.Config().Mode == "interactive"
 	if sess.ActivityState == "working" {
-		if s.manager.IsRunning(sessionID) {
+		busy := s.manager.IsRunning(sessionID)
+		if interactive {
+			busy = s.manager.IsInteractiveRunning(sessionID)
+		}
+		if busy {
 			http.Error(w, "session is currently processing (may be auto-continuing — wait for it to finish or interrupt first)", http.StatusConflict)
 			return
 		}
 		// No process running — state is stale. Reset and proceed.
 		log.Printf("session %s: activity_state is 'working' but no process running, resetting to allow new message", sessionID)
 		_ = s.store.UpdateActivityState(sessionID, "waiting")
+	}
+
+	if interactive {
+		s.handleSendMessageInteractive(w, sess, req.Message, req.Model, req.ImageIDs)
+		return
 	}
 
 	var images []imageData
@@ -560,7 +570,13 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleInterrupt(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
-	if err := s.manager.Interrupt(sessionID); err != nil {
+	if s.manager.IsInteractiveRunning(sessionID) {
+		// ESC gracefully aborts the current turn; the process stays alive.
+		if err := s.manager.InterruptInteractive(sessionID); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+	} else if err := s.manager.Interrupt(sessionID); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
