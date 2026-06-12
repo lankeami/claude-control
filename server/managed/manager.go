@@ -17,6 +17,10 @@ type Config struct {
 	ServerPort         int
 	BinaryPath         string
 	IdleTimeoutMinutes int
+	// Mode selects the managed-session backend: "interactive" (long-lived
+	// interactive Claude Code under a PTY, billed via subscription) or
+	// "print" (legacy per-message claude -p, billed via API).
+	Mode string
 }
 
 type SpawnOpts struct {
@@ -39,6 +43,7 @@ type Manager struct {
 	cfg          Config
 	mu           sync.Mutex
 	procs        map[string]*Process
+	iprocs       map[string]*InteractiveProc
 	broadcasters map[string]*Broadcaster
 	mutexes      map[string]*sync.Mutex
 }
@@ -47,6 +52,7 @@ func NewManager(cfg Config) *Manager {
 	return &Manager{
 		cfg:          cfg,
 		procs:        make(map[string]*Process),
+		iprocs:       make(map[string]*InteractiveProc),
 		broadcasters: make(map[string]*Broadcaster),
 		mutexes:      make(map[string]*sync.Mutex),
 	}
@@ -194,10 +200,16 @@ func (m *Manager) Interrupt(sessionID string) error {
 func (m *Manager) ReapIdle(maxIdle time.Duration) {
 	m.mu.Lock()
 	var toReap []string
+	var toReapInteractive []string
 	now := time.Now()
 	for id, proc := range m.procs {
 		if now.Sub(proc.LastActivity) > maxIdle {
 			toReap = append(toReap, id)
+		}
+	}
+	for id, proc := range m.iprocs {
+		if now.Sub(proc.LastActivity) > maxIdle {
+			toReapInteractive = append(toReapInteractive, id)
 		}
 	}
 	m.mu.Unlock()
@@ -210,6 +222,11 @@ func (m *Manager) ReapIdle(maxIdle time.Duration) {
 			log.Printf("reaping idle process for session %s", id)
 			proc.Stdin.Close()
 		}
+	}
+
+	for _, id := range toReapInteractive {
+		log.Printf("reaping idle interactive process for session %s", id)
+		m.ShutdownInteractive(id, 10*time.Second)
 	}
 }
 
@@ -305,6 +322,11 @@ func (m *Manager) SpawnShell(sessionID string, opts ShellOpts) (*Process, error)
 }
 
 func (m *Manager) Teardown(sessionID string, timeout time.Duration) error {
+	if m.IsInteractiveRunning(sessionID) {
+		if err := m.ShutdownInteractive(sessionID, timeout); err != nil {
+			return err
+		}
+	}
 	if !m.IsRunning(sessionID) {
 		return nil
 	}
@@ -388,11 +410,19 @@ func (m *Manager) ShutdownAll(timeout time.Duration) {
 	for id := range m.procs {
 		ids = append(ids, id)
 	}
+	iids := make([]string, 0, len(m.iprocs))
+	for id := range m.iprocs {
+		iids = append(iids, id)
+	}
 	m.mu.Unlock()
 
 	for _, id := range ids {
 		log.Printf("shutting down process for session %s", id)
 		m.GracefulShutdown(id, timeout)
+	}
+	for _, id := range iids {
+		log.Printf("shutting down interactive process for session %s", id)
+		m.ShutdownInteractive(id, timeout)
 	}
 }
 
