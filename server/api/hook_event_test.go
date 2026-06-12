@@ -136,3 +136,28 @@ func TestHookEventUnknownEventReturns400(t *testing.T) {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
 }
+
+func TestHookEventSessionStartSetsInitialized(t *testing.T) {
+	ts, store, _ := setupMockTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/hook-init", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Initialized {
+		t.Fatal("precondition: new session must not be initialized")
+	}
+
+	resp, err := postHookEvent(ts, sess.ID, `{"event":"session_start","claude_session_id":"cid-1","transcript_path":"/tmp/t.jsonl"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	updated, _ := store.GetSessionByID(sess.ID)
+	if !updated.Initialized {
+		t.Fatal("session_start must mark the session initialized (CLI session now exists; next spawn must --resume)")
+	}
+}

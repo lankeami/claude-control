@@ -42,6 +42,7 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("POST /api/sessions/register", s.handleRegisterSession)
 	apiMux.HandleFunc("POST /api/sessions/{id}/heartbeat", s.handleHeartbeat)
 	apiMux.HandleFunc("GET /api/sessions", s.handleListSessions)
+	apiMux.HandleFunc("GET /api/sessions/{id}", s.handleGetManagedSession)
 	apiMux.HandleFunc("PUT /api/sessions/{id}/archive", s.handleSetArchived)
 	apiMux.HandleFunc("DELETE /api/sessions/{id}", s.handleDeleteSession)
 	apiMux.HandleFunc("PUT /api/sessions/{id}/name", s.handleUpdateSessionName)

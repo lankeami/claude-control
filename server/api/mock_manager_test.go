@@ -41,6 +41,7 @@ type MockManager struct {
 	SentPrompts               []string
 	SentKeys                  []string
 	InterruptInteractiveCalls int
+	TouchInteractiveCalls     int
 	OnEnsureInteractive       func(sessionID string, opts managed.InteractiveOpts) (*managed.InteractiveProc, error)
 	OnSendPrompt              func(sessionID, text string) error
 	OnShutdownInteractive     func(sessionID string, timeout time.Duration) error
@@ -192,6 +193,12 @@ func (m *MockManager) SendKeys(sessionID, seq string) error {
 	return nil
 }
 
+func (m *MockManager) SentKeysCopy() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string{}, m.SentKeys...)
+}
+
 func (m *MockManager) InterruptInteractive(sessionID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -203,6 +210,18 @@ func (m *MockManager) InterruptInteractiveCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.InterruptInteractiveCalls
+}
+
+func (m *MockManager) TouchInteractive(sessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.TouchInteractiveCalls++
+}
+
+func (m *MockManager) TouchInteractiveCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.TouchInteractiveCalls
 }
 
 func (m *MockManager) SetTranscript(sessionID, path string) {

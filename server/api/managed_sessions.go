@@ -633,6 +633,12 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 	// can broadcast events before the SSE subscriber is ready.
 	flusher.Flush()
 
+	// Per-connection heartbeat: the interactive backend can go silent for
+	// minutes mid-turn (long thinking, long tool runs), and the web UI treats
+	// >30s of SSE silence as a dead connection.
+	heartbeat := time.NewTicker(managed.HeartbeatInterval)
+	defer heartbeat.Stop()
+
 	for {
 		select {
 		case msg, ok := <-ch:
@@ -641,10 +647,25 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 			}
 			fmt.Fprintf(w, "data: %s\n\n", msg)
 			flusher.Flush()
+		case <-heartbeat.C:
+			fmt.Fprintf(w, "data: {\"type\":\"heartbeat\",\"ts\":%d}\n\n", time.Now().UnixMilli())
+			flusher.Flush()
 		case <-r.Context().Done():
 			return
 		}
 	}
+}
+
+// handleGetManagedSession returns a single session by ID. The web UI fetches
+// this when deciding how to recover a dropped SSE connection.
+func (s *Server) handleGetManagedSession(w http.ResponseWriter, r *http.Request) {
+	sess, err := s.store.GetSessionByID(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sess)
 }
 
 func parseRole(line string) string {
@@ -1008,7 +1029,10 @@ func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not a managed session", http.StatusBadRequest)
 		return
 	}
-	if sess.ActivityState == "working" {
+	// Only an active print-mode turn blocks clearing. Interactive processes
+	// are torn down below, and a "working" state with no live process is a
+	// stuck session that clear must be able to recover.
+	if sess.ActivityState == "working" && s.manager.IsRunning(sessionID) {
 		http.Error(w, "cannot clear while session is working", http.StatusConflict)
 		return
 	}

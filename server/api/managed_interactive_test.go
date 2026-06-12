@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +39,34 @@ func waitForTranscriptFn(t *testing.T, mock *MockManager, sessionID string) {
 
 func assistantTranscriptLine(text string, in, out int) string {
 	return fmt.Sprintf(`{"type":"assistant","timestamp":"2026-06-12T00:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":%q}],"usage":{"input_tokens":%d,"output_tokens":%d}}}`, text, in, out)
+}
+
+func TestInteractiveTurnTouchesActivityWhileWaiting(t *testing.T) {
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-touch", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := sendMessage(ts, sess.ID, "long task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// While the turn is in flight (no Stop hook yet), the orchestrator must
+	// periodically touch the interactive process so the idle reaper doesn't
+	// kill it mid-turn.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if mock.TouchInteractiveCount() > 0 {
+			mock.SignalStop(sess.ID)
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	mock.SignalStop(sess.ID)
+	t.Fatal("TouchInteractive never called during in-flight turn")
 }
 
 func TestInteractiveTurnCompletesOnStopHook(t *testing.T) {
@@ -221,6 +251,93 @@ func TestInteractiveBudgetExceededStopsSession(t *testing.T) {
 	pollActivityState(t, store, sess.ID, "waiting", 2*time.Second)
 }
 
+func userEchoTranscriptLine(text string) string {
+	return fmt.Sprintf(`{"type":"user","timestamp":"2026-06-12T00:00:01Z","message":{"role":"user","content":%q}}`, text)
+}
+
+func TestInteractivePromptRetriesEnterWhenNotEchoed(t *testing.T) {
+	old := promptEchoTimeout
+	promptEchoTimeout = 100 * time.Millisecond
+	defer func() { promptEchoTimeout = old }()
+
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-echo-retry", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := sendMessage(ts, sess.ID, "do something")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// No user-echo transcript entry ever arrives — the orchestrator must
+	// re-send Enter (the prompt text is already in the input box).
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(mock.SentKeysCopy()) < 2 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	keys := mock.SentKeysCopy()
+	if len(keys) < 2 {
+		t.Fatalf("expected at least 2 Enter retries, got keys %q", keys)
+	}
+	for _, k := range keys {
+		if k != "\r" {
+			t.Fatalf("unexpected key %q (want \\r)", k)
+		}
+	}
+
+	// After retries are exhausted, a visible warning must be persisted.
+	deadline = time.Now().Add(2 * time.Second)
+	var warned bool
+	for time.Now().Before(deadline) && !warned {
+		msgs, _ := store.ListMessages(sess.ID)
+		for _, m := range msgs {
+			if m.Role == "system" && strings.Contains(m.Content, "not confirmed") {
+				warned = true
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !warned {
+		t.Error("no system warning persisted after Enter retries exhausted")
+	}
+
+	mock.SignalStop(sess.ID)
+	pollActivityState(t, store, sess.ID, "waiting", 2*time.Second)
+}
+
+func TestInteractiveNoEnterRetryWhenPromptEchoed(t *testing.T) {
+	old := promptEchoTimeout
+	promptEchoTimeout = 150 * time.Millisecond
+	defer func() { promptEchoTimeout = old }()
+
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-echo-ok", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := sendMessage(ts, sess.ID, "do something")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// The prompt echo arrives promptly — no Enter retries expected.
+	mock.EmitTranscriptLine(sess.ID, userEchoTranscriptLine("do something"))
+	time.Sleep(500 * time.Millisecond)
+	if keys := mock.SentKeysCopy(); len(keys) != 0 {
+		t.Fatalf("unexpected Enter retries after prompt echo: %q", keys)
+	}
+
+	mock.SignalStop(sess.ID)
+	pollActivityState(t, store, sess.ID, "waiting", 2*time.Second)
+}
+
 func TestInterruptRoutesToInteractive(t *testing.T) {
 	ts, store, mock := setupInteractiveTestServer(t)
 	sess, err := store.CreateManagedSession("/tmp/int-interrupt", `["Bash"]`, 50, 5.0, 0)
@@ -260,5 +377,66 @@ func TestInteractiveBusySessionReturns409(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestInteractiveSessionIDConflictRotatesAndRetries(t *testing.T) {
+	dir := t.TempDir()
+	store, err := db.Open(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	// Fake claude that always dies with the session-ID conflict error, logging
+	// each spawn so the retry is observable.
+	spawnLog := filepath.Join(dir, "spawns.log")
+	script := filepath.Join(dir, "fake-claude.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/bash\necho run >> "+spawnLog+"\necho 'Error: Session ID stale-claude-id is already in use.'\nexit 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := managed.Config{ClaudeBin: "/bin/bash", ClaudeArgs: []string{script}, Mode: "interactive", BinaryPath: "/usr/local/bin/claude-controller", ServerPort: 8080}
+	mgr := managed.NewManager(cfg)
+	router := NewRouter(store, "test-api-key", mgr, filepath.Join(dir, ".env"), nil, "test-server-id")
+	ts := httptest.NewServer(router)
+	t.Cleanup(ts.Close)
+
+	sess, err := store.CreateManagedSession(dir, `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateClaudeSessionID(sess.ID, "stale-claude-id"); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := sendMessage(ts, sess.ID, "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	pollActivityState(t, store, sess.ID, "idle", 8*time.Second)
+
+	data, _ := os.ReadFile(spawnLog)
+	if n := strings.Count(string(data), "run"); n != 2 {
+		t.Fatalf("spawn count = %d, want 2 (rotate + one retry)", n)
+	}
+	updated, _ := store.GetSessionByID(sess.ID)
+	if updated.ClaudeSessionID == "stale-claude-id" {
+		t.Fatal("claude_session_id was not rotated after conflict")
+	}
+	msgs, _ := store.ListMessages(sess.ID)
+	var sawConflictMsg bool
+	for _, m := range msgs {
+		if m.Role == "system" && strings.Contains(strings.ToLower(m.Content), "conflict") {
+			sawConflictMsg = true
+		}
+	}
+	if !sawConflictMsg {
+		t.Error("no system message explaining the session-ID conflict")
 	}
 }

@@ -29,6 +29,7 @@ type SessionManager interface {
 	InterruptInteractive(sessionID string) error
 	SetTranscript(sessionID, path string)
 	SignalStop(sessionID string)
+	TouchInteractive(sessionID string)
 	StopEvents(sessionID string) <-chan struct{}
 	ShutdownInteractive(sessionID string, timeout time.Duration) error
 }

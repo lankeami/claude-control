@@ -142,6 +142,18 @@ func (s *Store) SetInitialized(id string) error {
 	return err
 }
 
+// RotateClaudeSessionID assigns a fresh CLI session ID and clears the
+// initialized flag so the next spawn starts a brand-new Claude session.
+// Used to recover from "session ID already in use" / unresumable sessions.
+func (s *Store) RotateClaudeSessionID(id string) (string, error) {
+	newID := uuid.New().String()
+	_, err := s.db.Exec(`UPDATE sessions SET claude_session_id = ?, initialized = 0 WHERE id = ?`, newID, id)
+	if err != nil {
+		return "", fmt.Errorf("rotate claude_session_id: %w", err)
+	}
+	return newID, nil
+}
+
 func (s *Store) ResumeSession(id, claudeSessionID string) error {
 	tx, err := s.db.Begin()
 	if err != nil {

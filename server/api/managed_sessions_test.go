@@ -116,6 +116,80 @@ func TestListMessagesAPI(t *testing.T) {
 	}
 }
 
+func TestSessionStreamHeartbeat(t *testing.T) {
+	oldInterval := managed.HeartbeatInterval
+	managed.HeartbeatInterval = 50 * time.Millisecond
+	defer func() { managed.HeartbeatInterval = oldInterval }()
+
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp/hb-test", `["Read"]`, 50, 5.0, 0)
+
+	// No process running, nothing broadcast — the stream itself must still
+	// emit heartbeats so clients can tell the connection is alive.
+	resp, err := http.Get(ts.URL + "/api/sessions/" + sess.ID + "/stream?token=test-api-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	lines := make(chan string, 16)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+		close(lines)
+	}()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				t.Fatal("stream closed without a heartbeat")
+			}
+			if strings.Contains(line, `"heartbeat"`) {
+				return // got one
+			}
+		case <-deadline:
+			t.Fatal("no heartbeat within 2s on an idle session stream")
+		}
+	}
+}
+
+func TestGetManagedSessionAPI(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp/get-test", `["Read"]`, 50, 5.0, 0)
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID, nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+
+	var got map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&got)
+	if got["id"] != sess.ID {
+		t.Errorf("id=%v, want %s", got["id"], sess.ID)
+	}
+	if _, ok := got["activity_state"]; !ok {
+		t.Error("response missing activity_state field")
+	}
+}
+
 func TestShellExecuteAPI(t *testing.T) {
 	ts, store := setupTestServer(t)
 	defer ts.Close()
@@ -419,7 +493,9 @@ func TestClearSessionAPI(t *testing.T) {
 	}
 }
 
-func TestClearSessionAPI_RejectsWorking(t *testing.T) {
+func TestClearSessionAPI_AllowsStuckWorkingSession(t *testing.T) {
+	// A session can wedge in "working" with no live process (e.g. a lost
+	// prompt). /clear must recover it, not 409.
 	ts, store := setupTestServer(t)
 	defer ts.Close()
 	defer store.Close()
@@ -436,8 +512,61 @@ func TestClearSessionAPI_RejectsWorking(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200 for stuck working session", resp.StatusCode)
+	}
+	updated, _ := store.GetSessionByID(sess.ID)
+	if updated.ActivityState != "idle" {
+		t.Fatalf("activity_state=%q, want idle after clear", updated.ActivityState)
+	}
+}
+
+func TestClearSessionAPI_TearsDownWorkingInteractiveSession(t *testing.T) {
+	ts, store, mock := setupInteractiveTestServer(t)
+
+	sess, _ := store.CreateManagedSession("/tmp/test-clear-int-working", `["Read"]`, 50, 5.0, 0)
+	mock.SetInteractiveRunning(sess.ID, true)
+	store.UpdateActivityState(sess.ID, "working")
+
+	var tornDown bool
+	mock.OnTeardown = func(sessionID string, timeout time.Duration) error {
+		tornDown = true
+		return nil
+	}
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/clear", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200 (clear must stop the interactive process and proceed)", resp.StatusCode)
+	}
+	if !tornDown {
+		t.Fatal("interactive process was not torn down before clearing")
+	}
+}
+
+func TestClearSessionAPI_StillRejectsRunningPrintTurn(t *testing.T) {
+	ts, store, mock := setupMockTestServer(t)
+
+	sess, _ := store.CreateManagedSession("/tmp/test-clear-print-working", `["Read"]`, 50, 5.0, 0)
+	mock.SetRunning(sess.ID, true) // print-mode one-shot process mid-turn
+	store.UpdateActivityState(sess.ID, "working")
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/clear", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != 409 {
-		t.Fatalf("status=%d, want 409 for working session", resp.StatusCode)
+		t.Fatalf("status=%d, want 409 while a print-mode turn is running", resp.StatusCode)
 	}
 }
 

@@ -16,6 +16,9 @@ type Config struct {
 	ClaudeEnv          []string
 	ServerPort         int
 	BinaryPath         string
+	// KeyFilePath is the api.key location hook-signal subprocesses must read
+	// (follows the --db directory rather than the default home location).
+	KeyFilePath string
 	IdleTimeoutMinutes int
 	// Mode selects the managed-session backend: "interactive" (long-lived
 	// interactive Claude Code under a PTY, billed via subscription) or

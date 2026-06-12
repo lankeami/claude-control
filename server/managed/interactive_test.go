@@ -48,7 +48,156 @@ func TestEnsureInteractiveSpawnsOnce(t *testing.T) {
 	}
 }
 
+// fastReady shortens readiness tuning so tests with silent fake binaries
+// (cat) don't block on the ready gate.
+func fastReady(t *testing.T) {
+	t.Helper()
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 30 * time.Millisecond
+	interactiveReadyTimeout = 100 * time.Millisecond
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+}
+
+func writeScript(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fake-claude.sh")
+	if err := os.WriteFile(path, []byte("#!/bin/bash\n"+body), 0755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestSendPromptWaitsForBootQuiescence(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 250 * time.Millisecond
+	interactiveReadyTimeout = 5 * time.Second
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+
+	// Fake TUI: streams boot output for ~800ms, then goes quiet and echoes stdin.
+	script := writeScript(t, `for i in $(seq 1 8); do echo "boot $i"; sleep 0.1; done
+exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("rq1", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("rq1", time.Second)
+
+	start := time.Now()
+	if err := m.SendPrompt("rq1", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(start)
+	if elapsed < 850*time.Millisecond {
+		t.Fatalf("SendPrompt returned after %v; expected it to wait for boot output to go quiet (~1s)", elapsed)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		return strings.Contains(proc.LastOutput(), "\x1b[200~hello\x1b[201~")
+	})
+}
+
+func TestSendPromptAutoAcceptsTrustDialog(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 150 * time.Millisecond
+	interactiveReadyTimeout = 5 * time.Second
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+
+	// Fake trust dialog with ANSI styling interleaved mid-phrase, waiting for
+	// Enter before showing the input screen.
+	script := writeScript(t, `printf 'Is this a project you created or one you \x1b[1mtrust\x1b[0m?\n'
+printf '> 1. Yes, I \x1b[32mtrust this folder\x1b[0m\n  2. No, exit\n'
+read -r _
+echo "TRUSTED"
+exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("rq2", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("rq2", time.Second)
+
+	if err := m.SendPrompt("rq2", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	out := proc.LastOutput()
+	if !strings.Contains(out, "TRUSTED") {
+		t.Fatalf("trust dialog was not auto-accepted; output: %q", out)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		out := proc.LastOutput()
+		return strings.Index(out, "TRUSTED") < strings.Index(out, "\x1b[200~hello\x1b[201~")
+	})
+}
+
+func TestSendPromptProceedsAfterReadyTimeout(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 100 * time.Millisecond
+	interactiveReadyTimeout = 300 * time.Millisecond
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+
+	// Fake TUI that never goes quiet: readiness must give up at the timeout
+	// rather than block forever.
+	script := writeScript(t, `while true; do echo busy; sleep 0.05; done`)
+	m := newTestManager("/bin/bash", script)
+	if _, err := m.EnsureInteractive("rq3", InteractiveOpts{CWD: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("rq3", time.Second)
+
+	start := time.Now()
+	if err := m.SendPrompt("rq3", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("SendPrompt blocked %v; expected it to proceed at the ready timeout", elapsed)
+	}
+}
+
+func TestSendPromptReadyGateIsStickyPerProcess(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 300 * time.Millisecond
+	interactiveReadyTimeout = 5 * time.Second
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+
+	script := writeScript(t, `echo ready
+exec cat`)
+	m := newTestManager("/bin/bash", script)
+	if _, err := m.EnsureInteractive("rq4", InteractiveOpts{CWD: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("rq4", time.Second)
+
+	if err := m.SendPrompt("rq4", "first"); err != nil {
+		t.Fatal(err)
+	}
+	// Second prompt must not pay the quiescence wait again (echo of the first
+	// prompt counts as fresh output, so a non-sticky gate would re-block).
+	start := time.Now()
+	if err := m.SendPrompt("rq4", "second"); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("second SendPrompt waited %v; readiness must be sticky", elapsed)
+	}
+}
+
 func TestSendPromptWritesBracketedPaste(t *testing.T) {
+	fastReady(t)
 	m := newTestManager("cat")
 	proc, err := m.EnsureInteractive("s2", InteractiveOpts{CWD: t.TempDir()})
 	if err != nil {
@@ -101,6 +250,34 @@ func TestSignalStopDelivers(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("stop signal not delivered")
 	}
+}
+
+func TestTouchInteractiveUpdatesLastActivity(t *testing.T) {
+	m := newTestManager("cat")
+	_, err := m.EnsureInteractive("s-touch", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("s-touch", time.Second)
+
+	old := time.Now().Add(-time.Hour)
+	m.mu.Lock()
+	m.iprocs["s-touch"].LastActivity = old
+	m.mu.Unlock()
+
+	m.TouchInteractive("s-touch")
+
+	m.mu.Lock()
+	got := m.iprocs["s-touch"].LastActivity
+	m.mu.Unlock()
+	if !got.After(old) {
+		t.Fatalf("LastActivity not updated: %v", got)
+	}
+}
+
+func TestTouchInteractiveNoProcessIsNoop(t *testing.T) {
+	m := newTestManager("cat")
+	m.TouchInteractive("nope") // must not panic
 }
 
 func TestSignalStopNoProcessIsNoop(t *testing.T) {

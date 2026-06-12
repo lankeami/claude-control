@@ -22,7 +22,7 @@ type settingsFile struct {
 
 func TestWriteSessionSettings(t *testing.T) {
 	dir := t.TempDir()
-	path, err := WriteSessionSettings(dir, "/usr/local/bin/claude controller", "sess-1", 8080, `["Bash","Read"]`)
+	path, err := WriteSessionSettings(dir, "/usr/local/bin/claude controller", "sess-1", 8080, `["Bash","Read"]`, "/home/u/.claude controller/api.key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,6 +50,11 @@ func TestWriteSessionSettings(t *testing.T) {
 		if !strings.Contains(cmd, "hook-signal") || !strings.Contains(cmd, "--session-id sess-1") || !strings.Contains(cmd, "--port 8080") {
 			t.Errorf("%s hook command malformed: %s", event, cmd)
 		}
+		// hook-signal must read the same api.key the server generated, even
+		// when the server runs with a non-default --db directory.
+		if !strings.Contains(cmd, `--key-file "/home/u/.claude controller/api.key"`) {
+			t.Errorf("%s hook command missing quoted --key-file: %s", event, cmd)
+		}
 		if matchers[0].Hooks[0].Type != "command" {
 			t.Errorf("%s hook type = %s", event, matchers[0].Hooks[0].Type)
 		}
@@ -68,7 +73,7 @@ func TestWriteSessionSettings(t *testing.T) {
 
 func TestWriteSessionSettingsNoTools(t *testing.T) {
 	dir := t.TempDir()
-	path, err := WriteSessionSettings(dir, "/bin/cc", "sess-2", 9090, "")
+	path, err := WriteSessionSettings(dir, "/bin/cc", "sess-2", 9090, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +82,9 @@ func TestWriteSessionSettingsNoTools(t *testing.T) {
 	json.Unmarshal(data, &raw)
 	if _, ok := raw["permissions"]; ok {
 		t.Errorf("permissions should be omitted when no tools: %s", data)
+	}
+	if strings.Contains(string(data), "--key-file") {
+		t.Errorf("--key-file should be omitted when no key path is configured: %s", data)
 	}
 }
 

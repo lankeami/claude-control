@@ -8,8 +8,11 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 var ErrInteractiveUnsupported = errors.New("interactive managed mode is not supported on this platform; set MANAGED_MODE=print")
@@ -34,14 +37,27 @@ type InteractiveProc struct {
 
 	opts InteractiveOpts
 
-	mu          sync.Mutex
-	tailStarted bool
-	tailCancel  context.CancelFunc
-	stopCh      chan struct{}
-	lastOutput  []byte
+	mu            sync.Mutex
+	tailStarted   bool
+	tailCancel    context.CancelFunc
+	stopCh        chan struct{}
+	lastOutput    []byte
+	outTotal      int64
+	lastOutputAt  time.Time
+	readyDone     bool
+	trustAnswered bool
 }
 
 const ptyRingSize = 8 * 1024
+
+// Readiness tuning for the first prompt after spawn. The TUI takes a few
+// seconds to boot; typing into it earlier loses the prompt. Variables so
+// tests can shorten them.
+var (
+	interactiveReadyQuiescence = 600 * time.Millisecond
+	interactiveReadyTimeout    = 15 * time.Second
+	interactiveReadyPoll       = 25 * time.Millisecond
+)
 
 // LastOutput returns the most recent raw PTY output (up to 8KB), useful for
 // error reporting when the process dies unexpectedly.
@@ -58,6 +74,78 @@ func (p *InteractiveProc) appendOutput(data []byte) {
 	if len(p.lastOutput) > ptyRingSize {
 		p.lastOutput = p.lastOutput[len(p.lastOutput)-ptyRingSize:]
 	}
+	p.outTotal += int64(len(data))
+	p.lastOutputAt = time.Now()
+}
+
+var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;?>]*[a-zA-Z]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[()][0-9A-Z]|\x1b.`)
+
+// compactTerminalText strips ANSI escape sequences and all whitespace so
+// dialog text can be matched even when the TUI interleaves styling or cursor
+// movement mid-phrase.
+func compactTerminalText(s string) string {
+	s = ansiSeq.ReplaceAllString(s, "")
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func containsTrustDialog(out string) bool {
+	c := compactTerminalText(out)
+	return strings.Contains(c, "trustthisfolder") || strings.Contains(c, "Doyoutrustthefiles")
+}
+
+// waitReady blocks until the TUI looks ready for input: the process has
+// produced output and then gone quiet. Auto-accepts the folder trust dialog
+// (option 1 is preselected, Enter confirms). Gives up at
+// interactiveReadyTimeout and proceeds best-effort. Sticky per process —
+// only the first prompt after spawn pays this wait.
+func (p *InteractiveProc) waitReady(sessionID string) {
+	p.mu.Lock()
+	if p.readyDone {
+		p.mu.Unlock()
+		return
+	}
+	p.mu.Unlock()
+
+	deadline := time.Now().Add(interactiveReadyTimeout)
+	for {
+		select {
+		case <-p.Done:
+			return
+		default:
+		}
+
+		p.mu.Lock()
+		total, last := p.outTotal, p.lastOutputAt
+		ring := string(p.lastOutput)
+		answered := p.trustAnswered
+		p.mu.Unlock()
+
+		if !answered && containsTrustDialog(ring) {
+			log.Printf("session %s: trust dialog detected, auto-accepting", sessionID)
+			p.PTY.Write([]byte("\r"))
+			p.mu.Lock()
+			p.trustAnswered = true
+			p.mu.Unlock()
+			time.Sleep(interactiveReadyPoll)
+			continue
+		}
+		if total > 0 && time.Since(last) >= interactiveReadyQuiescence {
+			break
+		}
+		if time.Now().After(deadline) {
+			log.Printf("session %s: TUI not quiescent after %s, sending prompt anyway", sessionID, interactiveReadyTimeout)
+			break
+		}
+		time.Sleep(interactiveReadyPoll)
+	}
+	p.mu.Lock()
+	p.readyDone = true
+	p.mu.Unlock()
 }
 
 // EnsureInteractive returns the session's running interactive process, or
@@ -138,6 +226,16 @@ func (m *Manager) EnsureInteractive(sessionID string, opts InteractiveOpts) (*In
 	return proc, nil
 }
 
+// TouchInteractive marks the session's interactive process as recently active
+// so the idle reaper doesn't kill it while a turn is in flight.
+func (m *Manager) TouchInteractive(sessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if proc, ok := m.iprocs[sessionID]; ok {
+		proc.LastActivity = time.Now()
+	}
+}
+
 func (m *Manager) getInteractive(sessionID string) *InteractiveProc {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -157,6 +255,7 @@ func (m *Manager) SendPrompt(sessionID, text string) error {
 		return fmt.Errorf("no interactive process for session %s", sessionID)
 	}
 	proc.LastActivity = time.Now()
+	proc.waitReady(sessionID)
 	if _, err := proc.PTY.Write([]byte("\x1b[200~" + text + "\x1b[201~")); err != nil {
 		return err
 	}

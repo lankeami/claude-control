@@ -43,6 +43,11 @@ func (s *Server) handleHookEvent(w http.ResponseWriter, r *http.Request) {
 		if req.ClaudeSessionID != "" && req.ClaudeSessionID != sess.ClaudeSessionID {
 			_ = s.store.UpdateClaudeSessionID(sessionID, req.ClaudeSessionID)
 		}
+		// The CLI session is registered from this point — a future spawn must
+		// --resume it; reusing --session-id would fail with "already in use".
+		if !sess.Initialized {
+			_ = s.store.SetInitialized(sessionID)
+		}
 		if req.TranscriptPath != "" {
 			s.manager.SetTranscript(sessionID, req.TranscriptPath)
 		}

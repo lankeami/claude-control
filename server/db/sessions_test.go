@@ -438,3 +438,36 @@ func TestGetManagedSessionNamesByCliIDs(t *testing.T) {
 		}
 	})
 }
+
+func TestRotateClaudeSessionID(t *testing.T) {
+	store := newTestStore(t)
+	sess, err := store.CreateManagedSession("/tmp/rotate", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateClaudeSessionID(sess.ID, "old-claude-id"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetInitialized(sess.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	newID, err := store.RotateClaudeSessionID(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newID == "" || newID == "old-claude-id" {
+		t.Fatalf("newID = %q, want fresh UUID", newID)
+	}
+
+	updated, err := store.GetSessionByID(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ClaudeSessionID != newID {
+		t.Fatalf("claude_session_id = %q, want %q", updated.ClaudeSessionID, newID)
+	}
+	if updated.Initialized {
+		t.Fatal("initialized should be reset by rotation")
+	}
+}

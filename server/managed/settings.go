@@ -20,12 +20,15 @@ type hookMatcher struct {
 // interactive session: turn-lifecycle hooks pointing back at the controller
 // server, plus permission allow rules mapped from the session's allowed tools
 // (parity with the legacy --allowedTools flag).
-func WriteSessionSettings(dir, binaryPath, sessionID string, port int, allowedToolsJSON string) (string, error) {
+func WriteSessionSettings(dir, binaryPath, sessionID string, port int, allowedToolsJSON, keyFilePath string) (string, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
 	mk := func(event string) []hookMatcher {
 		cmd := fmt.Sprintf("%q hook-signal --event %s --session-id %s --port %d", binaryPath, event, sessionID, port)
+		if keyFilePath != "" {
+			cmd += fmt.Sprintf(" --key-file %q", keyFilePath)
+		}
 		return []hookMatcher{{Hooks: []hookCmd{{Type: "command", Command: cmd}}}}
 	}
 	settings := map[string]any{

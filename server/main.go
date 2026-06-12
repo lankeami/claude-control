@@ -104,12 +104,13 @@ func main() {
 	envPath, _ := filepath.Abs(".env")
 	binaryPath, _ := os.Executable()
 	managedCfg := managed.Config{
-		ClaudeBin:  envOrDefault("CLAUDE_BIN", "claude"),
-		ClaudeArgs: strings.Fields(os.Getenv("CLAUDE_ARGS")),
-		ClaudeEnv:  splitEnv(os.Getenv("CLAUDE_ENV")),
-		ServerPort: *port,
-		BinaryPath: binaryPath,
-		Mode:       managedMode(*managedModeFlag),
+		ClaudeBin:   envOrDefault("CLAUDE_BIN", "claude"),
+		ClaudeArgs:  strings.Fields(os.Getenv("CLAUDE_ARGS")),
+		ClaudeEnv:   splitEnv(os.Getenv("CLAUDE_ENV")),
+		ServerPort:  *port,
+		BinaryPath:  binaryPath,
+		KeyFilePath: filepath.Join(filepath.Dir(*dbPath), "api.key"),
+		Mode:        managedMode(*managedModeFlag),
 	}
 	mgr := managed.NewManager(managedCfg)
 	mgr.StartReaper()
