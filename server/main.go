@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -107,6 +108,7 @@ func main() {
 		ClaudeEnv:  splitEnv(os.Getenv("CLAUDE_ENV")),
 		ServerPort: *port,
 		BinaryPath: binaryPath,
+		Mode:       managedMode(),
 	}
 	mgr := managed.NewManager(managedCfg)
 	mgr.StartReaper()
@@ -271,6 +273,24 @@ func loadDotEnv(path string) {
 			os.Setenv(strings.TrimSpace(k), strings.TrimSpace(v))
 		}
 	}
+}
+
+// managedMode picks the managed-session backend. "interactive" (default)
+// drives a long-lived interactive Claude Code process billed against the
+// subscription; "print" is the legacy claude -p path kept for one release as
+// a rollback (set MANAGED_MODE=print). Windows has no ConPTY support yet, so
+// it always uses print mode.
+func managedMode() string {
+	mode := envOrDefault("MANAGED_MODE", "interactive")
+	if runtime.GOOS == "windows" && mode == "interactive" {
+		log.Printf("interactive managed mode is not supported on Windows yet; falling back to print mode")
+		return "print"
+	}
+	if mode != "interactive" && mode != "print" {
+		log.Printf("unknown MANAGED_MODE %q, defaulting to interactive", mode)
+		return "interactive"
+	}
+	return mode
 }
 
 func envOrDefault(key, fallback string) string {
