@@ -23,6 +23,7 @@ import (
 
 	"github.com/jaychinthrajah/claude-controller/server/api"
 	"github.com/jaychinthrajah/claude-controller/server/db"
+	"github.com/jaychinthrajah/claude-controller/server/hooksignal"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
 	"github.com/jaychinthrajah/claude-controller/server/mcp"
 	"github.com/jaychinthrajah/claude-controller/server/scheduler"
@@ -40,6 +41,21 @@ func main() {
 		}
 		if err := mcp.Run(*sessionID, *port); err != nil {
 			log.Fatalf("mcp-bridge error: %v", err)
+		}
+		return
+	}
+
+	if len(os.Args) >= 2 && os.Args[1] == "hook-signal" {
+		fs := flag.NewFlagSet("hook-signal", flag.ExitOnError)
+		event := fs.String("event", "", "hook event name (session_start|stop|notification)")
+		sessionID := fs.String("session-id", "", "managed session ID")
+		hookPort := fs.Int("port", 8080, "server port")
+		keyFile := fs.String("key-file", "", "path to api.key (default ~/.claude-controller/api.key)")
+		fs.Parse(os.Args[2:])
+		// Errors are intentionally swallowed: a broken relay must never
+		// block Claude from finishing its turn.
+		if err := hooksignal.Run(*event, *sessionID, *hookPort, *keyFile, os.Stdin); err != nil {
+			log.Printf("hook-signal: %v", err)
 		}
 		return
 	}
