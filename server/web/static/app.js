@@ -1288,8 +1288,10 @@ document.addEventListener('alpine:init', () => {
           headers: { 'Authorization': `Bearer ${this.apiKey}` }
         });
         if (!resp.ok) {
-          this.chatMessages.push({ role: 'system', content: `Unknown command: ${cmdName}`, msg_type: 'text', timestamp: new Date().toISOString() });
-          this.$nextTick(() => this.scrollToBottom(true));
+          // Command not found locally — pass through to the Claude process
+          // which handles skills and other slash commands natively.
+          this.inputText = cmdArg ? `${cmdName} ${cmdArg}` : cmdName;
+          await this.sendManagedMessage();
           return;
         }
         const data = await resp.json();
