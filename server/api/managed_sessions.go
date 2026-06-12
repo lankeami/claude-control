@@ -107,7 +107,7 @@ func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
 			"mcpServers": map[string]interface{}{
 				"controller": map[string]interface{}{
 					"command": cfg.BinaryPath,
-					"args":   []string{"mcp-bridge", "--session-id", sess.ID, "--port", fmt.Sprintf("%d", cfg.ServerPort)},
+					"args":    []string{"mcp-bridge", "--session-id", sess.ID, "--port", fmt.Sprintf("%d", cfg.ServerPort)},
 				},
 			},
 		}
@@ -514,7 +514,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				exhaustedMsg := fmt.Sprintf(`{"type":"auto_continue_exhausted","continuation_count":%d}`, continuationCount)
 				broadcaster.Send(exhaustedMsg)
 				_, _ = s.store.CreateMessage(sessionID, "system",
-				fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations), 0)
+					fmt.Sprintf("Auto-continue limit reached (%d/%d)", continuationCount, sess.MaxContinuations), 0)
 				_ = s.manager.GracefulShutdown(sessionID, 10*time.Second)
 				<-streamDone
 				_ = s.store.UpdateActivityState(sessionID, "waiting")
@@ -576,6 +576,13 @@ func (s *Server) handleInterrupt(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		// The Stop hook may not fire for interrupted turns — nudge the
+		// orchestrator so it doesn't wait forever. Spurious signals are
+		// drained at the start of the next turn.
+		SafeGo("interrupt-fallback:"+sessionID, func() {
+			time.Sleep(escStopFallback)
+			s.manager.SignalStop(sessionID)
+		})
 	} else if err := s.manager.Interrupt(sessionID); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

@@ -52,11 +52,11 @@ func buildInteractiveArgs(sess *db.Session, settingsPath string) []string {
 // interactiveTurnState tracks per-turn counters shared between the transcript
 // callback (tailer goroutine) and the orchestrator goroutine.
 type interactiveTurnState struct {
-	mu              sync.Mutex
-	assistantCount  int
-	inputTokens     int
-	outputTokens    int
-	interruptedFor  string // "" | "max_turns" | "budget"
+	mu             sync.Mutex
+	assistantCount int
+	inputTokens    int
+	outputTokens   int
+	interruptedFor string // "" | "max_turns" | "budget"
 }
 
 func (t *interactiveTurnState) reset() {
@@ -176,7 +176,11 @@ func (s *Server) handleSendMessageInteractive(w http.ResponseWriter, sess *db.Se
 func (s *Server) sendMessageInteractive(sess *db.Session, message string, imagePaths []string) {
 	sessionID := sess.ID
 	broadcaster := s.manager.GetBroadcaster(sessionID)
+	// Register this message's turn state so the long-lived transcript
+	// callback (registered at spawn, possibly by an earlier message's
+	// goroutine) feeds counters into the current turn.
 	turn := &interactiveTurnState{}
+	s.interactiveTurns.Store(sessionID, turn)
 
 	maxTurns := sess.MaxTurns
 	prompt := message
@@ -196,8 +200,10 @@ func (s *Server) sendMessageInteractive(sess *db.Session, message string, imageP
 		broadcaster.Send(string(modelEvt))
 
 		// onTranscriptLine runs on the tailer goroutine for the process
-		// lifetime. It forwards chat entries to SSE, persists them, and
-		// enforces the max-turns limit by interrupting mid-turn.
+		// lifetime — across many turns. It forwards chat entries to SSE,
+		// persists them, and enforces the max-turns limit by interrupting
+		// mid-turn. Turn counters are looked up via s.interactiveTurns so
+		// the callback always feeds the turn currently in flight.
 		onTranscriptLine := func(line string) {
 			var entry interactiveTranscriptEntry
 			if err := json.Unmarshal([]byte(line), &entry); err != nil {
@@ -217,17 +223,22 @@ func (s *Server) sendMessageInteractive(sess *db.Session, message string, imageP
 				}
 				extractSessionFiles(line, sessionID, s.store)
 
-				turn.mu.Lock()
-				turn.assistantCount++
-				turn.inputTokens += entry.Message.Usage.InputTokens
-				turn.outputTokens += entry.Message.Usage.OutputTokens
-				count := turn.assistantCount
-				alreadyInterrupted := turn.interruptedFor != ""
-				if maxTurns > 0 && count >= maxTurns && !alreadyInterrupted {
-					turn.interruptedFor = "max_turns"
+				v, ok := s.interactiveTurns.Load(sessionID)
+				if !ok {
+					return
 				}
-				shouldInterrupt := turn.interruptedFor == "max_turns" && !alreadyInterrupted
-				turn.mu.Unlock()
+				cur := v.(*interactiveTurnState)
+				cur.mu.Lock()
+				cur.assistantCount++
+				cur.inputTokens += entry.Message.Usage.InputTokens
+				cur.outputTokens += entry.Message.Usage.OutputTokens
+				count := cur.assistantCount
+				alreadyInterrupted := cur.interruptedFor != ""
+				if maxTurns > 0 && count >= maxTurns && !alreadyInterrupted {
+					cur.interruptedFor = "max_turns"
+				}
+				shouldInterrupt := cur.interruptedFor == "max_turns" && !alreadyInterrupted
+				cur.mu.Unlock()
 
 				if shouldInterrupt {
 					log.Printf("session %s: hit max turns (%d), interrupting", sessionID, maxTurns)

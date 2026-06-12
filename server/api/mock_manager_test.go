@@ -34,16 +34,16 @@ type MockManager struct {
 	ConfigValue        managed.Config
 
 	// Interactive mode
-	interactiveRunning   map[string]bool
-	stopChans            map[string]chan struct{}
-	TranscriptLineFns    map[string]func(string) // captured OnTranscriptLine per session
-	SetTranscriptCalls   []string
-	SentPrompts          []string
-	SentKeys             []string
+	interactiveRunning        map[string]bool
+	stopChans                 map[string]chan struct{}
+	TranscriptLineFns         map[string]func(string) // captured OnTranscriptLine per session
+	SetTranscriptCalls        []string
+	SentPrompts               []string
+	SentKeys                  []string
 	InterruptInteractiveCalls int
-	OnEnsureInteractive  func(sessionID string, opts managed.InteractiveOpts) (*managed.InteractiveProc, error)
-	OnSendPrompt         func(sessionID, text string) error
-	OnShutdownInteractive func(sessionID string, timeout time.Duration) error
+	OnEnsureInteractive       func(sessionID string, opts managed.InteractiveOpts) (*managed.InteractiveProc, error)
+	OnSendPrompt              func(sessionID, text string) error
+	OnShutdownInteractive     func(sessionID string, timeout time.Duration) error
 }
 
 func NewMockManager() *MockManager {

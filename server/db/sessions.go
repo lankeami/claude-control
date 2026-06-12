@@ -11,27 +11,27 @@ import (
 )
 
 type Session struct {
-	ID             string    `json:"id"`
-	ComputerName   string    `json:"computer_name"`
-	ProjectPath    string    `json:"project_path"`
-	TranscriptPath string    `json:"transcript_path,omitempty"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
-	LastSeenAt     time.Time `json:"last_seen_at"`
-	Archived       bool      `json:"archived"`
-	Mode           string    `json:"mode"`
-	CWD            string    `json:"cwd,omitempty"`
-	AllowedTools   string    `json:"allowed_tools,omitempty"`
-	MaxTurns       int       `json:"max_turns"`
-	MaxBudgetUSD   float64   `json:"max_budget_usd"`
-	Initialized     bool   `json:"initialized"`
-	ClaudeSessionID       string  `json:"claude_session_id,omitempty"`
-	MaxContinuations      int     `json:"max_continuations"`
-	ActivityState         string  `json:"activity_state"`
-	TurnCount             int     `json:"turn_count"`
-	Name                  string  `json:"name"`
-	CompactEveryNContinues int    `json:"compact_every_n_continues"`
-	Model                  string `json:"-"`
+	ID                     string    `json:"id"`
+	ComputerName           string    `json:"computer_name"`
+	ProjectPath            string    `json:"project_path"`
+	TranscriptPath         string    `json:"transcript_path,omitempty"`
+	Status                 string    `json:"status"`
+	CreatedAt              time.Time `json:"created_at"`
+	LastSeenAt             time.Time `json:"last_seen_at"`
+	Archived               bool      `json:"archived"`
+	Mode                   string    `json:"mode"`
+	CWD                    string    `json:"cwd,omitempty"`
+	AllowedTools           string    `json:"allowed_tools,omitempty"`
+	MaxTurns               int       `json:"max_turns"`
+	MaxBudgetUSD           float64   `json:"max_budget_usd"`
+	Initialized            bool      `json:"initialized"`
+	ClaudeSessionID        string    `json:"claude_session_id,omitempty"`
+	MaxContinuations       int       `json:"max_continuations"`
+	ActivityState          string    `json:"activity_state"`
+	TurnCount              int       `json:"turn_count"`
+	Name                   string    `json:"name"`
+	CompactEveryNContinues int       `json:"compact_every_n_continues"`
+	Model                  string    `json:"-"`
 }
 
 const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), turn_count, COALESCE(name,''), compact_every_n_continues, COALESCE(model,'')`
@@ -292,7 +292,6 @@ func (s *Store) SetWorkingToWaiting() error {
 	_, err := s.db.Exec("UPDATE sessions SET activity_state = 'waiting' WHERE activity_state = 'working' AND deleted_at IS NULL")
 	return err
 }
-
 
 func (s *Store) DeleteSession(id string) error {
 	tx, err := s.db.Begin()
