@@ -86,6 +86,9 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("GET /api/files/content", s.handleGetFileContent)
 	apiMux.HandleFunc("GET /api/files/diff", s.handleFileDiff)
 
+	// Skills endpoint
+	apiMux.HandleFunc("GET /api/sessions/{id}/skills", s.handleListSkills)
+
 	// GitHub endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues", s.handleListGithubIssues)
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues/{number}", s.handleGetGithubIssue)

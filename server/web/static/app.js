@@ -102,6 +102,13 @@ document.addEventListener('alpine:init', () => {
     selectedPull: null,
     selectedPullLoading: false,
     _searchPullsTimer: null,
+
+    // Skills state
+    skills: [],
+    skillsExpanded: false,
+    skillsLoading: false,
+    skillsError: null,
+
     viewerFile: null,
     viewerMode: 'diff',
     viewerDiffs: [],
@@ -984,6 +991,9 @@ document.addEventListener('alpine:init', () => {
         this.githubPullsError = null;
         this.fetchGithubPulls(this.selectedSessionId);
       }
+      this.skills = [];
+      this.skillsError = null;
+      this.fetchSkills(this.selectedSessionId);
       this.focusPromptInput();
     },
 
@@ -2438,6 +2448,34 @@ document.addEventListener('alpine:init', () => {
         console.error('Failed to fetch messages:', e);
       }
       this.chatLoading = false;
+    },
+
+    // Skills methods
+    async fetchSkills(sessionId) {
+      if (!sessionId) return;
+      this.skillsLoading = true;
+      this.skillsError = null;
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/skills`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (resp.status === 401) { this.disconnect(); return; }
+        if (!resp.ok) {
+          this.skillsError = 'Failed to load skills';
+          return;
+        }
+        this.skills = await resp.json() || [];
+      } catch (e) {
+        this.skillsError = e.message || 'Failed to load skills';
+      } finally {
+        this.skillsLoading = false;
+      }
+    },
+
+    sendSkill(skillName) {
+      if (!this.selectedSessionId || !skillName) return;
+      this.inputText = '/' + skillName;
+      this.$nextTick(() => this.handleInput());
     },
 
     // GitHub Issues methods
