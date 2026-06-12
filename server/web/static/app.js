@@ -2121,6 +2121,26 @@ document.addEventListener('alpine:init', () => {
             return;
           }
 
+          if (data.type === 'notification') {
+            this.chatMessages.push({
+              id: 'notification-' + Date.now(),
+              role: 'system',
+              content: data.message || 'Claude sent a notification'
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+            return;
+          }
+
+          if (data.type === 'budget_exceeded') {
+            this.chatMessages.push({
+              id: 'budget-' + Date.now(),
+              role: 'system',
+              content: `Budget limit reached ($${(data.total || 0).toFixed(2)} of $${(data.budget || 0).toFixed(2)}). Session paused.`
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+            return;
+          }
+
           if (data.type === 'done' || data.type === 'result') {
             // Track cost from result events — always, including compact turns
             if (data.type === 'result' && data.cost != null) {
