@@ -180,3 +180,14 @@ The server splits `CLAUDE_ARGS` on whitespace and prepends them before the per-m
 - Docker/container sandboxing
 - Agent SDK integration (CLI flags are sufficient)
 - Multi-machine / remote Claude Code instances
+
+---
+
+## Addendum (2026-06-11): Interactive backend
+
+The per-message `claude -p` architecture described above was superseded by a
+long-lived interactive Claude Code backend (PTY + hooks + transcript tailing)
+so managed-session usage bills against the Claude Code subscription rather
+than the API. The `-p` path remains available behind `MANAGED_MODE=print` for
+one release as a rollback, and is the forced mode on Windows. See
+`docs/superpowers/plans/2026-06-11-interactive-managed-sessions.md` (issue #174).

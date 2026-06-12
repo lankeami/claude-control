@@ -60,10 +60,12 @@ gh pr create                               # Open a PR when ready
 - Long-poll: server holds HTTP connection up to 30s, hook retries indefinitely until user responds
 
 ### Managed Mode
-- Each message spawns a separate `claude -p` process; `--resume <uuid>` handles context continuity between turns
+- Two backends selected via `MANAGED_MODE` env: `interactive` (default) and `print` (legacy rollback path; forced on Windows)
+- **Interactive backend** (`server/managed/interactive.go`): one long-lived interactive `claude` process per session under a PTY (`creack/pty`), so usage bills against the Claude Code subscription instead of the API. Prompts injected via bracketed paste; interrupts via ESC keystroke. Structured output comes from tailing the native transcript JSONL in `~/.claude/projects/` (`transcript.go`), forwarded raw to the existing SSE pipeline (shapes match stream-json). Turn lifecycle driven by per-session SessionStart/Stop/Notification hooks injected via a generated `--settings` file (`settings.go`); the hook command is the `claude-controller hook-signal` subcommand, which POSTs to `/api/sessions/{id}/hook-event`
+- Interactive feature parity: `--allowedTools` → `permissions.allow` in the generated settings file; turn limits → server counts assistant transcript entries and sends ESC; budget caps → server sums per-turn cost from transcript usage (`SessionCostTotal`). Known gaps: permission prompts for non-allowlisted tools surface only as notifications (no remote approve/deny), and images are referenced by file path in the prompt instead of inline
+- **Print backend** (legacy): each message uses a warm `claude -p --input-format stream-json` process; `--resume <uuid>` handles context continuity between turns; tool restrictions via `--allowedTools`, turn limits via `--max-turns`, budget caps via `--max-budget-usd`
 - Sessions have a `mode` field (`"hook"` or `"managed"`) — both coexist in the same database
-- NDJSON streaming from stdout → SSE to browser; messages persisted to `messages` table
-- Tool restrictions via `--allowedTools`, turn limits via server-side SIGINT, budget caps via `--max-budget-usd`
+- NDJSON/transcript streaming → SSE to browser; messages persisted to `messages` table
 - `/resume` command reads Claude Code's native `sessions-index.json` to let users continue previous CLI sessions in the web UI
 - `claude_session_id` field decouples the managed session's stable ID from the CLI session being resumed
 - `activity_state` field tracks session lifecycle: `working` (process running), `waiting` (process exited cleanly, awaiting input), `idle` (no process, error, or new session). Updated server-side at process start/exit. Frontend shows yellow pulsing dot (working), green dot (waiting), gray dot (idle). On server startup, stale `working` states are reset to `idle`.
@@ -95,3 +97,4 @@ gh pr create                               # Open a PR when ready
 - Status line plan: `docs/superpowers/plans/2026-04-19-status-line.md`
 - Model selection spec: `docs/superpowers/specs/2026-04-22-model-selection-design.md`
 - Model selection plan: `docs/superpowers/plans/2026-04-22-model-selection.md`
+- Interactive managed sessions plan: `docs/superpowers/plans/2026-06-11-interactive-managed-sessions.md`
