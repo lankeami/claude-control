@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/inconshreveable/log15 v3.0.0-testing.5+incompatible // indirect
