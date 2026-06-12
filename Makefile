@@ -5,6 +5,12 @@
 PORT ?= 9999
 CLAUDE_DIR ?= ~/.claude
 
+# Managed session backend: "interactive" (long-lived interactive Claude Code,
+# billed via subscription) or "print" (legacy per-message claude -p, billed
+# via API). Toggle per-run: `make local MANAGED_MODE=print`. A MANAGED_MODE
+# line in .env also works (command line wins). See docs/managed-modes.md.
+MANAGED_MODE ?= interactive
+
 # Platform detection — sets EXE suffix, delete command, and null redirect
 ifeq ($(OS),Windows_NT)
   EXE      := .exe
@@ -105,8 +111,8 @@ test-db: ## Run database layer tests only
 test-api: ## Run API handler tests only
 	cd server && go test ./api/ -v
 
-run: build ## Build and run the server locally (web UI at http://localhost:PORT)
-	$(SERVER_BIN) --port $(PORT)
+run: build ## Build and run the server locally (web UI at http://localhost:PORT; MANAGED_MODE=interactive|print)
+	$(SERVER_BIN) --port $(PORT) --managed-mode $(MANAGED_MODE)
 
 #local: ## Stop everything, rebuild, and start fresh
 #ifeq ($(OS),Windows_NT)
@@ -120,7 +126,7 @@ run: build ## Build and run the server locally (web UI at http://localhost:PORT)
 #	cd server && go build -o claude-controller$(EXE) .
 #	$(SERVER_BIN) --port $(PORT)
 
-local: ## Stop everything, rebuild, start fresh
+local: ## Stop everything, rebuild, start fresh (make local MANAGED_MODE=print for legacy claude -p backend)
 local: stop build run
 
 stop: ## Stop the running Go server process

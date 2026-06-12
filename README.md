@@ -105,15 +105,21 @@ Open the Claude Controller app on your iPhone and scan the QR code displayed in 
 
 1. Create a session in the web UI — pick a working directory and configure tool permissions
 2. Type a message in the chat interface
-3. The server spawns `claude -p "<message>" --session-id <uuid> --output-format stream-json`
-4. NDJSON output streams to the browser in real-time via SSE
-5. When Claude finishes, type another message — the server uses `--resume <uuid>` to continue the conversation
-6. Hit **Stop** to interrupt mid-turn (sends SIGINT); the session can resume on the next message
+3. The server drives a Claude Code process for the session and streams output to the browser in real-time via SSE
+4. When Claude finishes, type another message to continue the conversation
+5. Hit **Stop** to interrupt mid-turn; the session can resume on the next message
 
-**Key capabilities:**
+Managed sessions run on one of **two backends** — see **[docs/managed-modes.md](docs/managed-modes.md)** for the full comparison, toggle instructions, and troubleshooting:
+
+- **`interactive`** (default) — one long-lived interactive `claude` process per session under a PTY, with turn lifecycle driven by Claude Code hooks and output streamed from the native transcript. Usage bills against your **Claude Code subscription**.
+- **`print`** (legacy) — a warm `claude -p --output-format stream-json` process per session. Usage bills against the **Anthropic API**. Kept as a rollback path; always used on Windows.
+
+Toggle with `make local MANAGED_MODE=print`, a `MANAGED_MODE=print` line in `.env`, or the `--managed-mode` flag.
+
+**Key capabilities (both backends):**
 - **Tool restrictions** — each session has an allowed-tools list (e.g., read-only: `Read,Glob,Grep`)
-- **Turn limiting** — server counts assistant turns and sends SIGINT when the limit is hit
-- **Budget caps** — `--max-budget-usd` passed to the CLI for cost control
+- **Turn limiting** — the server interrupts Claude when the per-message turn limit is hit, with optional auto-continue
+- **Budget caps** — per-session USD limits for cost control
 - **Session resumption** — type `/resume` in the chat to pick up a previous Claude Code CLI session (see below)
 - **Session names** — assign custom names to sessions for easier identification (see below)
 

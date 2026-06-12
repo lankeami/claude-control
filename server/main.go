@@ -63,6 +63,7 @@ func main() {
 
 	port := flag.Int("port", 0, "port to listen on (default: 8080, auto-detect if occupied)")
 	dbPath := flag.String("db", "", "path to SQLite database (default: ~/.claude-controller/data.db)")
+	managedModeFlag := flag.String("managed-mode", "", "managed session backend: interactive or print (default: MANAGED_MODE env, then interactive)")
 	flag.Parse()
 
 	if *port == 0 {
@@ -108,7 +109,7 @@ func main() {
 		ClaudeEnv:  splitEnv(os.Getenv("CLAUDE_ENV")),
 		ServerPort: *port,
 		BinaryPath: binaryPath,
-		Mode:       managedMode(),
+		Mode:       managedMode(*managedModeFlag),
 	}
 	mgr := managed.NewManager(managedCfg)
 	mgr.StartReaper()
@@ -278,10 +279,14 @@ func loadDotEnv(path string) {
 // managedMode picks the managed-session backend. "interactive" (default)
 // drives a long-lived interactive Claude Code process billed against the
 // subscription; "print" is the legacy claude -p path kept for one release as
-// a rollback (set MANAGED_MODE=print). Windows has no ConPTY support yet, so
-// it always uses print mode.
-func managedMode() string {
-	mode := envOrDefault("MANAGED_MODE", "interactive")
+// a rollback. Precedence: --managed-mode flag > MANAGED_MODE env (incl. .env)
+// > "interactive". Windows has no ConPTY support yet, so it always uses
+// print mode.
+func managedMode(flagValue string) string {
+	mode := flagValue
+	if mode == "" {
+		mode = envOrDefault("MANAGED_MODE", "interactive")
+	}
 	if runtime.GOOS == "windows" && mode == "interactive" {
 		log.Printf("interactive managed mode is not supported on Windows yet; falling back to print mode")
 		return "print"
