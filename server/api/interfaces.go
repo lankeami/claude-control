@@ -20,4 +20,15 @@ type SessionManager interface {
 	SpawnShell(sessionID string, opts managed.ShellOpts) (*managed.Process, error)
 	Config() managed.Config
 	UpdateConfig(cfg managed.Config)
+
+	// Interactive mode (long-lived Claude Code under a PTY)
+	EnsureInteractive(sessionID string, opts managed.InteractiveOpts) (*managed.InteractiveProc, error)
+	IsInteractiveRunning(sessionID string) bool
+	SendPrompt(sessionID, text string) error
+	SendKeys(sessionID, seq string) error
+	InterruptInteractive(sessionID string) error
+	SetTranscript(sessionID, path string)
+	SignalStop(sessionID string)
+	StopEvents(sessionID string) <-chan struct{}
+	ShutdownInteractive(sessionID string, timeout time.Duration) error
 }

@@ -227,6 +227,11 @@ func (s *Store) UpdateActivityState(id, state string) error {
 	return err
 }
 
+func (s *Store) UpdateClaudeSessionID(id, claudeSessionID string) error {
+	_, err := s.db.Exec("UPDATE sessions SET claude_session_id = ? WHERE id = ? AND deleted_at IS NULL", claudeSessionID, id)
+	return err
+}
+
 func (s *Store) UpdateSessionModel(id, model string) error {
 	_, err := s.db.Exec("UPDATE sessions SET model = ? WHERE id = ?", model, id)
 	return err
