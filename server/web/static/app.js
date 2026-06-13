@@ -2494,7 +2494,12 @@ document.addEventListener('alpine:init', () => {
     sendSkill(skillName) {
       if (!this.selectedSessionId || !skillName) return;
       this.inputText = '/' + skillName;
-      this.$nextTick(() => this.handleInput());
+      const sess = this.currentSession;
+      if (sess && sess.mode === 'managed') {
+        this.$nextTick(() => this.sendManagedMessage());
+      } else {
+        this.$nextTick(() => this.handleInput());
+      }
     },
 
     // GitHub Issues methods
