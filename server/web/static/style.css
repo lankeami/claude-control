@@ -933,6 +933,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-height: 30vh;
+  overflow-y: auto;
 }
 
 .issue-row {
