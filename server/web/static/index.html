@@ -572,6 +572,48 @@
                     </div>
                     <div class="issue-body" style="max-height:none;background:transparent;border:none;padding:0"
                          x-html="typeof marked !== 'undefined' ? marked.parse(selectedIssue.body || '*No description*') : (selectedIssue.body || '(No description)')"></div>
+
+                    <!-- Linked PRs -->
+                    <template x-if="linkedPRsForIssue(selectedIssue.number).length > 0">
+                      <div class="issue-linked-prs">
+                        <div class="issue-section-header">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.7"><path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"/></svg>
+                          Linked Pull Requests
+                        </div>
+                        <template x-for="pr in linkedPRsForIssue(selectedIssue.number)" :key="pr.number">
+                          <div class="linked-pr-item">
+                            <a class="linked-pr-link" :href="'https://github.com/' + githubRepo + '/pull/' + pr.number" target="_blank" rel="noopener">
+                              <span class="linked-pr-number" x-text="'#' + pr.number"></span>
+                              <span class="linked-pr-title" x-text="pr.title"></span>
+                            </a>
+                            <span class="linked-pr-state" :style="prStateBadgeStyle(pr)" x-text="prStateLabel(pr)"></span>
+                            <span class="linked-pr-branch" x-show="pr.branch" x-text="pr.branch"></span>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+
+                    <!-- Comments thread -->
+                    <div class="issue-comments-section" x-show="selectedIssue.comments > 0 || issueCommentsLoading">
+                      <div class="issue-section-header" style="cursor:pointer" @click="issueCommentsExpanded = !issueCommentsExpanded">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.7"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 01.75.75v2.19l2.72-2.72a.749.749 0 01.53-.22h4.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25H2.75z"/></svg>
+                        <span x-text="'Comments (' + (selectedIssue.comments || 0) + ')'"></span>
+                        <span class="issues-toggle" x-text="issueCommentsExpanded ? '▼' : '▶'" style="margin-left:auto;font-size:9px"></span>
+                      </div>
+                      <div x-show="issueCommentsExpanded" x-collapse>
+                        <div x-show="issueCommentsLoading" class="issues-loading" style="padding:8px 0">Loading comments...</div>
+                        <template x-for="comment in issueComments" :key="comment.id">
+                          <div class="issue-comment">
+                            <div class="issue-comment-header">
+                              <span class="issue-comment-author" x-text="comment.author"></span>
+                              <span class="issue-comment-time" x-text="issueTimeAgo(comment.created_at)"></span>
+                            </div>
+                            <div class="issue-comment-body issue-body"
+                                 x-html="typeof marked !== 'undefined' ? marked.parse(comment.body || '') : (comment.body || '')"></div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -728,7 +770,23 @@
                   <div class="issue-dot" :class="issue.state"></div>
                   <div class="issue-row-content">
                     <div class="issue-row-title" x-text="issue.title"></div>
-                    <div class="issue-row-meta" x-text="'#' + issue.number + ' · ' + issueTimeAgo(issue.updated_at)"></div>
+                    <div class="issue-row-meta">
+                      <span x-text="'#' + issue.number + ' · ' + issueTimeAgo(issue.updated_at)"></span>
+                      <span class="issue-row-badges">
+                        <template x-if="linkedPRsForIssue(issue.number).length > 0">
+                          <span class="issue-badge issue-badge-pr" :title="linkedPRsForIssue(issue.number).map(p => '#' + p.number).join(', ')">
+                            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"/></svg>
+                            <span x-text="linkedPRsForIssue(issue.number).length"></span>
+                          </span>
+                        </template>
+                        <template x-if="issue.comments > 0">
+                          <span class="issue-badge issue-badge-comments">
+                            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 01.75.75v2.19l2.72-2.72a.749.749 0 01.53-.22h4.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25H2.75z"/></svg>
+                            <span x-text="issue.comments"></span>
+                          </span>
+                        </template>
+                      </span>
+                    </div>
                   </div>
                 </div>
               </template>
@@ -1177,6 +1235,47 @@
           </div>
           <div class="issue-body" style="max-height:none;background:transparent;border:none;padding:0"
                x-html="typeof marked !== 'undefined' ? marked.parse(selectedIssue?.body || '*No description*') : (selectedIssue?.body || '(No description)')"></div>
+
+          <!-- Linked PRs (mobile) -->
+          <template x-if="selectedIssue && linkedPRsForIssue(selectedIssue.number).length > 0">
+            <div class="issue-linked-prs">
+              <div class="issue-section-header">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.7"><path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"/></svg>
+                Linked Pull Requests
+              </div>
+              <template x-for="pr in linkedPRsForIssue(selectedIssue.number)" :key="pr.number">
+                <div class="linked-pr-item">
+                  <a class="linked-pr-link" :href="'https://github.com/' + githubRepo + '/pull/' + pr.number" target="_blank" rel="noopener">
+                    <span class="linked-pr-number" x-text="'#' + pr.number"></span>
+                    <span class="linked-pr-title" x-text="pr.title"></span>
+                  </a>
+                  <span class="linked-pr-state" :style="prStateBadgeStyle(pr)" x-text="prStateLabel(pr)"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- Comments thread (mobile) -->
+          <div class="issue-comments-section" x-show="selectedIssue?.comments > 0 || issueCommentsLoading">
+            <div class="issue-section-header" style="cursor:pointer" @click="issueCommentsExpanded = !issueCommentsExpanded">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="opacity:0.7"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0113.25 12H9.06l-2.573 2.573A1.458 1.458 0 014 13.543V12H2.75A1.75 1.75 0 011 10.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 01.75.75v2.19l2.72-2.72a.749.749 0 01.53-.22h4.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25H2.75z"/></svg>
+              <span x-text="'Comments (' + (selectedIssue?.comments || 0) + ')'"></span>
+              <span class="issues-toggle" x-text="issueCommentsExpanded ? '▼' : '▶'" style="margin-left:auto;font-size:9px"></span>
+            </div>
+            <div x-show="issueCommentsExpanded" x-collapse>
+              <div x-show="issueCommentsLoading" class="issues-loading" style="padding:8px 0">Loading comments...</div>
+              <template x-for="comment in issueComments" :key="comment.id">
+                <div class="issue-comment">
+                  <div class="issue-comment-header">
+                    <span class="issue-comment-author" x-text="comment.author"></span>
+                    <span class="issue-comment-time" x-text="issueTimeAgo(comment.created_at)"></span>
+                  </div>
+                  <div class="issue-comment-body issue-body"
+                       x-html="typeof marked !== 'undefined' ? marked.parse(comment.body || '') : (comment.body || '')"></div>
+                </div>
+              </template>
+            </div>
+          </div>
         </div>
       </div>
     </div>

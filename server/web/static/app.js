@@ -89,6 +89,10 @@ document.addEventListener('alpine:init', () => {
     selectedIssue: null,
     selectedIssueLoading: false,
     _searchIssuesTimer: null,
+    issueLinkedPRs: {},  // map of issueNumber -> [{number, title, state, is_draft, branch}]
+    issueComments: [],
+    issueCommentsLoading: false,
+    issueCommentsExpanded: true,
 
     // GitHub Pull Requests state
     githubPulls: [],
@@ -2528,6 +2532,7 @@ document.addEventListener('alpine:init', () => {
         this.githubIssues = data.issues || [];
         this.githubIssuesHasMore = data.has_more || false;
         if (data.repo) this.githubRepo = data.repo;
+        this.fetchBatchLinkedPRs(sessionId, this.githubIssues);
       } catch (e) {
         this.githubIssuesError = e.message || 'Failed to load issues';
       } finally {
@@ -2538,6 +2543,8 @@ document.addEventListener('alpine:init', () => {
     async fetchIssueDetail(sessionId, number) {
       if (!sessionId) return;
       this.selectedIssueLoading = true;
+      this.issueComments = [];
+      this.issueCommentsLoading = true;
       // Close any open file/pull viewer and open issue in viewer panel
       this.closeFileViewer();
       this.selectedPull = null;
@@ -2549,6 +2556,8 @@ document.addEventListener('alpine:init', () => {
         if (resp.status === 401) { this.disconnect(); return; }
         if (!resp.ok) return;
         this.selectedIssue = await resp.json();
+        this.fetchIssueComments(sessionId, number);
+        this.fetchIssueLinkedPRs(sessionId, number);
       } catch (e) {
         // Ignore — keep selectedIssue as null
       } finally {
@@ -2559,6 +2568,8 @@ document.addEventListener('alpine:init', () => {
     closeIssueViewer() {
       this.selectedIssue = null;
       this.selectedPull = null;
+      this.issueComments = [];
+      this.issueCommentsLoading = false;
     },
 
     toggleIssueState(state) {
@@ -2617,6 +2628,71 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       const g = parseInt(hex.substring(2, 4), 16);
       const b = parseInt(hex.substring(4, 6), 16);
       return `background: rgba(${r},${g},${b},0.2); color: rgb(${r},${g},${b}); border-color: rgba(${r},${g},${b},0.4);`;
+    },
+
+    async fetchBatchLinkedPRs(sessionId, issues) {
+      if (!sessionId || !issues || issues.length === 0) return;
+      const numbers = issues.map(i => i.number).join(',');
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/github/issues/linked?issues=${numbers}`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const map = { ...this.issueLinkedPRs };
+        for (const item of data) {
+          map[item.issue_number] = item.linked_prs || [];
+        }
+        this.issueLinkedPRs = map;
+      } catch (e) {
+        // Non-critical — badges just won't show
+      }
+    },
+
+    async fetchIssueComments(sessionId, number) {
+      this.issueCommentsLoading = true;
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/github/issues/${number}/comments`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!resp.ok) return;
+        this.issueComments = await resp.json();
+      } catch (e) {
+        this.issueComments = [];
+      } finally {
+        this.issueCommentsLoading = false;
+      }
+    },
+
+    async fetchIssueLinkedPRs(sessionId, number) {
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/github/issues/${number}/linked-prs`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (!resp.ok) return;
+        const prs = await resp.json();
+        this.issueLinkedPRs = { ...this.issueLinkedPRs, [number]: prs };
+      } catch (e) {
+        // Non-critical
+      }
+    },
+
+    linkedPRsForIssue(number) {
+      return this.issueLinkedPRs[number] || [];
+    },
+
+    prStateBadgeStyle(pr) {
+      if (pr.is_draft) return 'background:rgba(110,118,129,0.3);color:#8b949e;';
+      if (pr.state === 'closed') return 'background:rgba(248,81,73,0.2);color:#f85149;';
+      if (pr.state === 'open') return 'background:rgba(35,134,54,0.2);color:#3fb950;';
+      return 'background:rgba(139,92,246,0.2);color:#a78bfa;';
+    },
+
+    prStateLabel(pr) {
+      if (pr.is_draft) return 'Draft';
+      if (pr.state === 'closed') return 'Merged';
+      if (pr.state === 'open') return 'Open';
+      return pr.state;
     },
 
     // GitHub Pull Requests methods

@@ -1154,6 +1154,158 @@ body {
   color: var(--text-muted);
 }
 
+/* Issue row badges (PR link count, comment count) */
+.issue-row-badges {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.issue-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.issue-badge svg {
+  opacity: 0.7;
+}
+
+.issue-badge-pr {
+  color: #3fb950;
+}
+
+.issue-badge-comments {
+  color: var(--text-muted);
+}
+
+/* Linked PRs section in issue detail */
+.issue-linked-prs {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.issue-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.linked-pr-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.linked-pr-item:hover {
+  background: var(--bg-secondary);
+}
+
+.linked-pr-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+  flex: 1;
+}
+
+.linked-pr-link:hover {
+  color: var(--accent);
+}
+
+.linked-pr-number {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.linked-pr-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linked-pr-state {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.linked-pr-branch {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Issue comments section */
+.issue-comments-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.issue-comment {
+  padding: 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+}
+
+.issue-comment-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.issue-comment-author {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.issue-comment-time {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.issue-comment-body {
+  max-height: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.issue-comment-body p { margin: 0.25em 0; }
+.issue-comment-body p:first-child { margin-top: 0; }
+.issue-comment-body p:last-child { margin-bottom: 0; }
+
 /* Main content split */
 .main-content-split { display: flex; flex: 1; overflow: hidden; }
 .chat-column { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow: hidden; }
