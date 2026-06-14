@@ -63,6 +63,49 @@ func TestGetTranscript(t *testing.T) {
 	}
 }
 
+func TestGetTranscript_FiltersCliNoiseMessages(t *testing.T) {
+	ts, store := newTestServer(t)
+
+	tmpDir := t.TempDir()
+	transcriptFile := filepath.Join(tmpDir, "test-noise.jsonl")
+	lines := []string{
+		`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"continue"}]},"timestamp":"2026-06-14T10:00:00Z"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"No response requested."}]},"timestamp":"2026-06-14T10:00:01Z"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Here is the real answer."}]},"timestamp":"2026-06-14T10:00:02Z"}`,
+	}
+	var content []byte
+	for _, l := range lines {
+		content = append(content, []byte(l+"\n")...)
+	}
+	os.WriteFile(transcriptFile, content, 0644)
+
+	session, _ := store.UpsertSession("mac1", "/proj", transcriptFile)
+
+	req := authReq("GET", ts.URL+"/api/sessions/"+session.ID+"/transcript", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var messages []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	json.NewDecoder(resp.Body).Decode(&messages)
+
+	// "No response requested." should be filtered out, leaving 2 messages
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d: %+v", len(messages), messages)
+	}
+	if messages[0].Content != "continue" {
+		t.Errorf("msg 0 content: %q", messages[0].Content)
+	}
+	if messages[1].Content != "Here is the real answer." {
+		t.Errorf("msg 1 content: %q", messages[1].Content)
+	}
+}
+
 func TestGetTranscript_NoPath(t *testing.T) {
 	ts, store := newTestServer(t)
 	session, _ := store.UpsertSession("mac1", "/proj", "")
