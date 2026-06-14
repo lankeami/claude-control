@@ -2621,6 +2621,14 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       return `${Math.floor(hours / 24)}d ago`;
     },
 
+    renderMarkdown(text) {
+      const fallback = text || '';
+      if (typeof marked === 'undefined') return fallback;
+      const html = marked.parse(fallback);
+      if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(html);
+      return html;
+    },
+
     issueLabelStyle(label) {
       if (!label || !label.color) return '';
       const hex = label.color.replace('#', '');
