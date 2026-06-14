@@ -113,6 +113,14 @@ type interactiveTranscriptEntry struct {
 	} `json:"message"`
 }
 
+// isCliNoiseMessage returns true for known CLI-internal messages that should
+// not surface in the web UI (e.g. "No response requested." when input arrives
+// in an unexpected state).
+func isCliNoiseMessage(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	return trimmed == "No response requested." || trimmed == "No response requested"
+}
+
 // hasOnlyTextContent reports whether a user entry's content is plain text
 // (the echo of a prompt we sent) rather than tool results.
 func hasOnlyTextContent(content json.RawMessage) bool {
@@ -284,6 +292,10 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		}
 		switch entry.Type {
 		case "assistant":
+			if text := extractAssistantText(line); isCliNoiseMessage(text) {
+				log.Printf("session %s: suppressed CLI noise message: %q", sessionID, text)
+				return
+			}
 			broadcaster.Send(line)
 			if text := extractAssistantText(line); text != "" {
 				_, _ = s.store.CreateMessage(sessionID, "assistant", text, 0)
@@ -372,6 +384,28 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			default:
 			}
 			break
+		}
+
+		// Guard: verify the process is still alive before injecting the
+		// prompt. The process may have died between EnsureInteractive and
+		// now, and writing to a stale PTY can produce CLI noise like
+		// "No response requested." instead of a clear error.
+		select {
+		case <-proc.Done:
+			if s.retryAfterSessionIDConflict(sess, prompt, turn, broadcaster, proc, attempt) {
+				return
+			}
+			state := "waiting"
+			if proc.ExitCode != 0 {
+				state = "idle"
+			}
+			errMsg := `{"type":"system","error":true,"message":"Session process exited unexpectedly. Please send your message again."}`
+			broadcaster.Send(errMsg)
+			_, _ = s.store.CreateMessage(sessionID, "system", "Session process exited unexpectedly. Please send your message again.", 0)
+			_ = s.store.UpdateActivityState(sessionID, state)
+			broadcaster.Send(fmt.Sprintf(`{"type":"done","exit_code":%d}`, proc.ExitCode))
+			return
+		default:
 		}
 
 		if err := s.manager.SendPrompt(sessionID, currentPrompt); err != nil {

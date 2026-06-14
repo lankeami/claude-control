@@ -109,8 +109,7 @@ func (s *Server) handleGetTranscript(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case block.Type == "text" && block.Text != "":
 				text := strings.TrimSpace(block.Text)
-				// Skip noise messages
-				if text == "[Request interrupted by user]" || text == "" {
+				if text == "[Request interrupted by user]" || text == "" || isCliNoiseMessage(text) {
 					continue
 				}
 				messages = append(messages, transcriptMessage{

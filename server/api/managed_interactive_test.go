@@ -440,3 +440,97 @@ func TestInteractiveSessionIDConflictRotatesAndRetries(t *testing.T) {
 		t.Error("no system message explaining the session-ID conflict")
 	}
 }
+
+func TestIsCliNoiseMessage(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"No response requested.", true},
+		{"No response requested", true},
+		{"  No response requested.  ", true},
+		{"\nNo response requested.\n", true},
+		{"Hello, how can I help?", false},
+		{"No response requested. But here's something.", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		got := isCliNoiseMessage(tt.input)
+		if got != tt.want {
+			t.Errorf("isCliNoiseMessage(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestInteractiveNoResponseRequestedSuppressed(t *testing.T) {
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-noise", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	resp, err := sendMessage(ts, sess.ID, "continue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// Emit the CLI noise message via transcript
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLine("No response requested.", 0, 0))
+	// Then emit a real assistant message and stop
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLine("Here is the real response", 100, 50))
+	mock.SignalStop(sess.ID)
+
+	// Collect all broadcast messages
+	var assistantTexts []string
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case msg := <-ch:
+			var obj map[string]any
+			json.Unmarshal([]byte(msg), &obj)
+			if obj["type"] == "assistant" {
+				if text := extractAssistantText(msg); text != "" {
+					assistantTexts = append(assistantTexts, text)
+				}
+			}
+			if obj["type"] == "done" {
+				goto done
+			}
+		case <-timeout:
+			t.Fatal("timed out waiting for done event")
+		}
+	}
+done:
+
+	// "No response requested." must NOT appear in broadcast messages
+	for _, text := range assistantTexts {
+		if isCliNoiseMessage(text) {
+			t.Errorf("CLI noise message was broadcast: %q", text)
+		}
+	}
+	// The real response must appear
+	found := false
+	for _, text := range assistantTexts {
+		if strings.Contains(text, "real response") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("real assistant message was not broadcast")
+	}
+
+	// Verify the noise message was not persisted to DB
+	msgs, _ := store.ListMessages(sess.ID)
+	for _, m := range msgs {
+		if m.Role == "assistant" && isCliNoiseMessage(m.Content) {
+			t.Errorf("CLI noise message was persisted to DB: %q", m.Content)
+		}
+	}
+}
