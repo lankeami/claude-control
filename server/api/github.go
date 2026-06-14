@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 func jsonError(w http.ResponseWriter, msg string, status int) {
@@ -32,6 +33,22 @@ type issueResponse struct {
 	Author    string       `json:"author"`
 	Labels    []issueLabel `json:"labels"`
 	Body      string       `json:"body"`
+	Comments  int          `json:"comments"`
+}
+
+type linkedPR struct {
+	Number  int    `json:"number"`
+	Title   string `json:"title"`
+	State   string `json:"state"`
+	IsDraft bool   `json:"is_draft"`
+	Branch  string `json:"branch"`
+}
+
+type issueComment struct {
+	ID        int    `json:"id"`
+	Author    string `json:"author"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
 }
 
 type issueListResponse struct {
@@ -52,14 +69,15 @@ type ghAPILabel struct {
 }
 
 type ghAPIIssue struct {
-	Number       int              `json:"number"`
-	Title        string           `json:"title"`
-	State        string           `json:"state"`
-	CreatedAt    string           `json:"created_at"`
-	User         ghAPIUser        `json:"user"`
-	Labels       []ghAPILabel     `json:"labels"`
-	Body         string           `json:"body"`
-	PullRequest  *json.RawMessage `json:"pull_request,omitempty"`
+	Number      int              `json:"number"`
+	Title       string           `json:"title"`
+	State       string           `json:"state"`
+	CreatedAt   string           `json:"created_at"`
+	User        ghAPIUser        `json:"user"`
+	Labels      []ghAPILabel     `json:"labels"`
+	Body        string           `json:"body"`
+	Comments    int              `json:"comments"`
+	PullRequest *json.RawMessage `json:"pull_request,omitempty"`
 }
 
 func reshapeAPIIssue(g ghAPIIssue) issueResponse {
@@ -75,6 +93,7 @@ func reshapeAPIIssue(g ghAPIIssue) issueResponse {
 		Author:    g.User.Login,
 		Labels:    labels,
 		Body:      g.Body,
+		Comments:  g.Comments,
 	}
 }
 
@@ -539,4 +558,280 @@ func (s *Server) handleGetGithubPull(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(reshapeAPIPull(raw))
+}
+
+// Issue comments endpoint
+
+type ghAPIComment struct {
+	ID        int       `json:"id"`
+	User      ghAPIUser `json:"user"`
+	Body      string    `json:"body"`
+	CreatedAt string    `json:"created_at"`
+}
+
+func (s *Server) handleListIssueComments(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		jsonError(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if sess.Mode != "managed" {
+		jsonError(w, "Comments are only available for managed sessions", http.StatusBadRequest)
+		return
+	}
+	cwd := sess.CWD
+	if cwd == "" {
+		jsonError(w, "Session has no working directory", http.StatusBadRequest)
+		return
+	}
+
+	numberStr := r.PathValue("number")
+	number, err := strconv.Atoi(numberStr)
+	if err != nil || number < 1 {
+		jsonError(w, "Invalid issue number", http.StatusBadRequest)
+		return
+	}
+
+	token := s.githubToken()
+	if token == "" {
+		jsonError(w, "GitHub token not configured — add it in Settings", http.StatusBadRequest)
+		return
+	}
+
+	repo, err := repoFromRemote(cwd)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/issues/%d/comments?per_page=100", repo, number)
+	body, status, err := githubAPIGet(token, apiURL)
+	if err != nil {
+		jsonError(w, "Failed to reach GitHub API", http.StatusInternalServerError)
+		return
+	}
+	if status == 401 || status == 403 {
+		jsonError(w, "GitHub token is invalid or lacks permissions — update it in Settings", http.StatusUnauthorized)
+		return
+	}
+	if status != 200 {
+		jsonError(w, fmt.Sprintf("GitHub API error (HTTP %d)", status), http.StatusInternalServerError)
+		return
+	}
+
+	var raw []ghAPIComment
+	if err := json.Unmarshal(body, &raw); err != nil {
+		jsonError(w, "Unexpected response from GitHub API", http.StatusInternalServerError)
+		return
+	}
+
+	comments := make([]issueComment, 0, len(raw))
+	for _, c := range raw {
+		comments = append(comments, issueComment{
+			ID:        c.ID,
+			Author:    c.User.Login,
+			Body:      c.Body,
+			CreatedAt: c.CreatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(comments)
+}
+
+// Linked PRs via timeline endpoint
+
+type ghTimelineEvent struct {
+	Event  string `json:"event"`
+	Source *struct {
+		Type  string `json:"type"`
+		Issue *struct {
+			Number      int              `json:"number"`
+			Title       string           `json:"title"`
+			State       string           `json:"state"`
+			Draft       bool             `json:"draft"`
+			PullRequest *json.RawMessage `json:"pull_request,omitempty"`
+			Head        *struct {
+				Ref string `json:"ref"`
+			} `json:"head,omitempty"`
+		} `json:"issue,omitempty"`
+	} `json:"source,omitempty"`
+}
+
+func fetchLinkedPRs(token, repo string, issueNumber int) ([]linkedPR, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/issues/%d/timeline?per_page=100", repo, issueNumber)
+	body, status, err := githubAPIGet(token, apiURL)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("GitHub API error (HTTP %d)", status)
+	}
+
+	var events []ghTimelineEvent
+	if err := json.Unmarshal(body, &events); err != nil {
+		return nil, err
+	}
+
+	seen := map[int]bool{}
+	var prs []linkedPR
+	for _, ev := range events {
+		if ev.Event != "cross-referenced" || ev.Source == nil || ev.Source.Issue == nil {
+			continue
+		}
+		issue := ev.Source.Issue
+		if issue.PullRequest == nil {
+			continue
+		}
+		if seen[issue.Number] {
+			continue
+		}
+		seen[issue.Number] = true
+		branch := ""
+		if issue.Head != nil {
+			branch = issue.Head.Ref
+		}
+		prs = append(prs, linkedPR{
+			Number:  issue.Number,
+			Title:   issue.Title,
+			State:   issue.State,
+			IsDraft: issue.Draft,
+			Branch:  branch,
+		})
+	}
+	return prs, nil
+}
+
+func (s *Server) handleListIssueLinkedPRs(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		jsonError(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if sess.Mode != "managed" {
+		jsonError(w, "Linked PRs are only available for managed sessions", http.StatusBadRequest)
+		return
+	}
+	cwd := sess.CWD
+	if cwd == "" {
+		jsonError(w, "Session has no working directory", http.StatusBadRequest)
+		return
+	}
+
+	numberStr := r.PathValue("number")
+	number, err := strconv.Atoi(numberStr)
+	if err != nil || number < 1 {
+		jsonError(w, "Invalid issue number", http.StatusBadRequest)
+		return
+	}
+
+	token := s.githubToken()
+	if token == "" {
+		jsonError(w, "GitHub token not configured — add it in Settings", http.StatusBadRequest)
+		return
+	}
+
+	repo, err := repoFromRemote(cwd)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	prs, err := fetchLinkedPRs(token, repo, number)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if prs == nil {
+		prs = []linkedPR{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(prs)
+}
+
+// Batch linked PRs — fetches timeline for multiple issues in parallel
+
+type batchLinkedResult struct {
+	IssueNumber int        `json:"issue_number"`
+	LinkedPRs   []linkedPR `json:"linked_prs"`
+}
+
+func (s *Server) handleBatchLinkedPRs(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
+		jsonError(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if sess.Mode != "managed" {
+		jsonError(w, "Linked PRs are only available for managed sessions", http.StatusBadRequest)
+		return
+	}
+	cwd := sess.CWD
+	if cwd == "" {
+		jsonError(w, "Session has no working directory", http.StatusBadRequest)
+		return
+	}
+
+	issuesParam := r.URL.Query().Get("issues")
+	if issuesParam == "" {
+		jsonError(w, "Missing 'issues' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	parts := strings.Split(issuesParam, ",")
+	var issueNumbers []int
+	for _, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n < 1 {
+			continue
+		}
+		issueNumbers = append(issueNumbers, n)
+	}
+	if len(issueNumbers) == 0 {
+		jsonError(w, "No valid issue numbers provided", http.StatusBadRequest)
+		return
+	}
+	if len(issueNumbers) > 20 {
+		issueNumbers = issueNumbers[:20]
+	}
+
+	token := s.githubToken()
+	if token == "" {
+		jsonError(w, "GitHub token not configured — add it in Settings", http.StatusBadRequest)
+		return
+	}
+
+	repo, err := repoFromRemote(cwd)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	results := make([]batchLinkedResult, len(issueNumbers))
+	var wg sync.WaitGroup
+	for i, num := range issueNumbers {
+		wg.Add(1)
+		go func(idx, issueNum int) {
+			defer wg.Done()
+			prs, err := fetchLinkedPRs(token, repo, issueNum)
+			if err != nil {
+				prs = []linkedPR{}
+			}
+			if prs == nil {
+				prs = []linkedPR{}
+			}
+			results[idx] = batchLinkedResult{
+				IssueNumber: issueNum,
+				LinkedPRs:   prs,
+			}
+		}(i, num)
+	}
+	wg.Wait()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }
