@@ -2236,7 +2236,7 @@ document.addEventListener('alpine:init', () => {
             // Show error messages from the server
             this.chatMessages.push({
               role: 'system',
-              content: data.stderr || 'Process error (exit code ' + data.exit_code + ')',
+              content: data.stderr || data.message || 'Process error (exit code ' + data.exit_code + ')',
               msg_type: 'text',
               timestamp: new Date().toISOString()
             });
