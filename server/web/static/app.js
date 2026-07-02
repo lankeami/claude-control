@@ -1295,7 +1295,7 @@ document.addEventListener('alpine:init', () => {
           // Command not found locally — pass through to the Claude process
           // which handles skills and other slash commands natively.
           this.inputText = cmdArg ? `${cmdName} ${cmdArg}` : cmdName;
-          await this.sendManagedMessage();
+          await this.sendManagedMessage({skipPush: true});
           return;
         }
         const data = await resp.json();
@@ -1304,7 +1304,7 @@ document.addEventListener('alpine:init', () => {
           prompt = prompt.includes('$ARGUMENTS') ? prompt.replace(/\$ARGUMENTS/g, cmdArg) : prompt + '\n\n' + cmdArg;
         }
         this.inputText = prompt;
-        await this.sendManagedMessage();
+        await this.sendManagedMessage({skipPush: true});
       } catch (e) {
         this.chatMessages.push({ role: 'system', content: `Failed to execute ${cmdName}: ${e.message}`, msg_type: 'text', timestamp: new Date().toISOString() });
       }
@@ -1738,7 +1738,7 @@ document.addEventListener('alpine:init', () => {
       this.pendingImages.splice(index, 1);
     },
 
-    async sendManagedMessage() {
+    async sendManagedMessage(opts) {
       if ((!this.inputText.trim() && !this.pendingImages.length) || !this.selectedSessionId) return;
       const msg = this.inputText.trim();
       this.inputText = '';
@@ -1760,14 +1760,16 @@ document.addEventListener('alpine:init', () => {
         });
         if (!res.ok) throw new Error(await res.text());
 
-        // Add user message to chat immediately
-        const label = images.length === 1 ? `[Screenshot: ${images[0].filename}]` : `[${images.length} images]`;
-        const userMsg = { role: 'user', content: msg || label, msg_type: 'text', timestamp: new Date().toISOString() };
-        if (images.length) {
-          userMsg.images = images.map(img => ({ preview: img.preview, filename: img.filename }));
+        // Add user message to chat immediately (skip if caller already pushed one)
+        if (!opts?.skipPush) {
+          const label = images.length === 1 ? `[Screenshot: ${images[0].filename}]` : `[${images.length} images]`;
+          const userMsg = { role: 'user', content: msg || label, msg_type: 'text', timestamp: new Date().toISOString() };
+          if (images.length) {
+            userMsg.images = images.map(img => ({ preview: img.preview, filename: img.filename }));
+          }
+          this.chatMessages.push(userMsg);
+          this.$nextTick(() => this.scrollToBottom(true));
         }
-        this.chatMessages.push(userMsg);
-        this.$nextTick(() => this.scrollToBottom(true));
 
         // Start activity pills
         this.clearActivityPills();
