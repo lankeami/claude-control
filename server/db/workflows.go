@@ -217,3 +217,185 @@ func (s *Store) DeleteWorkflow(id string) error {
 	_, err := s.db.Exec(`DELETE FROM workflows WHERE id = ?`, id)
 	return err
 }
+
+// WorkflowRun represents a single execution of a Workflow.
+type WorkflowRun struct {
+	ID            string     `json:"id"`
+	WorkflowID    string     `json:"workflow_id"`
+	SessionID     string     `json:"session_id"`
+	Status        string     `json:"status"`
+	CurrentStepID *string    `json:"current_step_id"`
+	StartedAt     time.Time  `json:"started_at"`
+	FinishedAt    *time.Time `json:"finished_at"`
+	Error         *string    `json:"error"`
+}
+
+// WorkflowRunStep tracks the execution state of one step within a run.
+type WorkflowRunStep struct {
+	ID         string     `json:"id"`
+	RunID      string     `json:"run_id"`
+	StepID     string     `json:"step_id"`
+	Status     string     `json:"status"`
+	Attempt    int        `json:"attempt"`
+	StartedAt  *time.Time `json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at"`
+	Error      *string    `json:"error"`
+}
+
+func (s *Store) CreateWorkflowRun(workflowID, sessionID string) (*WorkflowRun, error) {
+	id := uuid.New().String()
+	_, err := s.db.Exec(`INSERT INTO workflow_runs (id, workflow_id, session_id) VALUES (?, ?, ?)`, id, workflowID, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("create workflow run: %w", err)
+	}
+	return s.GetWorkflowRun(id)
+}
+
+func (s *Store) GetWorkflowRun(id string) (*WorkflowRun, error) {
+	var r WorkflowRun
+	err := s.db.QueryRow(
+		`SELECT id, workflow_id, session_id, status, current_step_id, started_at, finished_at, error FROM workflow_runs WHERE id = ?`, id,
+	).Scan(&r.ID, &r.WorkflowID, &r.SessionID, &r.Status, &r.CurrentStepID, &r.StartedAt, &r.FinishedAt, &r.Error)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get workflow run: %w", err)
+	}
+	return &r, nil
+}
+
+// ListWorkflowRuns returns runs optionally filtered by workflowID and/or sessionID.
+func (s *Store) ListWorkflowRuns(workflowID, sessionID string) ([]WorkflowRun, error) {
+	query := `SELECT id, workflow_id, session_id, status, current_step_id, started_at, finished_at, error FROM workflow_runs WHERE 1=1`
+	var args []interface{}
+	if workflowID != "" {
+		query += ` AND workflow_id = ?`
+		args = append(args, workflowID)
+	}
+	if sessionID != "" {
+		query += ` AND session_id = ?`
+		args = append(args, sessionID)
+	}
+	query += ` ORDER BY started_at DESC`
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list workflow runs: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []WorkflowRun
+	for rows.Next() {
+		var r WorkflowRun
+		if err := rows.Scan(&r.ID, &r.WorkflowID, &r.SessionID, &r.Status, &r.CurrentStepID, &r.StartedAt, &r.FinishedAt, &r.Error); err != nil {
+			return nil, fmt.Errorf("scan run: %w", err)
+		}
+		runs = append(runs, r)
+	}
+	return runs, rows.Err()
+}
+
+// UpdateWorkflowRunStatus updates status (and error). Sets finished_at for terminal states.
+func (s *Store) UpdateWorkflowRunStatus(id, status string, runErr *string) error {
+	if status == "completed" || status == "failed" || status == "cancelled" {
+		_, err := s.db.Exec(
+			`UPDATE workflow_runs SET status = ?, error = ?, finished_at = datetime('now') WHERE id = ?`,
+			status, runErr, id,
+		)
+		return err
+	}
+	_, err := s.db.Exec(`UPDATE workflow_runs SET status = ?, error = ? WHERE id = ?`, status, runErr, id)
+	return err
+}
+
+func (s *Store) UpdateWorkflowRunCurrentStep(id, stepID string) error {
+	_, err := s.db.Exec(`UPDATE workflow_runs SET current_step_id = ? WHERE id = ?`, stepID, id)
+	return err
+}
+
+// CreateWorkflowRunSteps bulk-inserts pending run-step rows for the given step IDs.
+func (s *Store) CreateWorkflowRunSteps(runID string, stepIDs []string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, sid := range stepIDs {
+		id := uuid.New().String()
+		_, err := tx.Exec(`INSERT INTO workflow_run_steps (id, run_id, step_id) VALUES (?, ?, ?)`, id, runID, sid)
+		if err != nil {
+			return fmt.Errorf("insert run step: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// GetWorkflowRunSteps returns run steps ordered by their parent step's step_order.
+func (s *Store) GetWorkflowRunSteps(runID string) ([]WorkflowRunStep, error) {
+	rows, err := s.db.Query(`
+		SELECT rs.id, rs.run_id, rs.step_id, rs.status, rs.attempt, rs.started_at, rs.finished_at, rs.error
+		FROM workflow_run_steps rs
+		JOIN workflow_steps ws ON rs.step_id = ws.id
+		WHERE rs.run_id = ?
+		ORDER BY ws.step_order`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("query run steps: %w", err)
+	}
+	defer rows.Close()
+
+	var steps []WorkflowRunStep
+	for rows.Next() {
+		var rs WorkflowRunStep
+		if err := rows.Scan(&rs.ID, &rs.RunID, &rs.StepID, &rs.Status, &rs.Attempt, &rs.StartedAt, &rs.FinishedAt, &rs.Error); err != nil {
+			return nil, fmt.Errorf("scan run step: %w", err)
+		}
+		steps = append(steps, rs)
+	}
+	return steps, rows.Err()
+}
+
+// UpdateWorkflowRunStepStatus updates a run step's status. Sets started_at when
+// transitioning to "running"; sets finished_at for all other non-pending states.
+func (s *Store) UpdateWorkflowRunStepStatus(id, status string, attempt int, stepErr *string) error {
+	if status == "running" {
+		_, err := s.db.Exec(
+			`UPDATE workflow_run_steps SET status = ?, attempt = ?, started_at = datetime('now') WHERE id = ?`,
+			status, attempt, id,
+		)
+		return err
+	}
+	_, err := s.db.Exec(
+		`UPDATE workflow_run_steps SET status = ?, attempt = ?, error = ?, finished_at = datetime('now') WHERE id = ?`,
+		status, attempt, stepErr, id,
+	)
+	return err
+}
+
+// GetActiveRunForSession returns the first run for a session with status pending/running/paused.
+func (s *Store) GetActiveRunForSession(sessionID string) (*WorkflowRun, error) {
+	var r WorkflowRun
+	err := s.db.QueryRow(`
+		SELECT id, workflow_id, session_id, status, current_step_id, started_at, finished_at, error
+		FROM workflow_runs
+		WHERE session_id = ? AND status IN ('pending','running','paused')
+		LIMIT 1`, sessionID,
+	).Scan(&r.ID, &r.WorkflowID, &r.SessionID, &r.Status, &r.CurrentStepID, &r.StartedAt, &r.FinishedAt, &r.Error)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get active run: %w", err)
+	}
+	return &r, nil
+}
+
+// ResetStaleWorkflowRuns marks any in-flight "running" runs as failed (e.g. on server restart).
+func (s *Store) ResetStaleWorkflowRuns() error {
+	errMsg := "server restarted"
+	_, err := s.db.Exec(
+		`UPDATE workflow_runs SET status = 'failed', error = ?, finished_at = datetime('now') WHERE status = 'running'`,
+		errMsg,
+	)
+	return err
+}

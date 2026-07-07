@@ -5,6 +5,58 @@ import (
 	"testing"
 )
 
+func TestCreateWorkflowRun(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	sess, err := store.CreateManagedSession("/tmp/test", "[]", 50, 5.0, 0)
+	if err != nil {
+		t.Fatalf("CreateManagedSession: %v", err)
+	}
+
+	wf, _ := store.CreateWorkflow("Test WF", "", []WorkflowStepInput{
+		{Name: "S1", Prompt: "p1", StepOrder: 0},
+	})
+
+	run, err := store.CreateWorkflowRun(wf.ID, sess.ID)
+	if err != nil {
+		t.Fatalf("CreateWorkflowRun: %v", err)
+	}
+	if run.Status != "pending" {
+		t.Errorf("expected status 'pending', got %q", run.Status)
+	}
+	if run.SessionID != sess.ID {
+		t.Errorf("expected session_id %q, got %q", sess.ID, run.SessionID)
+	}
+}
+
+func TestGetActiveRunForSession(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp/test2", "[]", 50, 5.0, 0)
+	wf, _ := store.CreateWorkflow("WF", "", []WorkflowStepInput{
+		{Name: "S1", Prompt: "p", StepOrder: 0},
+	})
+
+	run, _ := store.CreateWorkflowRun(wf.ID, sess.ID)
+	store.UpdateWorkflowRunStatus(run.ID, "running", nil)
+
+	active, err := store.GetActiveRunForSession(sess.ID)
+	if err != nil {
+		t.Fatalf("GetActiveRunForSession: %v", err)
+	}
+	if active == nil || active.ID != run.ID {
+		t.Error("expected to find the active run")
+	}
+}
+
 func TestCreateWorkflow_HappyPath(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
