@@ -127,6 +127,80 @@ func loadSessionsFromJSONL(projectDir string) ([]sessionEntry, error) {
 	return entries, nil
 }
 
+type historyEntry struct {
+	Display   string `json:"display"`
+	Timestamp int64  `json:"timestamp"`
+	Project   string `json:"project"`
+	SessionID string `json:"sessionId"`
+}
+
+// loadSessionsFromHistory reads ~/.claude/history.jsonl and aggregates entries
+// by session ID for the given project CWD. Claude Code v2.x stores prompt
+// history here instead of per-project sessions-index.json files.
+func loadSessionsFromHistory(cwd string) ([]sessionEntry, error) {
+	configDir, err := claudeConfigDir()
+	if err != nil {
+		return nil, err
+	}
+	historyPath := filepath.Join(configDir, "history.jsonl")
+	f, err := os.Open(historyPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	type sessionAgg struct {
+		firstPrompt string
+		count       int
+		created     int64
+		modified    int64
+	}
+	sessions := map[string]*sessionAgg{}
+	var order []string
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		var h historyEntry
+		if err := json.Unmarshal(scanner.Bytes(), &h); err != nil {
+			continue
+		}
+		if h.SessionID == "" || h.Project != cwd {
+			continue
+		}
+		agg, ok := sessions[h.SessionID]
+		if !ok {
+			agg = &sessionAgg{
+				firstPrompt: h.Display,
+				created:     h.Timestamp,
+				modified:    h.Timestamp,
+			}
+			sessions[h.SessionID] = agg
+			order = append(order, h.SessionID)
+		}
+		agg.count++
+		if h.Timestamp < agg.created {
+			agg.created = h.Timestamp
+		}
+		if h.Timestamp > agg.modified {
+			agg.modified = h.Timestamp
+		}
+	}
+
+	var entries []sessionEntry
+	for _, sid := range order {
+		agg := sessions[sid]
+		entries = append(entries, sessionEntry{
+			SessionID:    sid,
+			FirstPrompt:  agg.firstPrompt,
+			MessageCount: agg.count,
+			Created:      time.UnixMilli(agg.created).UTC().Format(time.RFC3339),
+			Modified:     time.UnixMilli(agg.modified).UTC().Format(time.RFC3339),
+		})
+	}
+	return entries, nil
+}
+
 type chatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -243,10 +317,13 @@ func (s *Server) handleResumableList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try sessions-index.json first, fall back to scanning JSONL files
+	// Try sessions-index.json first, then JSONL files, then history.jsonl
 	entries, err := loadSessionsFromIndex(projectDir)
 	if err != nil {
 		entries, err = loadSessionsFromJSONL(projectDir)
+	}
+	if err != nil || len(entries) == 0 {
+		entries, err = loadSessionsFromHistory(sess.CWD)
 		if err != nil || len(entries) == 0 {
 			http.Error(w, "no CLI sessions found for this project", http.StatusNotFound)
 			return
@@ -346,6 +423,9 @@ func (s *Server) handleResumeSession(w http.ResponseWriter, r *http.Request) {
 	entries, err := loadSessionsFromIndex(projectDir)
 	if err != nil {
 		entries, _ = loadSessionsFromJSONL(projectDir)
+	}
+	if len(entries) == 0 {
+		entries, _ = loadSessionsFromHistory(sess.CWD)
 	}
 	found := false
 	for _, e := range entries {
