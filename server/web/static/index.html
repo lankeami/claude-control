@@ -177,6 +177,8 @@
               </template>
               <span x-show="session.mode === 'managed'"
                     style="font-size:10px; background:var(--accent); color:white; padding:1px 4px; border-radius:3px; margin-left:4px; flex-shrink:0;">managed</span>
+              <span x-show="activeWorkflowRun && activeWorkflowRun.session_id === session.id"
+                    style="font-size:10px; color:#f59e0b; margin-left:2px; flex-shrink:0;" title="Workflow running">WF</span>
               <span class="badge" x-show="pendingCountFor(session.id) > 0"
                     x-text="pendingCountFor(session.id)"></span>
               <button class="session-delete" @click.stop="deleteSession(session.id)"
@@ -387,6 +389,39 @@
                   </template>
                 </div>
               </template>
+            </div>
+
+            <!-- Workflow Progress Panel -->
+            <div x-show="activeWorkflowRun" x-cloak style="border-top:1px solid var(--border);padding:10px 14px;background:var(--card);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:12px;font-weight:600;color:var(--text);">Workflow Run</span>
+                  <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
+                        :style="activeWorkflowRun?.status === 'running' ? 'background:#854d0e;color:#fde68a;' : activeWorkflowRun?.status === 'completed' ? 'background:#14532d;color:#86efac;' : activeWorkflowRun?.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : activeWorkflowRun?.status === 'paused' ? 'background:#374151;color:#d1d5db;' : 'background:#374151;color:#d1d5db;'"
+                        x-text="activeWorkflowRun?.status"></span>
+                </div>
+                <div style="display:flex;gap:6px;">
+                  <button x-show="activeWorkflowRun?.status === 'running'" @click="pauseWorkflowRun()"
+                          class="btn btn-sm" style="font-size:11px;padding:3px 8px;">Pause</button>
+                  <button x-show="activeWorkflowRun?.status === 'paused'" @click="resumeWorkflowRun()"
+                          class="btn btn-sm" style="font-size:11px;padding:3px 8px;background:#14532d;color:#86efac;">Resume</button>
+                  <button x-show="activeWorkflowRun?.status === 'running' || activeWorkflowRun?.status === 'paused'" @click="cancelWorkflowRun()"
+                          class="btn btn-sm" style="font-size:11px;padding:3px 8px;color:#ef4444;">Cancel</button>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;">
+                <template x-for="(rs, i) in workflowRunSteps" :key="rs.id">
+                  <div style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;font-size:12px;"
+                       :style="rs.status === 'running' ? 'background:rgba(245,158,11,0.1);' : ''">
+                    <span style="width:14px;text-align:center;font-size:11px;"
+                          :style="rs.status === 'completed' ? 'color:#22c55e;' : rs.status === 'running' ? 'color:#f59e0b;' : rs.status === 'failed' ? 'color:#ef4444;' : 'color:#6b7280;'"
+                          x-text="rs.status === 'completed' ? '✓' : rs.status === 'running' ? '▶' : rs.status === 'failed' ? '✕' : '●'"></span>
+                    <span style="flex:1;color:var(--text);" x-text="rs.step_id"></span>
+                    <span x-show="rs.attempt > 1" style="color:var(--text-muted);font-size:10px;" x-text="'attempt ' + rs.attempt"></span>
+                    <span x-show="rs.error" style="color:#ef4444;font-size:10px;" x-text="rs.error"></span>
+                  </div>
+                </template>
+              </div>
             </div>
 
             <!-- Response textarea (only when pending prompt) -->
