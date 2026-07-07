@@ -138,6 +138,19 @@ document.addEventListener('alpine:init', () => {
     taskRunsLoading: false,
     tasksExpanded: false,
 
+    // Workflows state
+    workflows: [],
+    workflowModalOpen: false,
+    editingWorkflow: null,
+    workflowForm: { name: '', description: '', steps: [] },
+    workflowFormErrors: '',
+    workflowLoading: false,
+    workflowRuns: [],
+    activeWorkflowRun: null,
+    workflowRunSSE: null,
+    workflowRunSteps: [],
+    workflowsExpanded: false,
+
     // Toast
     showToast: false,
     toastMessage: '',
@@ -290,6 +303,7 @@ document.addEventListener('alpine:init', () => {
       if (this.apiKey) {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
+        await this.loadWorkflows();
         await this.checkSettingsFirstRun();
         this.loadShortcuts();
         // Usage rate limit polling
@@ -998,6 +1012,10 @@ document.addEventListener('alpine:init', () => {
       this.skills = [];
       this.skillsError = null;
       this.fetchSkills(this.selectedSessionId);
+      this.activeWorkflowRun = null;
+      this.workflowRunSteps = [];
+      if (this.workflowRunSSE) { this.workflowRunSSE.close(); this.workflowRunSSE = null; }
+      this.loadActiveWorkflowRun();
       this.focusPromptInput();
     },
 
@@ -3740,6 +3758,200 @@ Please review this PR and provide feedback.`;
         const hrs = Math.floor(mins / 60);
         if (hrs < 24) return hrs + 'h ago';
         return Math.floor(hrs / 24) + 'd ago';
+    },
+
+    // Workflow methods
+    async loadWorkflows() {
+        try {
+            const res = await fetch('/api/workflows', {
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (res.ok) this.workflows = await res.json() || [];
+        } catch (err) {
+            console.error('Failed to load workflows:', err);
+        }
+    },
+
+    openWorkflowModal(workflow) {
+        if (workflow) {
+            this.editingWorkflow = workflow;
+            this.workflowLoading = true;
+            fetch('/api/workflows/' + workflow.id, {
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            }).then(r => r.json()).then(data => {
+                this.workflowForm = {
+                    name: data.workflow.name,
+                    description: data.workflow.description || '',
+                    steps: (data.steps || []).map((s, i, arr) => ({
+                        name: s.name, prompt: s.prompt, step_order: s.step_order,
+                        max_retries: s.max_retries, timeout_seconds: s.timeout_seconds,
+                        on_success_index: s.on_success ? arr.findIndex(x => x.id === s.on_success) : null,
+                        on_failure_index: s.on_failure ? arr.findIndex(x => x.id === s.on_failure) : null
+                    }))
+                };
+                this.workflowLoading = false;
+            });
+        } else {
+            this.editingWorkflow = null;
+            this.workflowForm = { name: '', description: '', steps: [] };
+        }
+        this.workflowFormErrors = '';
+        this.workflowModalOpen = true;
+    },
+
+    addWorkflowStep() {
+        const steps = this.workflowForm.steps;
+        const newIndex = steps.length;
+        if (newIndex > 0) {
+            steps[newIndex - 1].on_success_index = newIndex;
+        }
+        steps.push({
+            name: 'Step ' + (newIndex + 1), prompt: '', step_order: newIndex,
+            max_retries: 0, timeout_seconds: 0, on_success_index: null, on_failure_index: null
+        });
+    },
+
+    removeWorkflowStep(index) {
+        const steps = this.workflowForm.steps;
+        steps.splice(index, 1);
+        steps.forEach((s, i) => {
+            s.step_order = i;
+            if (s.on_success_index === index) s.on_success_index = null;
+            else if (s.on_success_index !== null && s.on_success_index > index) s.on_success_index--;
+            if (s.on_failure_index === index) s.on_failure_index = null;
+            else if (s.on_failure_index !== null && s.on_failure_index > index) s.on_failure_index--;
+        });
+    },
+
+    async saveWorkflow() {
+        this.workflowLoading = true;
+        this.workflowFormErrors = '';
+        try {
+            const method = this.editingWorkflow ? 'PUT' : 'POST';
+            const url = this.editingWorkflow ? '/api/workflows/' + this.editingWorkflow.id : '/api/workflows';
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.apiKey },
+                body: JSON.stringify(this.workflowForm)
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                this.workflowFormErrors = data.error || 'Failed to save';
+                return;
+            }
+            this.workflowModalOpen = false;
+            await this.loadWorkflows();
+        } catch (err) {
+            this.workflowFormErrors = err.message;
+        } finally {
+            this.workflowLoading = false;
+        }
+    },
+
+    async deleteWorkflow(id) {
+        if (!confirm('Delete this workflow?')) return;
+        await fetch('/api/workflows/' + id, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        await this.loadWorkflows();
+    },
+
+    async runWorkflow(workflowId, sessionId) {
+        try {
+            const res = await fetch('/api/workflows/' + workflowId + '/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.apiKey },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                alert(data.error || 'Failed to start workflow');
+                return;
+            }
+            const run = await res.json();
+            this.activeWorkflowRun = run;
+            this.connectWorkflowRunSSE(run.id);
+        } catch (err) {
+            alert('Failed to start workflow: ' + err.message);
+        }
+    },
+
+    // Workflow progress / SSE methods
+    connectWorkflowRunSSE(runId) {
+        if (this.workflowRunSSE) this.workflowRunSSE.close();
+        this.workflowRunSSE = new EventSource('/api/workflow-runs/' + runId + '/stream?token=' + this.apiKey);
+        this.workflowRunSSE.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'heartbeat') return;
+                this.handleWorkflowRunEvent(data);
+            } catch (e) {}
+        };
+    },
+
+    handleWorkflowRunEvent(data) {
+        if (data.type === 'run_completed' || data.type === 'run_failed' || data.type === 'run_cancelled') {
+            if (this.activeWorkflowRun) this.activeWorkflowRun.status = data.status || data.type.replace('run_', '');
+            if (this.workflowRunSSE) { this.workflowRunSSE.close(); this.workflowRunSSE = null; }
+            this.loadActiveWorkflowRun();
+        }
+        if (data.type === 'run_paused' && this.activeWorkflowRun) {
+            this.activeWorkflowRun.status = 'paused';
+        }
+        if (data.type === 'step_started' || data.type === 'step_completed' || data.type === 'step_failed') {
+            this.loadActiveWorkflowRun();
+        }
+    },
+
+    async loadActiveWorkflowRun() {
+        if (!this.selectedSessionId) return;
+        try {
+            const res = await fetch('/api/workflow-runs?session_id=' + this.selectedSessionId, {
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (!res.ok) return;
+            const runs = await res.json();
+            const active = runs && runs.find(r => ['pending','running','paused'].includes(r.status));
+            if (active) {
+                this.activeWorkflowRun = active;
+                const detailRes = await fetch('/api/workflow-runs/' + active.id, {
+                    headers: { 'Authorization': 'Bearer ' + this.apiKey }
+                });
+                if (detailRes.ok) {
+                    const detail = await detailRes.json();
+                    this.workflowRunSteps = detail.steps || [];
+                }
+                if (!this.workflowRunSSE) this.connectWorkflowRunSSE(active.id);
+            } else {
+                this.activeWorkflowRun = null;
+                this.workflowRunSteps = [];
+            }
+        } catch (err) {
+            console.error('Failed to load workflow run:', err);
+        }
+    },
+
+    async pauseWorkflowRun() {
+        if (!this.activeWorkflowRun) return;
+        await fetch('/api/workflow-runs/' + this.activeWorkflowRun.id + '/pause', {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+    },
+
+    async resumeWorkflowRun() {
+        if (!this.activeWorkflowRun) return;
+        await fetch('/api/workflow-runs/' + this.activeWorkflowRun.id + '/resume', {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        this.connectWorkflowRunSSE(this.activeWorkflowRun.id);
+    },
+
+    async cancelWorkflowRun() {
+        if (!this.activeWorkflowRun || !confirm('Cancel this workflow run?')) return;
+        await fetch('/api/workflow-runs/' + this.activeWorkflowRun.id + '/cancel', {
+            method: 'POST', headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
     },
 
     linkifyFilePaths(html) {

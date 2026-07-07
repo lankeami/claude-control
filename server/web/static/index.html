@@ -209,6 +209,29 @@
             </template>
           </div>
         </div>
+
+        <!-- Workflows Section -->
+        <div x-show="authenticated && !leftCollapsed" style="border-top:1px solid var(--border); padding:8px;" x-cloak>
+          <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; padding:4px 0;" @click="workflowsExpanded = !workflowsExpanded">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">
+              <span x-text="workflowsExpanded ? '▼' : '▶'" style="font-size:0.65rem;"></span>
+              Workflows
+            </span>
+            <button class="btn btn-sm" @click.stop="openWorkflowModal(null)" style="font-size:0.7rem; padding:2px 6px;" title="New Workflow">+</button>
+          </div>
+          <div x-show="workflowsExpanded" style="max-height:300px; overflow-y:auto;">
+            <template x-if="workflows.length === 0">
+              <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 4px;">No workflows</div>
+            </template>
+            <template x-for="wf in workflows" :key="wf.id">
+              <div class="session-item" @click="openWorkflowModal(wf)">
+                <span class="status-dot idle"></span>
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="wf.name"></span>
+                <button @click.stop="deleteWorkflow(wf.id)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;padding:0 2px;" title="Delete">&times;</button>
+              </div>
+            </template>
+          </div>
+        </div>
       </div>
 
       <!-- Left resize handle -->
@@ -265,6 +288,22 @@
                       : 'background:var(--border); color:var(--text-muted); cursor:default; opacity:0.5;'">
               Stop
             </button>
+            <!-- Run Workflow dropdown -->
+            <div x-show="selectedSessionId && currentSession?.mode === 'managed' && workflows.length > 0" style="position:relative;display:inline-block" x-cloak>
+              <button @click="$refs.wfDropdown.style.display = $refs.wfDropdown.style.display === 'block' ? 'none' : 'block'"
+                      class="btn btn-sm"
+                      style="font-size:0.7rem;">
+                Workflow &#9662;
+              </button>
+              <div x-ref="wfDropdown" style="display:none;position:absolute;top:100%;right:0;background:var(--card);border:1px solid var(--border);border-radius:6px;min-width:180px;z-index:100;margin-top:4px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+                <template x-for="wf in workflows" :key="wf.id">
+                  <div @click="runWorkflow(wf.id, selectedSessionId); $refs.wfDropdown.style.display='none'"
+                       style="padding:8px 12px;cursor:pointer;color:var(--text);font-size:13px;border-radius:4px;"
+                       @mouseenter="$el.style.background='var(--hover)'" @mouseleave="$el.style.background='transparent'"
+                       x-text="wf.name"></div>
+                </template>
+              </div>
+            </div>
           </div>
         </div>
         <!-- Agent View Pixel Bar (managed sessions only) -->
@@ -1534,6 +1573,74 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-sm" @click="showResumePicker = false">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Workflow Builder Modal -->
+  <div x-show="workflowModalOpen" x-cloak
+       class="modal-backdrop" style="z-index:200;"
+       @click.self="workflowModalOpen = false" @keydown.escape.window="workflowModalOpen && (workflowModalOpen = false)">
+    <div @click.stop class="modal-md" style="max-height:85vh;overflow-y:auto;">
+      <div class="modal-header desktop-modal-title">
+        <h3 x-text="editingWorkflow ? 'Edit Workflow' : 'New Workflow'"></h3>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <template x-if="editingWorkflow">
+            <button type="button" class="btn btn-sm" @click="workflowModalOpen = false; deleteWorkflow(editingWorkflow.id)" style="font-size:0.75rem; color:#ef4444;">Delete</button>
+          </template>
+          <button class="modal-close-btn" @click="workflowModalOpen = false" aria-label="Close">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div x-show="workflowFormErrors" style="background:#7f1d1d;padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px;color:#fca5a5;" x-text="workflowFormErrors"></div>
+        <div class="settings-field">
+          <label class="modal-label">Name</label>
+          <input type="text" x-model="workflowForm.name" class="modal-input" placeholder="e.g., CI Pipeline">
+        </div>
+        <div class="settings-field">
+          <label class="modal-label">Description</label>
+          <input type="text" x-model="workflowForm.description" class="modal-input" placeholder="Optional description">
+        </div>
+
+        <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); margin:12px 0 8px; text-transform:uppercase; letter-spacing:0.5px;">Steps</div>
+        <template x-for="(step, i) in workflowForm.steps" :key="i">
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+              <span style="font-size:11px;color:var(--text-muted);font-weight:600;flex-shrink:0;" x-text="'Step ' + (i+1)"></span>
+              <input x-model="step.name" placeholder="Step name" class="modal-input" style="flex:1;margin-bottom:0;">
+              <button @click="removeWorkflowStep(i)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:0 4px;" title="Remove step">&times;</button>
+            </div>
+            <textarea x-model="step.prompt" placeholder="Prompt for this step..." rows="2"
+                      class="modal-input" style="width:100%;resize:vertical;box-sizing:border-box;font-size:0.85rem;margin-bottom:8px;"></textarea>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);align-items:center;">
+              <label>Retries: <input type="number" x-model.number="step.max_retries" min="0" style="width:50px;padding:4px;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;color:var(--text);"></label>
+              <label>Timeout(s): <input type="number" x-model.number="step.timeout_seconds" min="0" style="width:70px;padding:4px;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;color:var(--text);"></label>
+              <label>On Success:
+                <select x-model.number="step.on_success_index" style="padding:4px;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+                  <option :value="null">End workflow</option>
+                  <template x-for="(s, j) in workflowForm.steps" :key="j">
+                    <option :value="j" x-show="j !== i" x-text="s.name || ('Step ' + (j+1))"></option>
+                  </template>
+                </select>
+              </label>
+              <label>On Failure:
+                <select x-model.number="step.on_failure_index" style="padding:4px;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+                  <option :value="null">End workflow</option>
+                  <template x-for="(s, j) in workflowForm.steps" :key="j">
+                    <option :value="j" x-show="j !== i" x-text="s.name || ('Step ' + (j+1))"></option>
+                  </template>
+                </select>
+              </label>
+            </div>
+          </div>
+        </template>
+        <button @click="addWorkflowStep()" style="width:100%;padding:8px;background:var(--card);border:1px dashed var(--border);border-radius:6px;color:var(--text-muted);cursor:pointer;margin-bottom:8px;">+ Add Step</button>
+
+        <div class="modal-footer" style="margin:16px -24px -24px; padding:16px 24px;">
+          <button type="button" class="btn btn-sm" @click="workflowModalOpen = false">Cancel</button>
+          <button type="button" class="btn btn-sm btn-primary" @click="saveWorkflow()" :disabled="workflowLoading"
+                  x-text="workflowLoading ? 'Saving...' : (editingWorkflow ? 'Update' : 'Create')"></button>
+        </div>
       </div>
     </div>
   </div>
