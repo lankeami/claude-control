@@ -10,12 +10,14 @@ import (
 	"sync/atomic"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
+	"github.com/jaychinthrajah/claude-controller/server/managed"
 	"github.com/jaychinthrajah/claude-controller/server/web"
 )
 
 type Server struct {
 	store             *db.Store
 	manager           SessionManager
+	workflowEngine    *managed.WorkflowEngine
 	envPath           string
 	permissions       *PermissionManager
 	shutdownFunc      func() // called to trigger server restart
@@ -34,6 +36,28 @@ type Server struct {
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string) http.Handler {
 	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), shutdownFunc: shutdownFunc, serverID: serverID}
+
+	// Initialize workflow engine with callbacks wired to the server
+	s.workflowEngine = managed.NewWorkflowEngine(
+		store,
+		func(sessionID, prompt string) error {
+			return s.sendWorkflowMessage(sessionID, prompt)
+		},
+		func(sessionID string) (string, error) {
+			sess, err := store.GetSession(sessionID)
+			if err != nil {
+				return "", err
+			}
+			if sess == nil {
+				return "", fmt.Errorf("session not found: %s", sessionID)
+			}
+			return sess.ActivityState, nil
+		},
+		func(sessionID string) error {
+			return s.interruptManagedSession(sessionID)
+		},
+	)
+	s.workflowEngine.RecoverStaleRuns()
 
 	// API mux — all existing endpoints, behind auth middleware
 	apiMux := http.NewServeMux()
@@ -129,6 +153,21 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("GET /api/tasks/{taskId}/runs/{runId}", s.handleGetTaskRun)
 	apiMux.HandleFunc("POST /api/tasks/{taskId}/trigger", s.handleTriggerTask)
 
+	// Workflow CRUD endpoints
+	apiMux.HandleFunc("POST /api/workflows", s.handleCreateWorkflow)
+	apiMux.HandleFunc("GET /api/workflows", s.handleListWorkflows)
+	apiMux.HandleFunc("GET /api/workflows/{id}", s.handleGetWorkflow)
+	apiMux.HandleFunc("PUT /api/workflows/{id}", s.handleUpdateWorkflow)
+	apiMux.HandleFunc("DELETE /api/workflows/{id}", s.handleDeleteWorkflow)
+
+	// Workflow execution endpoints
+	apiMux.HandleFunc("POST /api/workflows/{id}/run", s.handleStartWorkflowRun)
+	apiMux.HandleFunc("POST /api/workflow-runs/{id}/pause", s.handlePauseRun)
+	apiMux.HandleFunc("POST /api/workflow-runs/{id}/resume", s.handleResumeRun)
+	apiMux.HandleFunc("POST /api/workflow-runs/{id}/cancel", s.handleCancelRun)
+	apiMux.HandleFunc("GET /api/workflow-runs", s.handleListWorkflowRuns)
+	apiMux.HandleFunc("GET /api/workflow-runs/{id}", s.handleGetWorkflowRun)
+
 	rl := NewRateLimiter(60, 10)
 	authedAPI := rl.Middleware(AuthMiddleware(apiKey, rl, apiMux))
 
@@ -143,6 +182,11 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	// Per-session SSE stream — handles its own auth via query param
 	root.HandleFunc("GET /api/sessions/{id}/stream", func(w http.ResponseWriter, r *http.Request) {
 		s.handleSessionStream(w, r, apiKey)
+	})
+
+	// Workflow run SSE stream — handles its own auth via query param
+	root.HandleFunc("GET /api/workflow-runs/{id}/stream", func(w http.ResponseWriter, r *http.Request) {
+		s.handleWorkflowRunStream(w, r, apiKey)
 	})
 
 	// Raw file endpoint — handles its own auth via query param

@@ -166,6 +166,48 @@ func migrate(db *sql.DB) error {
 		`DROP INDEX IF EXISTS idx_managed_cwd`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_cwd ON sessions(cwd) WHERE mode = 'managed' AND deleted_at IS NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_hook_computer_project ON sessions(computer_name, project_path) WHERE mode = 'hook' AND deleted_at IS NULL`,
+		`CREATE TABLE IF NOT EXISTS workflows (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+)`,
+		`CREATE TABLE IF NOT EXISTS workflow_steps (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    step_order INTEGER NOT NULL,
+    on_success TEXT REFERENCES workflow_steps(id) ON DELETE SET NULL,
+    on_failure TEXT REFERENCES workflow_steps(id) ON DELETE SET NULL,
+    max_retries INTEGER NOT NULL DEFAULT 0,
+    timeout_seconds INTEGER NOT NULL DEFAULT 0
+)`,
+		`CREATE INDEX IF NOT EXISTS idx_workflow_steps_workflow ON workflow_steps(workflow_id)`,
+		`CREATE TABLE IF NOT EXISTS workflow_runs (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflows(id),
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','running','paused','completed','failed','cancelled')),
+    current_step_id TEXT REFERENCES workflow_steps(id),
+    started_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    finished_at DATETIME,
+    error TEXT
+)`,
+		`CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow ON workflow_runs(workflow_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_workflow_runs_session ON workflow_runs(session_id)`,
+		`CREATE TABLE IF NOT EXISTS workflow_run_steps (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+    step_id TEXT NOT NULL REFERENCES workflow_steps(id),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','running','completed','failed','skipped')),
+    attempt INTEGER NOT NULL DEFAULT 1,
+    started_at DATETIME,
+    finished_at DATETIME,
+    error TEXT
+)`,
+		`CREATE INDEX IF NOT EXISTS idx_workflow_run_steps_run ON workflow_run_steps(run_id)`,
 	}
 
 	for _, m := range migrations {
