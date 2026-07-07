@@ -235,6 +235,7 @@ type WorkflowRunStep struct {
 	ID         string     `json:"id"`
 	RunID      string     `json:"run_id"`
 	StepID     string     `json:"step_id"`
+	StepName   string     `json:"step_name"`
 	Status     string     `json:"status"`
 	Attempt    int        `json:"attempt"`
 	StartedAt  *time.Time `json:"started_at"`
@@ -334,7 +335,7 @@ func (s *Store) CreateWorkflowRunSteps(runID string, stepIDs []string) error {
 // GetWorkflowRunSteps returns run steps ordered by their parent step's step_order.
 func (s *Store) GetWorkflowRunSteps(runID string) ([]WorkflowRunStep, error) {
 	rows, err := s.db.Query(`
-		SELECT rs.id, rs.run_id, rs.step_id, rs.status, rs.attempt, rs.started_at, rs.finished_at, rs.error
+		SELECT rs.id, rs.run_id, rs.step_id, ws.name, rs.status, rs.attempt, rs.started_at, rs.finished_at, rs.error
 		FROM workflow_run_steps rs
 		JOIN workflow_steps ws ON rs.step_id = ws.id
 		WHERE rs.run_id = ?
@@ -347,7 +348,7 @@ func (s *Store) GetWorkflowRunSteps(runID string) ([]WorkflowRunStep, error) {
 	var steps []WorkflowRunStep
 	for rows.Next() {
 		var rs WorkflowRunStep
-		if err := rows.Scan(&rs.ID, &rs.RunID, &rs.StepID, &rs.Status, &rs.Attempt, &rs.StartedAt, &rs.FinishedAt, &rs.Error); err != nil {
+		if err := rows.Scan(&rs.ID, &rs.RunID, &rs.StepID, &rs.StepName, &rs.Status, &rs.Attempt, &rs.StartedAt, &rs.FinishedAt, &rs.Error); err != nil {
 			return nil, fmt.Errorf("scan run step: %w", err)
 		}
 		steps = append(steps, rs)
