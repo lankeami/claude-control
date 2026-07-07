@@ -9,14 +9,14 @@ func TestClaudeProjectDir(t *testing.T) {
 		want string
 	}{
 		{
-			name: "preserves underscores",
+			name: "replaces underscores",
 			cwd:  "/Users/jay/workspaces/_personal_/claude-control",
-			want: "-Users-jay-workspaces-_personal_-claude-control",
+			want: "-Users-jay-workspaces--personal--claude-control",
 		},
 		{
-			name: "preserves dots",
+			name: "replaces dots",
 			cwd:  "/Users/jay/workspaces/_personal_/jay-day/.claude-worktrees/inspiring-panini",
-			want: "-Users-jay-workspaces-_personal_-jay-day-.claude-worktrees-inspiring-panini",
+			want: "-Users-jay-workspaces--personal--jay-day--claude-worktrees-inspiring-panini",
 		},
 		{
 			name: "plain path",
