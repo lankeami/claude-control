@@ -6,6 +6,7 @@ const (
 	ModelHaiku  = "claude-haiku-4-5-20251001"
 	ModelSonnet = "claude-sonnet-4-6"
 	ModelOpus   = "claude-opus-4-6"
+	ModelFable  = "claude-fable-5[1m]"
 
 	// EscalateAfterChars is the message length threshold (in Unicode code points)
 	// above which selectModel auto-escalates to Sonnet 4.6.
@@ -19,6 +20,7 @@ var modelPrices = map[string]struct{ InputPer1M, OutputPer1M float64 }{
 	ModelHaiku:  {0.80, 4.00},
 	ModelSonnet: {3.00, 15.00},
 	ModelOpus:   {15.00, 75.00},
+	ModelFable:  {1.00, 5.00},
 }
 
 // selectModel picks the model for a managed session turn.
