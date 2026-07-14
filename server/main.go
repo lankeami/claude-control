@@ -94,11 +94,12 @@ func main() {
 		log.Printf("Warning: failed to reset stale activity states: %v", err)
 	}
 
+	apiKey := loadOrCreateAPIKey(*dbPath)
+
 	sched := scheduler.New(store)
+	sched.SetLoopback(fmt.Sprintf("http://localhost:%d", *port), apiKey)
 	sched.Reconcile()
 	sched.Start()
-
-	apiKey := loadOrCreateAPIKey(*dbPath)
 
 	loadDotEnv(".env")
 	envPath, _ := filepath.Abs(".env")

@@ -214,12 +214,36 @@ func (s *Server) handleListTaskRuns(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
-	if runs == nil {
-		runs = []db.TaskRun{}
+
+	enriched := make([]taskRunResponse, 0, len(runs))
+	for _, run := range runs {
+		enriched = append(enriched, s.enrichTaskRun(run))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(runs)
+	json.NewEncoder(w).Encode(enriched)
+}
+
+// taskRunResponse augments a run with the live state of its linked session so
+// the UI can show whether an in-flight run is working, waiting on input, or idle.
+type taskRunResponse struct {
+	db.TaskRun
+	SessionState    string     `json:"session_state,omitempty"`
+	SessionLastSeen *time.Time `json:"session_last_seen,omitempty"`
+}
+
+func (s *Server) enrichTaskRun(run db.TaskRun) taskRunResponse {
+	resp := taskRunResponse{TaskRun: run}
+	if run.SessionID == "" {
+		return resp
+	}
+	sess, err := s.store.GetSessionByID(run.SessionID)
+	if err != nil {
+		return resp
+	}
+	resp.SessionState = sess.ActivityState
+	resp.SessionLastSeen = &sess.LastSeenAt
+	return resp
 }
 
 func (s *Server) handleGetTaskRun(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +260,7 @@ func (s *Server) handleGetTaskRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(run)
+	json.NewEncoder(w).Encode(s.enrichTaskRun(*run))
 }
 
 func (s *Server) handleTriggerTask(w http.ResponseWriter, r *http.Request) {

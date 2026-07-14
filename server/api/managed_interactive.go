@@ -38,7 +38,7 @@ const promptEchoRetries = 2
 // buildInteractiveArgs builds CLI args for a long-lived interactive process.
 // Tool restrictions and lifecycle hooks travel via the generated settings
 // file rather than -p-only flags.
-func buildInteractiveArgs(sess *db.Session, settingsPath string) []string {
+func buildInteractiveArgs(sess *db.Session, settingsPath, trustPrompt string) []string {
 	var args []string
 	resumeID := sess.ID
 	if sess.ClaudeSessionID != "" {
@@ -54,6 +54,9 @@ func buildInteractiveArgs(sess *db.Session, settingsPath string) []string {
 	}
 	if settingsPath != "" {
 		args = append(args, "--settings", settingsPath)
+	}
+	if trustPrompt != "" {
+		args = append(args, "--append-system-prompt", trustPrompt)
 	}
 	return args
 }
@@ -148,9 +151,9 @@ func managedSessionSettings(cfg managed.Config, sess *db.Session) (string, error
 	return managed.WriteSessionSettings(managed.SessionDir(sess.ID), cfg.BinaryPath, sess.ID, cfg.ServerPort, sess.AllowedTools, cfg.KeyFilePath)
 }
 
-func interactiveOpts(sess *db.Session, settingsPath string, onLine func(string)) managed.InteractiveOpts {
+func interactiveOpts(sess *db.Session, settingsPath, trustPrompt string, onLine func(string)) managed.InteractiveOpts {
 	return managed.InteractiveOpts{
-		Args:             buildInteractiveArgs(sess, settingsPath),
+		Args:             buildInteractiveArgs(sess, settingsPath, trustPrompt),
 		CWD:              sess.CWD,
 		OnTranscriptLine: onLine,
 	}
@@ -341,7 +344,7 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 	}
 
 	spawned := !s.manager.IsInteractiveRunning(sessionID)
-	proc, err := s.manager.EnsureInteractive(sessionID, interactiveOpts(sess, settingsPath, onTranscriptLine))
+	proc, err := s.manager.EnsureInteractive(sessionID, interactiveOpts(sess, settingsPath, s.trustedSkillsPrompt(), onTranscriptLine))
 	if err != nil {
 		errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to start interactive session: %s"}`, err.Error())
 		broadcaster.Send(errMsg)

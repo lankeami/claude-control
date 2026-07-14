@@ -719,7 +719,7 @@ func TestBuildPersistentArgs_WithModel(t *testing.T) {
 	cfg := managed.Config{}
 
 	// Without model — no --model flag
-	args := buildPersistentArgs(sess, cfg)
+	args := buildPersistentArgs(sess, cfg, "")
 	for _, a := range args {
 		if a == "--model" {
 			t.Error("unexpected --model flag without model set")
@@ -728,7 +728,7 @@ func TestBuildPersistentArgs_WithModel(t *testing.T) {
 
 	// With model — --model flag present
 	sess.Model = "claude-opus-4-6"
-	args = buildPersistentArgs(sess, cfg)
+	args = buildPersistentArgs(sess, cfg, "")
 	found := false
 	for i, a := range args {
 		if a == "--model" && i+1 < len(args) && args[i+1] == "claude-opus-4-6" {

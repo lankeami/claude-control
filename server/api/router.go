@@ -117,8 +117,11 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("GET /api/files/content", s.handleGetFileContent)
 	apiMux.HandleFunc("GET /api/files/diff", s.handleFileDiff)
 
-	// Skills endpoint
+	// Skills endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/skills", s.handleListSkills)
+	apiMux.HandleFunc("GET /api/skill-trust", s.handleListSkillTrust)
+	apiMux.HandleFunc("POST /api/skill-trust", s.handleTrustSkill)
+	apiMux.HandleFunc("DELETE /api/skill-trust/{name}", s.handleRevokeSkillTrust)
 
 	// GitHub endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues", s.handleListGithubIssues)
