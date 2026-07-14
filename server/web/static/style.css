@@ -1941,6 +1941,14 @@ body {
   .desktop-modal-title {
     display: none !important;
   }
+
+  .mobile-run-btn {
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-run-btn:disabled {
+    opacity: 0.3;
+    pointer-events: none;
+  }
 }
 
 /* ===== Smart File Viewer Styles ===== */
