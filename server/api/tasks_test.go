@@ -3,10 +3,108 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
+	"github.com/jaychinthrajah/claude-controller/server/scheduler"
 )
+
+func newTestServerWithTrigger(t *testing.T, trigger TaskTrigger) (*httptest.Server, *db.Store) {
+	t.Helper()
+	store, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"), nil, "test-server-id", trigger)
+	ts := httptest.NewServer(router)
+	t.Cleanup(ts.Close)
+	return ts, store
+}
+
+func TestTriggerTaskExecutesRun(t *testing.T) {
+	var sched *scheduler.Scheduler
+	ts, store := newTestServerWithTrigger(t, func(task db.ScheduledTask) (*db.TaskRun, error) {
+		return sched.Trigger(task)
+	})
+	sched = scheduler.New(store)
+
+	task, err := store.CreateScheduledTask("", "Echo", "shell", "echo hi-from-trigger", "/tmp", "* * * * *", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := authReq("POST", ts.URL+"/api/tasks/"+task.ID+"/trigger", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status=%d, want 201", resp.StatusCode)
+	}
+	var run db.TaskRun
+	if err := json.NewDecoder(resp.Body).Decode(&run); err != nil {
+		t.Fatalf("decode run: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, _ := store.GetTaskRunByID(run.ID)
+		if got != nil && got.Status != "running" {
+			if got.Status != "success" {
+				t.Fatalf("run status: got %q (output: %s), want success", got.Status, got.Output)
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("triggered run never executed — trigger endpoint must actually run the task")
+}
+
+func TestTriggerTaskWithoutSchedulerReturns503(t *testing.T) {
+	ts, store := newTestServerWithTrigger(t, nil)
+
+	task, err := store.CreateScheduledTask("", "Echo", "shell", "echo hi", "/tmp", "* * * * *", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := authReq("POST", ts.URL+"/api/tasks/"+task.ID+"/trigger", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d, want 503", resp.StatusCode)
+	}
+}
+
+func TestTriggerTaskAlreadyRunningReturns409(t *testing.T) {
+	ts, store := newTestServerWithTrigger(t, func(task db.ScheduledTask) (*db.TaskRun, error) {
+		return nil, scheduler.ErrAlreadyRunning
+	})
+
+	task, err := store.CreateScheduledTask("", "Echo", "shell", "echo hi", "/tmp", "* * * * *", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := authReq("POST", ts.URL+"/api/tasks/"+task.ID+"/trigger", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status=%d, want 409", resp.StatusCode)
+	}
+}
 
 func TestCreateTask_HappyPath(t *testing.T) {
 	ts, _ := newTestServer(t)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -148,12 +149,40 @@ func (s *Scheduler) spawnTask(task db.ScheduledTask) {
 	}()
 }
 
+// ErrAlreadyRunning is returned by Trigger when the task has an execution in flight.
+var ErrAlreadyRunning = errors.New("task is already running")
+
+// Trigger runs a task immediately, outside its cron schedule. The run record
+// is created synchronously so callers can return it; execution happens in the
+// background through the same pipeline as cron-fired runs.
+func (s *Scheduler) Trigger(task db.ScheduledTask) (*db.TaskRun, error) {
+	if _, loaded := s.running.LoadOrStore(task.ID, true); loaded {
+		return nil, ErrAlreadyRunning
+	}
+	run, err := s.store.CreateTaskRun(task.ID)
+	if err != nil {
+		s.running.Delete(task.ID)
+		return nil, fmt.Errorf("create run: %w", err)
+	}
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer s.running.Delete(task.ID)
+		s.executeRun(task, run)
+	}()
+	return run, nil
+}
+
 func (s *Scheduler) executeTask(task db.ScheduledTask) {
 	run, err := s.store.CreateTaskRun(task.ID)
 	if err != nil {
 		log.Printf("scheduler: failed to create run for task %q: %v", task.Name, err)
 		return
 	}
+	s.executeRun(task, run)
+}
+
+func (s *Scheduler) executeRun(task db.ScheduledTask, run *db.TaskRun) {
 	ctx, cancel := context.WithTimeout(context.Background(), executionTimeout)
 	defer cancel()
 	var cmd *exec.Cmd
@@ -280,7 +309,7 @@ func (s *Scheduler) ensureManagedSession(task db.ScheduledTask) (string, error) 
 	}
 
 	body, _ := json.Marshal(map[string]string{"cwd": task.WorkingDirectory})
-	resp, err := s.loopbackPost("/api/sessions/managed", body)
+	resp, err := s.loopbackPost("/api/sessions/create", body)
 	if err != nil {
 		return "", err
 	}

@@ -125,7 +125,7 @@ func main() {
 	}
 
 	serverID := fmt.Sprintf("%d", time.Now().UnixNano())
-	router := api.NewRouter(store, apiKey, mgr, envPath, shutdownFunc, serverID)
+	router := api.NewRouter(store, apiKey, mgr, envPath, shutdownFunc, serverID, sched.Trigger)
 
 	// Start local server
 	bindHost := "localhost"
