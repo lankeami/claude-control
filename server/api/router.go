@@ -14,9 +14,14 @@ import (
 	"github.com/jaychinthrajah/claude-controller/server/web"
 )
 
+// TaskTrigger runs a scheduled task immediately, returning the created run.
+// Wired to scheduler.Trigger in production; nil when no scheduler is available.
+type TaskTrigger func(db.ScheduledTask) (*db.TaskRun, error)
+
 type Server struct {
 	store             *db.Store
 	manager           SessionManager
+	taskTrigger       TaskTrigger
 	workflowEngine    *managed.WorkflowEngine
 	envPath           string
 	permissions       *PermissionManager
@@ -34,8 +39,8 @@ type Server struct {
 	interactiveTurns sync.Map
 }
 
-func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string) http.Handler {
-	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), shutdownFunc: shutdownFunc, serverID: serverID}
+func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string, taskTrigger TaskTrigger) http.Handler {
+	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), shutdownFunc: shutdownFunc, serverID: serverID, taskTrigger: taskTrigger}
 
 	// Initialize workflow engine with callbacks wired to the server
 	s.workflowEngine = managed.NewWorkflowEngine(

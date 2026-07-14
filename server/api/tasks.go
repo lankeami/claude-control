@@ -2,11 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/jaychinthrajah/claude-controller/server/db"
+	"github.com/jaychinthrajah/claude-controller/server/scheduler"
 	"github.com/robfig/cron/v3"
 )
 
@@ -276,8 +278,16 @@ func (s *Server) handleTriggerTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	run, err := s.store.CreateTaskRun(taskID)
+	if s.taskTrigger == nil {
+		http.Error(w, `{"error":"scheduler unavailable"}`, http.StatusServiceUnavailable)
+		return
+	}
+	run, err := s.taskTrigger(*task)
 	if err != nil {
+		if errors.Is(err, scheduler.ErrAlreadyRunning) {
+			http.Error(w, `{"error":"task is already running"}`, http.StatusConflict)
+			return
+		}
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}

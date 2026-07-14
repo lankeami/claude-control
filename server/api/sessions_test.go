@@ -19,7 +19,9 @@ func newTestServer(t *testing.T) (*httptest.Server, *db.Store) {
 	}
 	t.Cleanup(func() { store.Close() })
 
-	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"), nil, "test-server-id")
+	// Fake trigger mirrors production shape: creates the run record without executing.
+	trigger := func(task db.ScheduledTask) (*db.TaskRun, error) { return store.CreateTaskRun(task.ID) }
+	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"), nil, "test-server-id", trigger)
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 	return ts, store
