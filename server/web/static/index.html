@@ -1765,6 +1765,9 @@
                     <span style="width:7px; height:7px; border-radius:50%;"
                           :style="'background:' + (run.status === 'success' ? '#22c55e' : run.status === 'failed' ? '#ef4444' : '#eab308')"></span>
                     <span style="font-weight:500;" x-text="run.status"></span>
+                    <span x-show="run.session_id && run.status === 'running'" @click.stop="openTaskRunSession(run)"
+                          style="cursor:pointer; color:var(--accent, #3b82f6); font-size:0.75rem; text-decoration:underline;">open live session</span>
+                    <span x-show="run.session_state" style="font-size:0.7rem; color:var(--text-muted);" x-text="run.session_state"></span>
                     <span style="font-size:0.75rem; color:var(--text-muted);" x-text="formatRelativeTime(run.started_at)"></span>
                   </div>
                   <span style="font-size:0.7rem; color:var(--text-muted);" x-show="run.exit_code != null" x-text="'exit ' + run.exit_code"></span>

@@ -119,6 +119,20 @@ func (s *Store) GetSession(id string) (*Session, error) {
 	return s.GetSessionByID(id)
 }
 
+// GetManagedSessionByCWD returns the live managed session for a working
+// directory, or nil if none exists (managed sessions are unique per cwd).
+func (s *Store) GetManagedSessionByCWD(cwd string) (*Session, error) {
+	row := s.db.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE mode = 'managed' AND cwd = ? AND deleted_at IS NULL`, cwd)
+	sess, err := scanSession(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get managed session by cwd: %w", err)
+	}
+	return &sess, nil
+}
+
 func (s *Store) CreateManagedSession(cwd, allowedTools string, maxTurns int, maxBudgetUSD float64, compactEveryNContinues int) (*Session, error) {
 	id := uuid.New().String()
 	// Use "__managed__" as computer_name and cwd as project_path to avoid

@@ -35,6 +35,7 @@ type ScheduledTask struct {
 type TaskRun struct {
 	ID         string     `json:"id"`
 	TaskID     string     `json:"task_id"`
+	SessionID  string     `json:"session_id,omitempty"`
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	ExitCode   *int       `json:"exit_code,omitempty"`
@@ -59,14 +60,14 @@ func scanTask(scanner interface{ Scan(...interface{}) error }) (ScheduledTask, e
 	return t, nil
 }
 
-const runColumns = `id, task_id, started_at, finished_at, exit_code, output, status`
+const runColumns = `id, task_id, started_at, finished_at, exit_code, output, status, COALESCE(session_id,'')`
 
 func scanRun(scanner interface{ Scan(...interface{}) error }) (TaskRun, error) {
 	var r TaskRun
 	var output sql.NullString
 	err := scanner.Scan(
 		&r.ID, &r.TaskID, &r.StartedAt, &r.FinishedAt,
-		&r.ExitCode, &output, &r.Status,
+		&r.ExitCode, &output, &r.Status, &r.SessionID,
 	)
 	if err != nil {
 		return r, err
@@ -164,6 +165,15 @@ func (s *Store) CreateTaskRun(taskID string) (*TaskRun, error) {
 		return nil, fmt.Errorf("create task run: %w", err)
 	}
 	return s.GetTaskRunByID(id)
+}
+
+// SetTaskRunSession links a task run to the managed session executing it.
+func (s *Store) SetTaskRunSession(runID, sessionID string) error {
+	_, err := s.db.Exec("UPDATE task_runs SET session_id = ? WHERE id = ?", sessionID, runID)
+	if err != nil {
+		return fmt.Errorf("set task run session: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) CompleteTaskRun(id string, exitCode int, output string) error {

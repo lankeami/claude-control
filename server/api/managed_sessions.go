@@ -66,7 +66,7 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 
 // buildPersistentArgs builds CLI args for a persistent process (no message in args).
 // The message will be sent via stdin as stream-json.
-func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
+func buildPersistentArgs(sess *db.Session, cfg managed.Config, trustPrompt string) []string {
 	var args []string
 	args = append(args, "-p")
 
@@ -100,6 +100,10 @@ func buildPersistentArgs(sess *db.Session, cfg managed.Config) []string {
 
 	if sess.Model != "" {
 		args = append(args, "--model", sess.Model)
+	}
+
+	if trustPrompt != "" {
+		args = append(args, "--append-system-prompt", trustPrompt)
 	}
 
 	if cfg.BinaryPath != "" && cfg.ServerPort > 0 {
@@ -375,7 +379,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			// Ensure we have a warm process (spawns on first call, reuses after)
 			var err error
 			proc, err = s.manager.EnsureProcess(sessionID, managed.SpawnOpts{
-				Args: buildPersistentArgs(sess, s.manager.Config()),
+				Args: buildPersistentArgs(sess, s.manager.Config(), s.trustedSkillsPrompt()),
 				CWD:  sess.CWD,
 			})
 			if err != nil {

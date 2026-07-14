@@ -208,6 +208,13 @@ func migrate(db *sql.DB) error {
     error TEXT
 )`,
 		`CREATE INDEX IF NOT EXISTS idx_workflow_run_steps_run ON workflow_run_steps(run_id)`,
+		`ALTER TABLE task_runs ADD COLUMN session_id TEXT`,
+		`CREATE TABLE IF NOT EXISTS skill_trust (
+	    skill_name TEXT PRIMARY KEY,
+	    skill_path TEXT NOT NULL,
+	    content_hash TEXT NOT NULL,
+	    confirmed_at DATETIME NOT NULL DEFAULT (datetime('now'))
+	)`,
 	}
 
 	for _, m := range migrations {

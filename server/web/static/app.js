@@ -3706,6 +3706,12 @@ Please review this PR and provide feedback.`;
         this.openTaskModal(task);
     },
 
+    openTaskRunSession(run) {
+        if (!run.session_id) return;
+        this.taskModalOpen = false;
+        this.selectSession(run.session_id);
+    },
+
     async loadTaskRuns(taskId) {
         this.taskRunsLoading = true;
         try {
