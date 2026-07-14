@@ -3706,9 +3706,11 @@ Please review this PR and provide feedback.`;
         this.openTaskModal(task);
     },
 
-    openTaskRunSession(run) {
+    async openTaskRunSession(run) {
         if (!run.session_id) return;
         this.taskModalOpen = false;
+        // Refresh the sidebar so a session the scheduler just spawned is present.
+        await this.pollState();
         this.selectSession(run.session_id);
     },
 

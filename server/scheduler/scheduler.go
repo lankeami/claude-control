@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -219,6 +220,7 @@ func (s *Scheduler) executeClaudeManaged(task db.ScheduledTask, run *db.TaskRun)
 	if err := s.store.SetTaskRunSession(run.ID, sessID); err != nil {
 		log.Printf("scheduler: failed to link run %s to session %s: %v", run.ID, sessID, err)
 	}
+	s.stampSchedulerSessionName(task, sessID)
 
 	body, _ := json.Marshal(map[string]string{"message": task.Command, "model": task.Model})
 	resp, err := s.loopbackPost("/api/sessions/"+sessID+"/message", body)
@@ -241,6 +243,25 @@ func (s *Scheduler) executeClaudeManaged(task db.ScheduledTask, run *db.TaskRun)
 		return
 	}
 	s.store.CompleteTaskRun(run.ID, 0, fmt.Sprintf("completed in managed session %s — open the session for the full transcript", sessID))
+}
+
+// schedulerSessionPrefix marks sessions the scheduler owns in the session
+// list; only these (or unnamed sessions) get renamed on each run, so sessions
+// the user created and named are never clobbered.
+const schedulerSessionPrefix = "\U0001F558 " // 🕘
+
+func (s *Scheduler) stampSchedulerSessionName(task db.ScheduledTask, sessID string) {
+	sess, err := s.store.GetSessionByID(sessID)
+	if err != nil {
+		return
+	}
+	if sess.Name != "" && !strings.HasPrefix(sess.Name, schedulerSessionPrefix) {
+		return
+	}
+	name := fmt.Sprintf("%s%s — %s", schedulerSessionPrefix, task.Name, time.Now().Format("Jan 2 15:04"))
+	if err := s.store.UpdateSessionName(sessID, name); err != nil {
+		log.Printf("scheduler: failed to name session %s: %v", sessID, err)
+	}
 }
 
 // ensureManagedSession picks the session a claude task run executes in:
