@@ -1241,6 +1241,9 @@
                   x-text="task.name"></span>
             <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;"
                   x-text="formatCron(task.cron_expression)"></span>
+            <button class="btn btn-sm mobile-run-btn" @click.stop="triggerTask(task.id)"
+                    :disabled="!task.enabled" title="Run now"
+                    style="flex-shrink:0;padding:4px 8px;font-size:12px;min-width:32px;min-height:32px;">&#9654;</button>
           </div>
         </template>
       </div>
@@ -1691,7 +1694,10 @@
             <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
           </svg>
         </button>
-        <span class="mobile-detail-title" x-text="editingTask ? editingTask.name : 'New Scheduled Task'"></span>
+        <span class="mobile-detail-title" x-text="editingTask ? editingTask.name : 'New Scheduled Task'" style="flex:1;"></span>
+        <template x-if="editingTask">
+          <button type="button" class="btn btn-sm" @click="triggerTask(editingTask.id)" style="font-size:0.75rem;flex-shrink:0;">&#9654; Run Now</button>
+        </template>
       </div>
       <div class="modal-header desktop-modal-title">
         <h3 x-text="editingTask ? editingTask.name : 'New Scheduled Task'"></h3>
