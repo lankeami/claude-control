@@ -42,7 +42,7 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 		req.MaxTurns = 50
 	}
 	if req.MaxBudgetUSD == 0 {
-		req.MaxBudgetUSD = 5.0
+		req.MaxBudgetUSD = s.defaultSessionBudget()
 	}
 	if req.CompactEveryNContinues == 0 {
 		if v, err := strconv.Atoi(readEnvFile(s.envPath)["COMPACT_EVERY_N_CONTINUES"]); err == nil && v > 0 {

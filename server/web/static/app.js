@@ -160,7 +160,7 @@ document.addEventListener('alpine:init', () => {
     // Settings state
     showSettingsModal: false,
     settingsFirstRun: false,
-    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', usage_limit_5hr: '', usage_limit_7day: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] },
+    settingsForm: { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', usage_limit_5hr: '', usage_limit_7day: '', default_session_budget: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] },
     settingsError: '',
     settingsSaving: false,
     settingsRestartRequired: false,
@@ -576,6 +576,7 @@ document.addEventListener('alpine:init', () => {
           compact_every_n_continues: data.compact_every_n_continues || '',
           usage_limit_5hr: data.usage_limit_5hr || '',
           usage_limit_7day: data.usage_limit_7day || '',
+          default_session_budget: data.default_session_budget || '',
           github_token: data.github_token || '',
           jira_url: data.jira_url || '',
           jira_token: data.jira_token || '',
@@ -586,7 +587,7 @@ document.addEventListener('alpine:init', () => {
         };
         this.settingsOriginal = JSON.parse(JSON.stringify(this.settingsForm));
       } catch (e) {
-        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] };
+        this.settingsForm = { port: '', ngrok_authtoken: '', claude_bin: '', claude_args: '', claude_env: '', compact_every_n_continues: '', usage_limit_5hr: '', usage_limit_7day: '', default_session_budget: '', github_token: '', jira_url: '', jira_token: '', jira_email: '', asana_token: '', google_tasks_token: '', shortcuts: [] };
       }
       this.showSettingsModal = true;
     },

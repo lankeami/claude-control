@@ -25,6 +25,7 @@ type settingsPayload struct {
 	CompactEveryNContinues string     `json:"compact_every_n_continues"`
 	UsageLimit5hr          string     `json:"usage_limit_5hr"`
 	UsageLimit7day         string     `json:"usage_limit_7day"`
+	DefaultSessionBudget   string     `json:"default_session_budget"`
 	GithubToken            string     `json:"github_token"`
 	JiraURL                string     `json:"jira_url"`
 	JiraToken              string     `json:"jira_token"`
@@ -88,6 +89,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		CompactEveryNContinues: vals["COMPACT_EVERY_N_CONTINUES"],
 		UsageLimit5hr:          vals["USAGE_LIMIT_5HR"],
 		UsageLimit7day:         vals["USAGE_LIMIT_7DAY"],
+		DefaultSessionBudget:   vals["DEFAULT_SESSION_BUDGET"],
 		GithubToken:            vals["GITHUB_TOKEN"],
 		JiraURL:                vals["JIRA_URL"],
 		JiraToken:              vals["JIRA_TOKEN"],
@@ -223,6 +225,9 @@ func formatEnvFile(p settingsPayload) string {
 	}
 	if p.UsageLimit7day != "" {
 		b.WriteString("USAGE_LIMIT_7DAY=" + p.UsageLimit7day + "\n")
+	}
+	if p.DefaultSessionBudget != "" && p.DefaultSessionBudget != "0" {
+		b.WriteString("DEFAULT_SESSION_BUDGET=" + p.DefaultSessionBudget + "\n")
 	}
 	b.WriteString("\n# GitHub\n")
 	if p.GithubToken != "" {

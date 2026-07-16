@@ -14,7 +14,15 @@ import (
 const (
 	DefaultFiveHourLimitUSD  = 5.0
 	DefaultSevenDayLimitUSD  = 50.0
+	DefaultSessionBudgetUSD  = 5.0
 )
+
+func (s *Server) defaultSessionBudget() float64 {
+	if v, err := strconv.ParseFloat(readEnvFile(s.envPath)["DEFAULT_SESSION_BUDGET"], 64); err == nil && v > 0 {
+		return v
+	}
+	return DefaultSessionBudgetUSD
+}
 
 func (s *Server) usageLimits() (fiveHr, sevenDay float64) {
 	fiveHr = DefaultFiveHourLimitUSD
