@@ -124,7 +124,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		fullPath,
 		`["Bash","Read","Edit","Write","Glob","Grep"]`,
 		50,
-		5.0,
+		s.defaultSessionBudget(),
 		0,
 	)
 	if err != nil {

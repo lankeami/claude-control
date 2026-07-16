@@ -1900,6 +1900,15 @@
               </div>
             </div>
             <div class="modal-hint">Anthropic usage limits for utilization bars. Defaults: $5 / 5hr, $50 / 7day.</div>
+
+            <div class="settings-field" style="margin-top:16px;">
+              <label class="modal-label">
+                Default Session Budget ($)
+                <span x-show="isFieldChanged('default_session_budget')" class="settings-change-badge">changed</span>
+              </label>
+              <input x-model="settingsForm.default_session_budget" type="number" min="0" step="0.5" placeholder="5" class="modal-input" :style="isFieldChanged('default_session_budget') ? 'border-color:var(--yellow)' : ''">
+              <div class="modal-hint">Max budget per managed session. New sessions use this cap unless overridden. Default: $5.</div>
+            </div>
           </div>
 
           <!-- Integrations tab -->
