@@ -42,6 +42,8 @@ document.addEventListener('alpine:init', () => {
     // Managed session state
     showNewSessionModal: false,
     pendingPermission: null,
+    pendingQuestion: null,
+    pendingQuestionOtherText: '',
     newSessionCWD: '',
     sessionSSE: null,
     sseReconnectAttempts: 0,
@@ -2189,6 +2191,7 @@ document.addEventListener('alpine:init', () => {
           }
           if (data.type === 'done') {
             this.pendingPermission = null;
+            this.pendingQuestion = null;
             this.finalizeAgentInvocations();
             // Keep the SSE connection open: in interactive mode the Claude
             // process outlives the turn and can produce more output (e.g.
@@ -2204,6 +2207,22 @@ document.addEventListener('alpine:init', () => {
                 const label = this.extractToolContext(block);
                 this.addActivityPill(label, 'active');
                 this.trackAgentInvocation(block, label);
+
+                if (block.name === 'AskUserQuestion' && block.input && block.input.questions) {
+                  this.pendingQuestion = {
+                    toolUseId: block.id,
+                    questions: block.input.questions,
+                    timestamp: new Date().toISOString()
+                  };
+                  this.pendingQuestionOtherText = '';
+                  this.chatMessages.push({
+                    id: 'question-' + Date.now(),
+                    role: 'question',
+                    questions: block.input.questions,
+                    timestamp: new Date().toISOString()
+                  });
+                  this.$nextTick(() => this.scrollToBottom(true));
+                }
               }
             }
           }
@@ -2366,6 +2385,55 @@ document.addEventListener('alpine:init', () => {
         console.error('Failed to respond to permission:', e);
       }
       this.pendingPermission = null;
+    },
+
+    async respondToQuestion(msg, questionIdx, optionIdx, label, optionCount) {
+      if (msg.answered || !this.selectedSessionId) return;
+      msg.answered = true;
+      msg.selectedOption = optionIdx;
+      msg.answerText = label;
+      this.pendingQuestion = null;
+      try {
+        await fetch(`/api/sessions/${this.selectedSessionId}/question-respond`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ option_index: optionIdx, option_count: optionCount, text: '' })
+        });
+      } catch (e) {
+        console.error('Failed to respond to question:', e);
+        this.toast('Failed to send answer: ' + e.message);
+        msg.answered = false;
+        msg.selectedOption = null;
+        msg.answerText = '';
+      }
+    },
+
+    async respondToQuestionOther(msg, questionIdx, text, optionCount) {
+      if (msg.answered || !this.selectedSessionId || !text) return;
+      msg.answered = true;
+      msg.selectedOption = -1;
+      msg.answerText = text;
+      this.pendingQuestion = null;
+      this.pendingQuestionOtherText = '';
+      try {
+        await fetch(`/api/sessions/${this.selectedSessionId}/question-respond`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ option_index: -1, option_count: optionCount, text: text })
+        });
+      } catch (e) {
+        console.error('Failed to respond to question:', e);
+        this.toast('Failed to send answer: ' + e.message);
+        msg.answered = false;
+        msg.selectedOption = null;
+        msg.answerText = '';
+      }
     },
 
     async interruptSession() {
@@ -3260,7 +3328,9 @@ Please review this PR and provide feedback.`;
 
     // Time formatting
     timeAgo(dateStr) {
+      if (!dateStr) return '';
       const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return '';
       const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
       if (seconds < 60) return 'just now';
       const minutes = Math.floor(seconds / 60);

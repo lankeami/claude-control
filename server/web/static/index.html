@@ -381,7 +381,47 @@
                       <span x-text="msg.content"></span>
                     </div>
                   </template>
-                  <template x-if="!msg.isAutoContinue && msg.role !== 'activity' && msg.role !== 'shell' && msg.role !== 'shell_output'">
+                  <template x-if="msg.role === 'question'">
+                    <div class="question-card">
+                      <template x-for="(q, qi) in msg.questions" :key="qi">
+                        <div class="question-block">
+                          <div class="question-header" x-show="q.header">
+                            <span x-text="q.header"></span>
+                          </div>
+                          <div class="question-text" x-text="q.question"></div>
+                          <div class="question-options">
+                            <template x-for="(opt, oi) in q.options" :key="oi">
+                              <button class="question-option-btn"
+                                      :class="{ selected: msg.selectedOption === oi }"
+                                      :disabled="msg.answered"
+                                      @click="respondToQuestion(msg, qi, oi, opt.label, q.options.length)">
+                                <span class="option-label" x-text="opt.label"></span>
+                                <span class="option-desc" x-show="opt.description" x-text="opt.description"></span>
+                              </button>
+                            </template>
+                            <div class="question-other" x-show="!msg.answered">
+                              <div style="display:flex;gap:8px;align-items:center;width:100%;">
+                                <input type="text" class="question-other-input"
+                                       placeholder="Other..."
+                                       x-model="pendingQuestionOtherText"
+                                       @keydown.enter.prevent="if(pendingQuestionOtherText.trim()) respondToQuestionOther(msg, qi, pendingQuestionOtherText.trim(), q.options.length)">
+                                <button class="question-other-btn"
+                                        :disabled="!pendingQuestionOtherText.trim()"
+                                        @click="respondToQuestionOther(msg, qi, pendingQuestionOtherText.trim(), q.options.length)">
+                                  Send
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="question-answered" x-show="msg.answered">
+                            <span style="color:var(--green);">&#10003;</span>
+                            <span x-text="'Answered: ' + (msg.answerText || '')"></span>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="!msg.isAutoContinue && msg.role !== 'activity' && msg.role !== 'shell' && msg.role !== 'shell_output' && msg.role !== 'question'">
                     <div class="chat-bubble"
                          :class="bubbleClass(msg, idx)"
                          x-html="bubbleHTML(msg)">
