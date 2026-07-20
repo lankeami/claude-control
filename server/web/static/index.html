@@ -421,7 +421,54 @@
                       </template>
                     </div>
                   </template>
-                  <template x-if="!msg.isAutoContinue && msg.role !== 'activity' && msg.role !== 'shell' && msg.role !== 'shell_output' && msg.role !== 'question'">
+                  <template x-if="msg.role === 'question_error'">
+                    <div class="question-card" style="border-color:var(--yellow,#e6a700);">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="color:var(--yellow,#e6a700);font-size:16px;">&#9888;</span>
+                        <span style="font-weight:600;color:var(--text);">Question failed to load</span>
+                      </div>
+                      <p style="color:var(--text-muted);margin:0 0 12px 0;font-size:13px;">
+                        Claude asked a question but the content didn't arrive completely.
+                      </p>
+                      <div style="display:flex;gap:8px;">
+                        <button class="question-option-btn" style="flex:none;padding:6px 16px;" @click="retryQuestion()">
+                          Retry
+                        </button>
+                        <button class="question-option-btn" style="flex:none;padding:6px 16px;opacity:0.7;" @click="dismissQuestion()">
+                          Skip
+                        </button>
+                        <button class="question-option-btn" style="flex:none;padding:6px 16px;opacity:0.7;" @click="interruptSession()">
+                          Interrupt
+                        </button>
+                      </div>
+                      <div x-show="msg.retryExhausted" x-cloak style="margin-top:8px;font-size:12px;color:var(--text-muted);">
+                        Auto-retry exhausted. Use Retry to try again or Interrupt to cancel the turn.
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="msg.role === 'question_stuck'">
+                    <div class="question-card" style="border-color:var(--yellow,#e6a700);">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="color:var(--yellow,#e6a700);font-size:16px;">&#9888;</span>
+                        <span style="font-weight:600;color:var(--text);">Session appears stuck</span>
+                      </div>
+                      <p style="color:var(--text-muted);margin:0 0 12px 0;font-size:13px;">
+                        Claude is waiting for a response to a question above. If you can't see the question or can't interact with it, use the actions below.
+                      </p>
+                      <div style="display:flex;gap:8px;">
+                        <button class="question-option-btn" style="flex:none;padding:6px 16px;" @click="retryQuestion()">
+                          Reload Question
+                        </button>
+                        <button class="question-option-btn" style="flex:none;padding:6px 16px;opacity:0.7;" @click="dismissQuestion()">
+                          Skip
+                        </button>
+                        <button class="question-option-btn" style="flex:none;padding:6px 16px;opacity:0.7;" @click="interruptSession()">
+                          Interrupt
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="!msg.isAutoContinue && msg.role !== 'activity' && msg.role !== 'shell' && msg.role !== 'shell_output' && msg.role !== 'question' && msg.role !== 'question_error' && msg.role !== 'question_stuck'">
                     <div class="chat-bubble"
                          :class="bubbleClass(msg, idx)"
                          x-html="bubbleHTML(msg)">

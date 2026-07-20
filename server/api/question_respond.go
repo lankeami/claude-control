@@ -40,6 +40,8 @@ func (s *Server) handleQuestionRespond(w http.ResponseWriter, r *http.Request) {
 
 	isOther := req.OptionIndex < 0 || req.OptionIndex >= req.OptionCount
 
+	s.pendingQuestions.Delete(sessionID)
+
 	if isOther {
 		// Navigate past all options to "Other", select it, type text, confirm
 		if err := s.sendQuestionKeys(sessionID, req.OptionCount, true, req.Text); err != nil {

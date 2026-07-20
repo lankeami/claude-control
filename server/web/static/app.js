@@ -2041,6 +2041,30 @@ document.addEventListener('alpine:init', () => {
         }
       }).catch(() => {});
 
+      // Check for pending question on reconnect
+      fetch(`/api/sessions/${sessionId}/pending-question`, {
+        headers: { 'Authorization': `Bearer ${this.apiKey}` }
+      }).then(r => r.json()).then(data => {
+        if (data.pending && data.questions && data.questions.length > 0) {
+          const alreadyShown = this.chatMessages.some(m => m.role === 'question' && !m.answered);
+          if (!alreadyShown) {
+            this.pendingQuestion = {
+              toolUseId: data.tool_use_id,
+              questions: data.questions,
+              timestamp: data.created_at
+            };
+            this.pendingQuestionOtherText = '';
+            this.chatMessages.push({
+              id: 'question-' + Date.now(),
+              role: 'question',
+              questions: data.questions,
+              timestamp: data.created_at
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+          }
+        }
+      }).catch(() => {});
+
       this.sessionSSE.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -2192,6 +2216,7 @@ document.addEventListener('alpine:init', () => {
           if (data.type === 'done') {
             this.pendingPermission = null;
             this.pendingQuestion = null;
+            this.chatMessages = this.chatMessages.filter(m => m.role !== 'question_stuck' && m.role !== 'question_error');
             this.finalizeAgentInvocations();
             // Keep the SSE connection open: in interactive mode the Claude
             // process outlives the turn and can produce more output (e.g.
@@ -2208,20 +2233,33 @@ document.addEventListener('alpine:init', () => {
                 this.addActivityPill(label, 'active');
                 this.trackAgentInvocation(block, label);
 
-                if (block.name === 'AskUserQuestion' && block.input && block.input.questions) {
-                  this.pendingQuestion = {
-                    toolUseId: block.id,
-                    questions: block.input.questions,
-                    timestamp: new Date().toISOString()
-                  };
-                  this.pendingQuestionOtherText = '';
-                  this.chatMessages.push({
-                    id: 'question-' + Date.now(),
-                    role: 'question',
-                    questions: block.input.questions,
-                    timestamp: new Date().toISOString()
-                  });
-                  this.$nextTick(() => this.scrollToBottom(true));
+                if (block.name === 'AskUserQuestion') {
+                  const questions = block.input && Array.isArray(block.input.questions) && block.input.questions.length > 0
+                    ? block.input.questions
+                    : null;
+                  if (questions) {
+                    this.pendingQuestion = {
+                      toolUseId: block.id,
+                      questions: questions,
+                      timestamp: new Date().toISOString()
+                    };
+                    this.pendingQuestionOtherText = '';
+                    this.chatMessages.push({
+                      id: 'question-' + Date.now(),
+                      role: 'question',
+                      questions: questions,
+                      timestamp: new Date().toISOString()
+                    });
+                    this.$nextTick(() => this.scrollToBottom(true));
+                  } else {
+                    this.chatMessages.push({
+                      id: 'question-error-' + Date.now(),
+                      role: 'question_error',
+                      timestamp: new Date().toISOString()
+                    });
+                    this.$nextTick(() => this.scrollToBottom(true));
+                    this.scheduleQuestionRetry(block.id);
+                  }
                 }
               }
             }
@@ -2433,6 +2471,98 @@ document.addEventListener('alpine:init', () => {
         msg.answered = false;
         msg.selectedOption = null;
         msg.answerText = '';
+      }
+    },
+
+    scheduleQuestionRetry(toolUseId) {
+      let attempts = 0;
+      const maxAttempts = 3;
+      const retryInterval = 2000;
+      const doRetry = () => {
+        if (attempts >= maxAttempts || !this.selectedSessionId) {
+          const errMsg = this.chatMessages.find(m => m.role === 'question_error');
+          if (errMsg) errMsg.retryExhausted = true;
+          return;
+        }
+        attempts++;
+        fetch(`/api/sessions/${this.selectedSessionId}/pending-question`, {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        }).then(r => r.json()).then(data => {
+          if (data.pending && data.questions && data.questions.length > 0) {
+            const errIdx = this.chatMessages.findIndex(m => m.role === 'question_error');
+            if (errIdx >= 0) this.chatMessages.splice(errIdx, 1);
+            this.pendingQuestion = {
+              toolUseId: data.tool_use_id,
+              questions: data.questions,
+              timestamp: data.created_at
+            };
+            this.pendingQuestionOtherText = '';
+            this.chatMessages.push({
+              id: 'question-' + Date.now(),
+              role: 'question',
+              questions: data.questions,
+              timestamp: data.created_at
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+          } else {
+            setTimeout(doRetry, retryInterval);
+          }
+        }).catch(() => setTimeout(doRetry, retryInterval));
+      };
+      setTimeout(doRetry, retryInterval);
+    },
+
+    async retryQuestion() {
+      if (!this.selectedSessionId) return;
+      const errIdx = this.chatMessages.findIndex(m => m.role === 'question_error');
+      if (errIdx >= 0) this.chatMessages.splice(errIdx, 1);
+      try {
+        const r = await fetch(`/api/sessions/${this.selectedSessionId}/pending-question`, {
+          headers: { 'Authorization': `Bearer ${this.apiKey}` }
+        });
+        const data = await r.json();
+        if (data.pending && data.questions && data.questions.length > 0) {
+          this.pendingQuestion = {
+            toolUseId: data.tool_use_id,
+            questions: data.questions,
+            timestamp: data.created_at
+          };
+          this.pendingQuestionOtherText = '';
+          this.chatMessages.push({
+            id: 'question-' + Date.now(),
+            role: 'question',
+            questions: data.questions,
+            timestamp: data.created_at
+          });
+          this.$nextTick(() => this.scrollToBottom(true));
+        } else {
+          this.toast('No pending question found');
+        }
+      } catch (e) {
+        this.toast('Failed to fetch question: ' + e.message);
+      }
+    },
+
+    async dismissQuestion() {
+      if (!this.selectedSessionId) return;
+      try {
+        await fetch(`/api/sessions/${this.selectedSessionId}/question-dismiss`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      } catch (e) {
+        console.error('Failed to dismiss question:', e);
+      }
+      this.pendingQuestion = null;
+      const errIdx = this.chatMessages.findIndex(m => m.role === 'question_error');
+      if (errIdx >= 0) this.chatMessages.splice(errIdx, 1);
+      const qIdx = this.chatMessages.findIndex(m => m.role === 'question' && !m.answered);
+      if (qIdx >= 0) {
+        this.chatMessages[qIdx].answered = true;
+        this.chatMessages[qIdx].answerText = 'Dismissed';
       }
     },
 
@@ -3209,6 +3339,23 @@ Please review this PR and provide feedback.`;
             stalePill.content = stalePill.originalLabel;
         }
         this.stalenessTimer = setTimeout(() => {
+            if (this.pendingQuestion) {
+                const hasUnanswered = this.chatMessages.some(m => m.role === 'question' && !m.answered);
+                if (!hasUnanswered) {
+                    this.retryQuestion();
+                } else {
+                    const stuckExists = this.chatMessages.some(m => m.role === 'question_stuck');
+                    if (!stuckExists) {
+                        this.chatMessages.push({
+                            id: 'question-stuck-' + Date.now(),
+                            role: 'question_stuck',
+                            timestamp: new Date().toISOString()
+                        });
+                        this.$nextTick(() => this.scrollToBottom(true));
+                    }
+                }
+                return;
+            }
             const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
             if (activePill) {
                 const elapsed = Math.round((Date.now() - this.lastEventTime) / 1000);

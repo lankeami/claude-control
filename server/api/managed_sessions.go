@@ -436,8 +436,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 				sess.Initialized = true
 			}
 
-			// Clean up any pending permission request
+			// Clean up any pending permission/question request
 			s.permissions.Delete(sessionID)
+			s.pendingQuestions.Delete(sessionID)
 
 			// Check if process died
 			select {
