@@ -25,6 +25,7 @@ type Server struct {
 	workflowEngine    *managed.WorkflowEngine
 	envPath           string
 	permissions       *PermissionManager
+	pendingQuestions  *PendingQuestionManager
 	shutdownFunc      func() // called to trigger server restart
 	restartInProgress atomic.Bool
 	serverID          string // unique ID per server instance, used by clients to detect restart
@@ -40,7 +41,7 @@ type Server struct {
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string, taskTrigger TaskTrigger) http.Handler {
-	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), shutdownFunc: shutdownFunc, serverID: serverID, taskTrigger: taskTrigger}
+	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), pendingQuestions: NewPendingQuestionManager(), shutdownFunc: shutdownFunc, serverID: serverID, taskTrigger: taskTrigger}
 
 	// Initialize workflow engine with callbacks wired to the server
 	s.workflowEngine = managed.NewWorkflowEngine(
@@ -114,6 +115,8 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("POST /api/sessions/{id}/permission-respond", s.handlePermissionRespond)
 	apiMux.HandleFunc("GET /api/sessions/{id}/pending-permission", s.handlePendingPermission)
 	apiMux.HandleFunc("POST /api/sessions/{id}/question-respond", s.handleQuestionRespond)
+	apiMux.HandleFunc("GET /api/sessions/{id}/pending-question", s.handlePendingQuestion)
+	apiMux.HandleFunc("POST /api/sessions/{id}/question-dismiss", s.handleDismissQuestion)
 	apiMux.HandleFunc("GET /api/sessions/{id}/commands", s.handleListCommands)
 	apiMux.HandleFunc("GET /api/sessions/{id}/commands/content", s.handleCommandContent)
 

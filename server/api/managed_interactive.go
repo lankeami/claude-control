@@ -306,6 +306,9 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			for _, toolName := range extractToolNames(line) {
 				_, _ = s.store.CreateMessage(sessionID, "activity", toolName, 0)
 			}
+			if pq := extractAskUserQuestion(line); pq != nil {
+				s.pendingQuestions.Set(sessionID, pq)
+			}
 			extractSessionFiles(line, sessionID, s.store)
 
 			v, ok := s.interactiveTurns.Load(sessionID)
@@ -614,6 +617,7 @@ func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <
 }
 
 func (s *Server) finishInteractiveTurn(sessionID string, broadcaster *managed.Broadcaster) {
+	s.pendingQuestions.Delete(sessionID)
 	_ = s.store.UpdateActivityState(sessionID, "waiting")
 	broadcaster.Send(`{"type":"done","exit_code":0}`)
 }
