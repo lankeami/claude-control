@@ -48,6 +48,7 @@ document.addEventListener('alpine:init', () => {
     sessionSSE: null,
     sseReconnectAttempts: 0,
     sseReconnectTimer: null,
+    questionPollTimer: null,
 
     // Directory browser state
     browsePath: '',
@@ -1798,8 +1799,8 @@ document.addEventListener('alpine:init', () => {
         this.addActivityPill('Thinking...', 'active');
         this.resetStalenessTimer();
 
-        // Start SSE stream for this session
-        this.startSessionSSE(this.selectedSessionId);
+        // Ensure SSE is connected (reuse existing connection if open)
+        await this.ensureSSEConnected(this.selectedSessionId);
       } catch (e) {
         this.toast('Error: ' + e.message);
       }
@@ -2351,6 +2352,49 @@ document.addEventListener('alpine:init', () => {
       this.sessionSSE.onerror = () => {
         this.attemptSSEReconnect(sessionId);
       };
+
+      this.startQuestionPoll(sessionId);
+    },
+
+    startQuestionPoll(sessionId) {
+      this.stopQuestionPoll();
+      this.questionPollTimer = setInterval(async () => {
+        if (sessionId !== this.selectedSessionId) {
+          this.stopQuestionPoll();
+          return;
+        }
+        if (this.pendingQuestion) return;
+        const hasUnanswered = this.chatMessages.some(m => m.role === 'question' && !m.answered);
+        if (hasUnanswered) return;
+        try {
+          const r = await fetch(`/api/sessions/${sessionId}/pending-question`, {
+            headers: { 'Authorization': `Bearer ${this.apiKey}` }
+          });
+          const data = await r.json();
+          if (data.pending && data.questions && data.questions.length > 0) {
+            this.pendingQuestion = {
+              toolUseId: data.tool_use_id,
+              questions: data.questions,
+              timestamp: data.created_at
+            };
+            this.pendingQuestionOtherText = '';
+            this.chatMessages.push({
+              id: 'question-' + Date.now(),
+              role: 'question',
+              questions: data.questions,
+              timestamp: data.created_at
+            });
+            this.$nextTick(() => this.scrollToBottom(true));
+          }
+        } catch (e) { /* ignore poll failures */ }
+      }, 3000);
+    },
+
+    stopQuestionPoll() {
+      if (this.questionPollTimer) {
+        clearInterval(this.questionPollTimer);
+        this.questionPollTimer = null;
+      }
     },
 
     attemptSSEReconnect(sessionId) {
@@ -2402,6 +2446,7 @@ document.addEventListener('alpine:init', () => {
         this.sseReconnectTimer = null;
       }
       this.sseReconnectAttempts = 0;
+      this.stopQuestionPoll();
       if (this.sessionSSE) {
         this.sessionSSE.close();
         this.sessionSSE = null;
