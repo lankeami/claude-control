@@ -30,7 +30,7 @@ var compactTimeout = 5 * time.Minute
 // promptEchoTimeout is how long we wait for the typed prompt to appear as a
 // user entry in the transcript before re-sending Enter (the paste may land
 // before the TUI is accepting the submit keypress).
-var promptEchoTimeout = 4 * time.Second
+var promptEchoTimeout = 15 * time.Second
 
 // promptEchoRetries is how many extra Enter presses we attempt.
 const promptEchoRetries = 2
