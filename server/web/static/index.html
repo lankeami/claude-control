@@ -887,14 +887,19 @@
             <button class="file-tree-refresh" x-show="skillsExpanded" @click.stop="fetchSkills(selectedSessionId)" title="Refresh skills">↻</button>
           </div>
           <div x-show="skillsExpanded" x-collapse style="padding:0 12px 8px 12px">
+            <div class="issue-state-toggles" style="margin-bottom:6px" x-show="!skillsLoading && !skillsError && skills.length > 0">
+              <button class="issue-state-toggle" :class="{ 'active-skills-all': skillsFilter === 'all' }" @click="skillsFilter = 'all'">All</button>
+              <button class="issue-state-toggle" :class="{ 'active-skills-global': skillsFilter === 'global' }" @click="skillsFilter = 'global'">Global</button>
+              <button class="issue-state-toggle" :class="{ 'active-skills-project': skillsFilter === 'project' }" @click="skillsFilter = 'project'">Project</button>
+            </div>
             <div x-show="skillsLoading" class="issues-loading">Loading...</div>
             <div x-show="!skillsLoading && skillsError" class="issues-error" x-text="skillsError"></div>
             <div x-show="!skillsLoading && !skillsError && skills.length === 0" class="issues-empty">No skills found</div>
             <div class="issue-list" x-show="!skillsLoading && !skillsError && skills.length > 0">
-              <template x-for="skill in skills" :key="skill.name">
+              <template x-for="skill in filteredSkills" :key="skill.name">
                 <div class="issue-row" @click="sendSkill(skill.name)" :title="skill.description || skill.name">
                   <div class="issue-row-content">
-                    <div class="issue-row-title" x-text="skill.name"></div>
+                    <div class="issue-row-title" x-text="skill.name" :style="skill.dir === 'project' ? 'color: #3b82f6' : ''"></div>
                   </div>
                 </div>
               </template>
