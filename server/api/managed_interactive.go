@@ -307,6 +307,7 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 				_, _ = s.store.CreateMessage(sessionID, "activity", toolName, 0)
 			}
 			if pq := extractAskUserQuestion(line); pq != nil {
+				log.Printf("session %s: AskUserQuestion detected in transcript, storing pending question (tool_use_id=%s)", sessionID, pq.ToolUseID)
 				s.pendingQuestions.Set(sessionID, pq)
 			}
 			extractSessionFiles(line, sessionID, s.store)
