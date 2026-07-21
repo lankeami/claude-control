@@ -114,6 +114,7 @@ document.addEventListener('alpine:init', () => {
     skillsExpanded: false,
     skillsLoading: false,
     skillsError: null,
+    skillsFilter: 'all',
 
     viewerFile: null,
     viewerMode: 'diff',
@@ -2706,12 +2707,20 @@ document.addEventListener('alpine:init', () => {
           this.skillsError = 'Failed to load skills';
           return;
         }
-        this.skills = await resp.json() || [];
+        const raw = await resp.json() || [];
+        raw.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        this.skills = raw;
       } catch (e) {
         this.skillsError = e.message || 'Failed to load skills';
       } finally {
         this.skillsLoading = false;
       }
+    },
+
+    get filteredSkills() {
+      if (this.skillsFilter === 'global') return this.skills.filter(s => s.dir !== 'project');
+      if (this.skillsFilter === 'project') return this.skills.filter(s => s.dir === 'project');
+      return this.skills;
     },
 
     sendSkill(skillName) {

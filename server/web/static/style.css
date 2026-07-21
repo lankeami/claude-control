@@ -912,6 +912,19 @@ body {
   border-color: #8957e5;
 }
 
+.issue-state-toggle.active-skills-all,
+.issue-state-toggle.active-skills-global {
+  background: var(--text-muted);
+  color: #fff;
+  border-color: var(--text-muted);
+}
+
+.issue-state-toggle.active-skills-project {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+
 .issues-search {
   width: 100%;
   padding: 5px 8px;
