@@ -87,6 +87,46 @@ func TestPendingQuestionManager(t *testing.T) {
 	}
 }
 
+func TestPendingQuestionWaitForClear(t *testing.T) {
+	mgr := NewPendingQuestionManager()
+	pq := &PendingQuestion{ToolUseID: "toolu_w1", Questions: []PendingQuestionItem{{Question: "test?"}}}
+	mgr.Set("sess1", pq)
+
+	ch := mgr.WaitForClear("sess1")
+
+	// Channel should not be ready yet
+	select {
+	case <-ch:
+		t.Fatal("WaitForClear fired before Delete")
+	default:
+	}
+
+	// Delete should signal the channel
+	mgr.Delete("sess1")
+
+	select {
+	case <-ch:
+		// expected
+	default:
+		t.Fatal("WaitForClear did not fire after Delete")
+	}
+}
+
+func TestPendingQuestionWaitForClearWithoutSet(t *testing.T) {
+	mgr := NewPendingQuestionManager()
+	ch := mgr.WaitForClear("sess2")
+
+	// Delete on a non-existent session should still signal the waiter
+	mgr.Delete("sess2")
+
+	select {
+	case <-ch:
+		// expected
+	default:
+		t.Fatal("WaitForClear did not fire for Delete on empty session")
+	}
+}
+
 func TestHandlePendingQuestion_NoPending(t *testing.T) {
 	ts, store := setupTestServer(t)
 	defer ts.Close()

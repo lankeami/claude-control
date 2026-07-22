@@ -61,6 +61,15 @@ func buildInteractiveArgs(sess *db.Session, settingsPath, trustPrompt string) []
 	return args
 }
 
+// turnEndReason distinguishes why waitForTurnEnd unblocked.
+type turnEndReason int
+
+const (
+	turnEndStop     turnEndReason = iota // Stop hook fired (normal turn completion)
+	turnEndDied                          // Process exited
+	turnEndQuestion                      // AskUserQuestion detected in transcript
+)
+
 // interactiveTurnState tracks per-turn counters shared between the transcript
 // callback (tailer goroutine) and the orchestrator goroutine.
 type interactiveTurnState struct {
@@ -70,6 +79,7 @@ type interactiveTurnState struct {
 	outputTokens   int
 	interruptedFor string // "" | "max_turns" | "budget"
 	promptEchoed   bool   // the typed prompt appeared in the transcript
+	questionCh     chan struct{}
 }
 
 func (t *interactiveTurnState) reset() {
@@ -80,6 +90,11 @@ func (t *interactiveTurnState) reset() {
 	t.outputTokens = 0
 	t.interruptedFor = ""
 	t.promptEchoed = false
+	// Drain any stale question signal
+	select {
+	case <-t.questionCh:
+	default:
+	}
 }
 
 func (t *interactiveTurnState) markPromptEchoed() {
@@ -215,7 +230,7 @@ func (s *Server) sendMessageInteractive(sess *db.Session, message string, imageP
 	// Register this message's turn state so the long-lived transcript
 	// callback (registered at spawn, possibly by an earlier message's
 	// goroutine) feeds counters into the current turn.
-	turn := &interactiveTurnState{}
+	turn := &interactiveTurnState{questionCh: make(chan struct{}, 1)}
 	s.interactiveTurns.Store(sessionID, turn)
 
 	prompt := message
@@ -306,9 +321,11 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			for _, toolName := range extractToolNames(line) {
 				_, _ = s.store.CreateMessage(sessionID, "activity", toolName, 0)
 			}
+			questionDetected := false
 			if pq := extractAskUserQuestion(line); pq != nil {
 				log.Printf("session %s: AskUserQuestion detected in transcript, storing pending question (tool_use_id=%s)", sessionID, pq.ToolUseID)
 				s.pendingQuestions.Set(sessionID, pq)
+				questionDetected = true
 			}
 			extractSessionFiles(line, sessionID, s.store)
 
@@ -317,6 +334,13 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 				return
 			}
 			cur := v.(*interactiveTurnState)
+
+			if questionDetected {
+				select {
+				case cur.questionCh <- struct{}{}:
+				default:
+				}
+			}
 			cur.mu.Lock()
 			cur.assistantCount++
 			cur.inputTokens += entry.Message.Usage.InputTokens
@@ -436,9 +460,45 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			s.confirmPromptSubmission(sessionID, turn, proc.Done, turnOver, broadcaster)
 		})
 
-		procDied := !s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+		reason := s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+
+		// AskUserQuestion detected — transition to waiting, then resume when
+		// the user responds (or abort if Stop/death occurs while waiting).
+		for reason == turnEndQuestion {
+			log.Printf("session %s: AskUserQuestion unblocked turn loop, transitioning to waiting", sessionID)
+			_ = s.store.UpdateActivityState(sessionID, "waiting")
+			questionEvt, _ := json.Marshal(map[string]string{"type": "question_ready"})
+			broadcaster.Send(string(questionEvt))
+
+			respondedCh := s.pendingQuestions.WaitForClear(sessionID)
+
+			// If the question was already answered (race), skip the wait.
+			if s.pendingQuestions.Get(sessionID) == nil {
+				log.Printf("session %s: pending question already cleared, resuming turn", sessionID)
+				_ = s.store.UpdateActivityState(sessionID, "working")
+				reason = s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+				continue
+			}
+
+			select {
+			case <-respondedCh:
+				log.Printf("session %s: question answered, resuming turn", sessionID)
+				_ = s.store.UpdateActivityState(sessionID, "working")
+				reason = s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+			case <-stopCh:
+				log.Printf("session %s: stop during question wait, ending turn", sessionID)
+				s.pendingQuestions.Delete(sessionID)
+				reason = turnEndStop
+			case <-proc.Done:
+				log.Printf("session %s: process died during question wait", sessionID)
+				s.pendingQuestions.Delete(sessionID)
+				reason = turnEndDied
+			}
+		}
+
 		close(turnOver)
 
+		procDied := reason == turnEndDied
 		count, in, out, interrupted := turn.snapshot()
 
 		if !sess.Initialized {
@@ -590,19 +650,22 @@ func (s *Server) confirmPromptSubmission(sessionID string, turn *interactiveTurn
 	broadcaster.Send(string(evt))
 }
 
-// waitForTurnEnd blocks until the Stop hook fires, the process dies, or — if
-// the turn was interrupted via ESC — a fallback timer expires (the Stop hook
-// may not fire on interrupts). Returns false if the process died.
-func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <-chan struct{}, turn *interactiveTurnState) bool {
+// waitForTurnEnd blocks until the Stop hook fires, the process dies, an
+// AskUserQuestion is detected in the transcript, or — if the turn was
+// interrupted via ESC — a fallback timer expires (the Stop hook may not fire
+// on interrupts).
+func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <-chan struct{}, turn *interactiveTurnState) turnEndReason {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	var interruptedAt time.Time
 	for {
 		select {
 		case <-stopCh:
-			return true
+			return turnEndStop
 		case <-done:
-			return false
+			return turnEndDied
+		case <-turn.questionCh:
+			return turnEndQuestion
 		case <-ticker.C:
 			s.manager.TouchInteractive(sessionID)
 			_, _, _, interrupted := turn.snapshot()
@@ -611,7 +674,7 @@ func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <
 			}
 			if !interruptedAt.IsZero() && time.Since(interruptedAt) > escStopFallback {
 				log.Printf("session %s: no Stop hook after interrupt, assuming turn ended", sessionID)
-				return true
+				return turnEndStop
 			}
 		}
 	}
