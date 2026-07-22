@@ -28,11 +28,13 @@ type PendingQuestion struct {
 type PendingQuestionManager struct {
 	mu      sync.Mutex
 	pending map[string]*PendingQuestion
+	waiters map[string]chan struct{}
 }
 
 func NewPendingQuestionManager() *PendingQuestionManager {
 	return &PendingQuestionManager{
 		pending: make(map[string]*PendingQuestion),
+		waiters: make(map[string]chan struct{}),
 	}
 }
 
@@ -48,10 +50,28 @@ func (pq *PendingQuestionManager) Get(sessionID string) *PendingQuestion {
 	return pq.pending[sessionID]
 }
 
+// WaitForClear returns a channel that receives a value when the pending
+// question for sessionID is deleted (via Delete). Used by the turn loop
+// to detect when the user responds to an AskUserQuestion.
+func (pq *PendingQuestionManager) WaitForClear(sessionID string) <-chan struct{} {
+	pq.mu.Lock()
+	defer pq.mu.Unlock()
+	ch := make(chan struct{}, 1)
+	pq.waiters[sessionID] = ch
+	return ch
+}
+
 func (pq *PendingQuestionManager) Delete(sessionID string) {
 	pq.mu.Lock()
 	defer pq.mu.Unlock()
 	delete(pq.pending, sessionID)
+	if ch, ok := pq.waiters[sessionID]; ok {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+		delete(pq.waiters, sessionID)
+	}
 }
 
 // extractAskUserQuestion checks an assistant transcript line for an

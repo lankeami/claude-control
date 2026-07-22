@@ -462,6 +462,157 @@ func TestIsCliNoiseMessage(t *testing.T) {
 	}
 }
 
+func askUserQuestionTranscriptLine(toolID, question string, options []string) string {
+	opts := make([]map[string]string, len(options))
+	for i, o := range options {
+		opts[i] = map[string]string{"label": o, "description": "Option " + o}
+	}
+	input := map[string]any{
+		"questions": []map[string]any{{
+			"question":    question,
+			"header":      "Choice",
+			"options":     opts,
+			"multiSelect": false,
+		}},
+	}
+	inputJSON, _ := json.Marshal(input)
+	return fmt.Sprintf(`{"type":"assistant","timestamp":"2026-06-12T00:00:00Z","message":{"role":"assistant","content":[{"type":"tool_use","id":%q,"name":"AskUserQuestion","input":%s}],"usage":{"input_tokens":100,"output_tokens":50}}}`, toolID, string(inputJSON))
+}
+
+func TestInteractiveAskUserQuestionUnblocksWaitForTurnEnd(t *testing.T) {
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-question", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	resp, err := sendMessage(ts, sess.ID, "do something")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// Emit an AskUserQuestion in the transcript
+	mock.EmitTranscriptLine(sess.ID, askUserQuestionTranscriptLine("toolu_test1", "Which approach?", []string{"A", "B"}))
+
+	// The activity state should transition to "waiting" without user intervention.
+	pollActivityState(t, store, sess.ID, "waiting", 3*time.Second)
+
+	// A question_ready SSE event should be broadcast.
+	var sawQuestionReady bool
+	timeout := time.After(2 * time.Second)
+drainQuestionReady:
+	for {
+		select {
+		case msg := <-ch:
+			var obj map[string]any
+			json.Unmarshal([]byte(msg), &obj)
+			if obj["type"] == "question_ready" {
+				sawQuestionReady = true
+				break drainQuestionReady
+			}
+		case <-timeout:
+			break drainQuestionReady
+		}
+	}
+	if !sawQuestionReady {
+		t.Error("no question_ready SSE event broadcast")
+	}
+
+	// Simulate the user responding via the question-respond endpoint.
+	respReq, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/question-respond",
+		strings.NewReader(`{"option_index":0,"option_count":2}`))
+	respReq.Header.Set("Authorization", "Bearer test-api-key")
+	respReq.Header.Set("Content-Type", "application/json")
+	respResp, err := http.DefaultClient.Do(respReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respResp.Body.Close()
+	if respResp.StatusCode != http.StatusOK {
+		t.Fatalf("question-respond status = %d", respResp.StatusCode)
+	}
+
+	// After responding, activity state should go back to "working".
+	pollActivityState(t, store, sess.ID, "working", 3*time.Second)
+
+	// Now signal Stop to end the turn normally.
+	mock.SignalStop(sess.ID)
+
+	// Should transition to "waiting" after the turn completes.
+	pollActivityState(t, store, sess.ID, "waiting", 3*time.Second)
+
+	// Verify a done event was broadcast.
+	var sawDone bool
+	timeout = time.After(2 * time.Second)
+	for !sawDone {
+		select {
+		case msg := <-ch:
+			var obj map[string]any
+			json.Unmarshal([]byte(msg), &obj)
+			if obj["type"] == "done" {
+				sawDone = true
+			}
+		case <-timeout:
+			t.Fatal("no done event after stop")
+		}
+	}
+}
+
+func TestInteractiveStopDuringAskUserQuestion(t *testing.T) {
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-question-stop", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	resp, err := sendMessage(ts, sess.ID, "do something")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// Emit an AskUserQuestion
+	mock.EmitTranscriptLine(sess.ID, askUserQuestionTranscriptLine("toolu_stop1", "Which?", []string{"X", "Y"}))
+
+	// Wait for the question to be detected
+	pollActivityState(t, store, sess.ID, "waiting", 3*time.Second)
+
+	// Instead of responding, signal Stop (simulates user clicking Stop)
+	mock.SignalStop(sess.ID)
+
+	// Should transition to "waiting" (turn ended) and pending question cleared
+	pollActivityState(t, store, sess.ID, "waiting", 3*time.Second)
+
+	// Verify done event
+	var sawDone bool
+	timeout := time.After(3 * time.Second)
+	for !sawDone {
+		select {
+		case msg := <-ch:
+			var obj map[string]any
+			json.Unmarshal([]byte(msg), &obj)
+			if obj["type"] == "done" {
+				sawDone = true
+			}
+		case <-timeout:
+			t.Fatal("no done event after stop during question")
+		}
+	}
+}
+
 func TestInteractiveNoResponseRequestedSuppressed(t *testing.T) {
 	ts, store, mock := setupInteractiveTestServer(t)
 	sess, err := store.CreateManagedSession("/tmp/int-noise", `["Bash"]`, 50, 5.0, 0)
