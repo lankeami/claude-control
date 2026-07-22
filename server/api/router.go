@@ -180,7 +180,7 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("GET /api/workflow-runs", s.handleListWorkflowRuns)
 	apiMux.HandleFunc("GET /api/workflow-runs/{id}", s.handleGetWorkflowRun)
 
-	rl := NewRateLimiter(60, 10)
+	rl := NewRateLimiter(180, 10)
 	authedAPI := rl.Middleware(AuthMiddleware(apiKey, rl, apiMux))
 
 	// Root mux — routes to appropriate handler

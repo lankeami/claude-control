@@ -27,7 +27,6 @@ document.addEventListener('alpine:init', () => {
     eventSource: null,
     sseFailCount: 0,
     pollInterval: null,
-    usagePollInterval: null,
 
     // Unified input (replaces old instructionText)
     inputText: '',
@@ -48,7 +47,6 @@ document.addEventListener('alpine:init', () => {
     sessionSSE: null,
     sseReconnectAttempts: 0,
     sseReconnectTimer: null,
-    questionPollTimer: null,
 
     // Directory browser state
     browsePath: '',
@@ -310,9 +308,9 @@ document.addEventListener('alpine:init', () => {
         await this.loadWorkflows();
         await this.checkSettingsFirstRun();
         this.loadShortcuts();
-        // Usage rate limit polling
+        // Cost data is now pushed via SSE — no polling needed.
+        // Initial fetch for immediate display before first SSE tick.
         this.fetchCostSummary();
-        this.usagePollInterval = setInterval(() => this.fetchCostSummary(), 60_000);
       }
       this.$watch('mobileMenuOpen', (open) => {
         document.body.style.overflow = open ? 'hidden' : '';
@@ -356,10 +354,6 @@ document.addEventListener('alpine:init', () => {
 
     disconnect() {
       this.stopSSE();
-      if (this.usagePollInterval) {
-        clearInterval(this.usagePollInterval);
-        this.usagePollInterval = null;
-      }
       this.usageData = null;
       this.usageError = false;
       this.authenticated = false;
@@ -409,6 +403,11 @@ document.addEventListener('alpine:init', () => {
               }
             }
           }
+          // Update cost data from SSE payload (eliminates cost polling)
+          if (data.cost_summary) {
+            this.usageData = data.cost_summary;
+            this.usageError = false;
+          }
           this.connected = true;
           this.sseFailCount = 0;
           this.checkActivityStateNotifications(data.sessions || []);
@@ -434,7 +433,13 @@ document.addEventListener('alpine:init', () => {
         this.sseFailCount++;
         if (this.sseFailCount >= 3) {
           this.stopSSE();
-          this.startPolling();
+          // Delay before falling back to polling to avoid hammering
+          // a rate-limited server immediately after SSE failure.
+          setTimeout(() => {
+            if (!this.eventSource && this.authenticated) {
+              this.startPolling();
+            }
+          }, 2000);
         }
       };
     },
@@ -448,8 +453,10 @@ document.addEventListener('alpine:init', () => {
     },
 
     // Polling fallback
+    pollBackoffMs: 5000,
     startPolling() {
       this.stopPolling();
+      this.pollBackoffMs = 5000;
       this.pollInterval = setInterval(() => this.pollState(), 5000);
       this.pollState();
     },
@@ -459,6 +466,7 @@ document.addEventListener('alpine:init', () => {
         clearInterval(this.pollInterval);
         this.pollInterval = null;
       }
+      this.pollBackoffMs = 5000;
     },
 
     async pollState() {
@@ -471,6 +479,21 @@ document.addEventListener('alpine:init', () => {
         if (sessResp.status === 401 || promptResp.status === 401) {
           this.disconnect();
           return;
+        }
+        // On 429, back off: double the interval up to 60s
+        if (sessResp.status === 429 || promptResp.status === 429) {
+          this.pollBackoffMs = Math.min(this.pollBackoffMs * 2, 60000);
+          if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = setInterval(() => this.pollState(), this.pollBackoffMs);
+          }
+          return;
+        }
+        // Success — reset backoff to normal
+        if (this.pollBackoffMs > 5000 && this.pollInterval) {
+          this.pollBackoffMs = 5000;
+          clearInterval(this.pollInterval);
+          this.pollInterval = setInterval(() => this.pollState(), 5000);
         }
         const sessions = await sessResp.json();
         this.sessions = sessions;
@@ -2043,29 +2066,8 @@ document.addEventListener('alpine:init', () => {
         }
       }).catch(() => {});
 
-      // Check for pending question on reconnect
-      fetch(`/api/sessions/${sessionId}/pending-question`, {
-        headers: { 'Authorization': `Bearer ${this.apiKey}` }
-      }).then(r => r.json()).then(data => {
-        if (data.pending && data.questions && data.questions.length > 0) {
-          const alreadyShown = this.chatMessages.some(m => m.role === 'question' && !m.answered);
-          if (!alreadyShown) {
-            this.pendingQuestion = {
-              toolUseId: data.tool_use_id,
-              questions: data.questions,
-              timestamp: data.created_at
-            };
-            this.pendingQuestionOtherText = '';
-            this.chatMessages.push({
-              id: 'question-' + Date.now(),
-              role: 'question',
-              questions: data.questions,
-              timestamp: data.created_at
-            });
-            this.$nextTick(() => this.scrollToBottom(true));
-          }
-        }
-      }).catch(() => {});
+      // Pending question state is now sent by the server as an SSE event
+      // on connect — no fetch needed.
 
       this.sessionSSE.onmessage = (event) => {
         try {
@@ -2077,6 +2079,35 @@ document.addEventListener('alpine:init', () => {
           // Heartbeat: just reset the timer and return
           if (data.type === 'heartbeat') {
             this.resetHeartbeatTimer();
+            return;
+          }
+
+          // Pending question pushed via SSE (replaces polling)
+          if (data.type === 'pending_question' && data.pending && data.questions && data.questions.length > 0) {
+            if (!this.pendingQuestion) {
+              const alreadyShown = this.chatMessages.some(m => m.role === 'question' && !m.answered);
+              if (!alreadyShown) {
+                this.pendingQuestion = {
+                  toolUseId: data.tool_use_id,
+                  questions: data.questions,
+                  timestamp: data.created_at
+                };
+                this.pendingQuestionOtherText = '';
+                this.chatMessages.push({
+                  id: 'question-' + Date.now(),
+                  role: 'question',
+                  questions: data.questions,
+                  timestamp: data.created_at
+                });
+                this.$nextTick(() => this.scrollToBottom(true));
+              }
+            }
+            return;
+          }
+
+          // Question cleared (answered or dismissed elsewhere)
+          if (data.type === 'question_cleared') {
+            this.pendingQuestion = null;
             return;
           }
 
@@ -2352,49 +2383,6 @@ document.addEventListener('alpine:init', () => {
       this.sessionSSE.onerror = () => {
         this.attemptSSEReconnect(sessionId);
       };
-
-      this.startQuestionPoll(sessionId);
-    },
-
-    startQuestionPoll(sessionId) {
-      this.stopQuestionPoll();
-      this.questionPollTimer = setInterval(async () => {
-        if (sessionId !== this.selectedSessionId) {
-          this.stopQuestionPoll();
-          return;
-        }
-        if (this.pendingQuestion) return;
-        const hasUnanswered = this.chatMessages.some(m => m.role === 'question' && !m.answered);
-        if (hasUnanswered) return;
-        try {
-          const r = await fetch(`/api/sessions/${sessionId}/pending-question`, {
-            headers: { 'Authorization': `Bearer ${this.apiKey}` }
-          });
-          const data = await r.json();
-          if (data.pending && data.questions && data.questions.length > 0) {
-            this.pendingQuestion = {
-              toolUseId: data.tool_use_id,
-              questions: data.questions,
-              timestamp: data.created_at
-            };
-            this.pendingQuestionOtherText = '';
-            this.chatMessages.push({
-              id: 'question-' + Date.now(),
-              role: 'question',
-              questions: data.questions,
-              timestamp: data.created_at
-            });
-            this.$nextTick(() => this.scrollToBottom(true));
-          }
-        } catch (e) { /* ignore poll failures */ }
-      }, 3000);
-    },
-
-    stopQuestionPoll() {
-      if (this.questionPollTimer) {
-        clearInterval(this.questionPollTimer);
-        this.questionPollTimer = null;
-      }
     },
 
     attemptSSEReconnect(sessionId) {
@@ -2415,18 +2403,21 @@ document.addEventListener('alpine:init', () => {
         return;
       }
 
-      // Exponential backoff: 1s, 2s, 4s, 8s... capped at 15s
-      const delay = Math.min(1000 * Math.pow(2, this.sseReconnectAttempts), 15000);
+      // Exponential backoff: 1s, 2s, 4s, 8s... capped at 30s
+      const delay = Math.min(1000 * Math.pow(2, this.sseReconnectAttempts), 30000);
       this.sseReconnectAttempts++;
 
       this.sseReconnectTimer = setTimeout(async () => {
         if (sessionId !== this.selectedSessionId) return;
-        // Reachability probe — never give up silently on a bad response;
-        // retry with backoff until the attempt cap handles it.
         try {
           const resp = await fetch(`/api/sessions/${sessionId}`, {
             headers: { 'Authorization': `Bearer ${this.apiKey}` }
           });
+          // On 429, wait longer before retrying — don't cascade
+          if (resp.status === 429) {
+            this.attemptSSEReconnect(sessionId);
+            return;
+          }
           if (!resp.ok) throw new Error(`session fetch ${resp.status}`);
         } catch (e) {
           this.attemptSSEReconnect(sessionId);
@@ -2446,7 +2437,6 @@ document.addEventListener('alpine:init', () => {
         this.sseReconnectTimer = null;
       }
       this.sseReconnectAttempts = 0;
-      this.stopQuestionPoll();
       if (this.sessionSSE) {
         this.sessionSSE.close();
         this.sessionSSE = null;

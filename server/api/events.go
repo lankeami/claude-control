@@ -58,6 +58,21 @@ func (s *Server) sendSSEState(w http.ResponseWriter, flusher http.Flusher) {
 		"sessions": sessions,
 		"prompts":  prompts,
 	}
+
+	// Include cost summary so the frontend doesn't need to poll /api/cost-summary
+	now := time.Now()
+	fiveHrStart, fiveHrEnd := db.FiveHourWindow(now)
+	sevenDayStart, sevenDayEnd := db.SevenDayWindow(now)
+	fiveHrLimit, sevenDayLimit := s.usageLimits()
+	if fiveHr, err := s.aggregateCosts(fiveHrStart, fiveHrEnd, fiveHrLimit); err == nil {
+		if sevenDay, err := s.aggregateCosts(sevenDayStart, sevenDayEnd, sevenDayLimit); err == nil {
+			payload["cost_summary"] = map[string]interface{}{
+				"five_hour": fiveHr,
+				"seven_day": sevenDay,
+			}
+		}
+	}
+
 	data, _ := json.Marshal(payload)
 
 	fmt.Fprintf(w, "event: update\ndata: %s\n\n", data)

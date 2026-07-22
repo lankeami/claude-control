@@ -3,17 +3,33 @@ package api
 import (
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 )
 
+// clientIP extracts the real client IP from the request. When TRUST_PROXY=true
+// (required when running behind ngrok or another reverse proxy), it reads the
+// first address from X-Forwarded-For. Otherwise it falls back to RemoteAddr.
+func clientIP(r *http.Request) string {
+	if strings.EqualFold(os.Getenv("TRUST_PROXY"), "true") {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if ip := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0]); ip != "" {
+				return ip
+			}
+		}
+	}
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+	return ip
+}
+
 func AuthMiddleware(apiKey string, rl *RateLimiter, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-		if ip == "" {
-			ip = r.RemoteAddr
-		}
+		ip := clientIP(r)
 
 		// Check if IP is locked out from too many failed auth attempts
 		if rl.IsLockedOut(ip) {
@@ -78,10 +94,7 @@ func (rl *RateLimiter) IsLockedOut(ip string) bool {
 
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-		if ip == "" {
-			ip = r.RemoteAddr
-		}
+		ip := clientIP(r)
 
 		rl.mu.Lock()
 		now := time.Now()

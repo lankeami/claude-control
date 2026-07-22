@@ -326,6 +326,17 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 				log.Printf("session %s: AskUserQuestion detected in transcript, storing pending question (tool_use_id=%s)", sessionID, pq.ToolUseID)
 				s.pendingQuestions.Set(sessionID, pq)
 				questionDetected = true
+				// Broadcast a structured question event so the frontend
+				// picks it up via SSE without polling.
+				if qData, err := json.Marshal(map[string]interface{}{
+					"type":        "pending_question",
+					"pending":     true,
+					"tool_use_id": pq.ToolUseID,
+					"questions":   pq.Questions,
+					"created_at":  pq.CreatedAt,
+				}); err == nil {
+					broadcaster.Send(string(qData))
+				}
 			}
 			extractSessionFiles(line, sessionID, s.store)
 
