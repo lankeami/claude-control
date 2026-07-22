@@ -122,6 +122,28 @@ func TestClientIPFallsBackWhenXFFEmpty(t *testing.T) {
 	}
 }
 
+func TestClientIPRejectsInvalidXFF(t *testing.T) {
+	os.Setenv("TRUST_PROXY", "true")
+	defer os.Unsetenv("TRUST_PROXY")
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:5555"
+	req.Header.Set("X-Forwarded-For", "not-an-ip, 10.0.0.1")
+	if got := clientIP(req); got != "10.0.0.1" {
+		t.Errorf("expected RemoteAddr fallback for invalid XFF, got %s", got)
+	}
+}
+
+func TestClientIPHandlesIPv6XFF(t *testing.T) {
+	os.Setenv("TRUST_PROXY", "true")
+	defer os.Unsetenv("TRUST_PROXY")
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.1:5555"
+	req.Header.Set("X-Forwarded-For", "2001:db8::1")
+	if got := clientIP(req); got != "2001:db8::1" {
+		t.Errorf("expected IPv6 address, got %s", got)
+	}
+}
+
 func TestRateLimiterSeparateBucketsPerIP(t *testing.T) {
 	rl := NewRateLimiter(2, 100)
 	handler := rl.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

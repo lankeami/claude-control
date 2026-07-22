@@ -2108,6 +2108,8 @@ document.addEventListener('alpine:init', () => {
           // Question cleared (answered or dismissed elsewhere)
           if (data.type === 'question_cleared') {
             this.pendingQuestion = null;
+            const qMsg = this.chatMessages.find(m => m.role === 'question' && !m.answered);
+            if (qMsg) qMsg.answered = true;
             return;
           }
 

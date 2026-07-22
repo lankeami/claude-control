@@ -33,6 +33,8 @@ type Server struct {
 	skipKeychain      bool   // skip macOS keychain lookup in tests
 	usageCache        *UsageCache
 	usageCacheMu      sync.RWMutex
+	costCache         *costSummaryCache
+	costCacheMu       sync.RWMutex
 	// interactiveTurns maps sessionID -> *interactiveTurnState for the turn
 	// currently in flight. The transcript callback is registered once at
 	// process spawn and outlives individual turns, so it must look up the

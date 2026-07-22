@@ -15,8 +15,14 @@ import (
 func clientIP(r *http.Request) string {
 	if strings.EqualFold(os.Getenv("TRUST_PROXY"), "true") {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if ip := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0]); ip != "" {
-				return ip
+			raw := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
+			// Strip brackets and port from IPv6 addresses (e.g. "[::1]:1234")
+			host := raw
+			if h, _, err := net.SplitHostPort(raw); err == nil {
+				host = h
+			}
+			if net.ParseIP(host) != nil {
+				return host
 			}
 		}
 	}
