@@ -9,6 +9,13 @@ import (
 	"github.com/jaychinthrajah/claude-controller/server/db"
 )
 
+const costCacheTTL = 15 * time.Second
+
+type costSummaryCache struct {
+	data      map[string]interface{}
+	timestamp time.Time
+}
+
 func (s *Server) handleSSEEvents(w http.ResponseWriter, r *http.Request, apiKey string) {
 	// Auth via query param (EventSource can't send headers)
 	token := r.URL.Query().Get("token")
@@ -43,6 +50,40 @@ func (s *Server) handleSSEEvents(w http.ResponseWriter, r *http.Request, apiKey 
 	}
 }
 
+// cachedCostSummary returns the cost summary, recomputing at most once per costCacheTTL.
+func (s *Server) cachedCostSummary() map[string]interface{} {
+	s.costCacheMu.RLock()
+	if s.costCache != nil && time.Since(s.costCache.timestamp) < costCacheTTL {
+		data := s.costCache.data
+		s.costCacheMu.RUnlock()
+		return data
+	}
+	s.costCacheMu.RUnlock()
+
+	now := time.Now()
+	fiveHrStart, fiveHrEnd := db.FiveHourWindow(now)
+	sevenDayStart, sevenDayEnd := db.SevenDayWindow(now)
+	fiveHrLimit, sevenDayLimit := s.usageLimits()
+	fiveHr, err := s.aggregateCosts(fiveHrStart, fiveHrEnd, fiveHrLimit)
+	if err != nil {
+		return nil
+	}
+	sevenDay, err := s.aggregateCosts(sevenDayStart, sevenDayEnd, sevenDayLimit)
+	if err != nil {
+		return nil
+	}
+	result := map[string]interface{}{
+		"five_hour": fiveHr,
+		"seven_day": sevenDay,
+	}
+
+	s.costCacheMu.Lock()
+	s.costCache = &costSummaryCache{data: result, timestamp: now}
+	s.costCacheMu.Unlock()
+
+	return result
+}
+
 func (s *Server) sendSSEState(w http.ResponseWriter, flusher http.Flusher) {
 	sessions, _ := s.store.ListSessions(false)
 	prompts, _ := s.store.ListPrompts("", "")
@@ -58,6 +99,11 @@ func (s *Server) sendSSEState(w http.ResponseWriter, flusher http.Flusher) {
 		"sessions": sessions,
 		"prompts":  prompts,
 	}
+
+	if cs := s.cachedCostSummary(); cs != nil {
+		payload["cost_summary"] = cs
+	}
+
 	data, _ := json.Marshal(payload)
 
 	fmt.Fprintf(w, "event: update\ndata: %s\n\n", data)

@@ -151,6 +151,7 @@ func (s *Server) handleDismissQuestion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.pendingQuestions.Delete(sessionID)
+	s.manager.GetBroadcaster(sessionID).Send(`{"type":"question_cleared"}`)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})

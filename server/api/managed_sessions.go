@@ -638,6 +638,20 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 	// can broadcast events before the SSE subscriber is ready.
 	flusher.Flush()
 
+	// Send current pending question state so late-connecting clients catch up.
+	if pq := s.pendingQuestions.Get(sessionID); pq != nil {
+		if qData, err := json.Marshal(map[string]interface{}{
+			"type":        "pending_question",
+			"pending":     true,
+			"tool_use_id": pq.ToolUseID,
+			"questions":   pq.Questions,
+			"created_at":  pq.CreatedAt,
+		}); err == nil {
+			fmt.Fprintf(w, "data: %s\n\n", qData)
+			flusher.Flush()
+		}
+	}
+
 	// Per-connection heartbeat: the interactive backend can go silent for
 	// minutes mid-turn (long thinking, long tool runs), and the web UI treats
 	// >30s of SSE silence as a dead connection.

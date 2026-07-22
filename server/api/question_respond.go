@@ -41,6 +41,7 @@ func (s *Server) handleQuestionRespond(w http.ResponseWriter, r *http.Request) {
 	isOther := req.OptionIndex < 0 || req.OptionIndex >= req.OptionCount
 
 	s.pendingQuestions.Delete(sessionID)
+	s.manager.GetBroadcaster(sessionID).Send(`{"type":"question_cleared"}`)
 
 	if isOther {
 		// Navigate past all options to "Other", select it, type text, confirm
