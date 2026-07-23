@@ -900,29 +900,10 @@ body {
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.issue-state-toggle.active-open {
-  background: #238636;
-  color: #fff;
-  border-color: #238636;
-}
-
-.issue-state-toggle.active-closed {
-  background: #8957e5;
-  color: #fff;
-  border-color: #8957e5;
-}
-
-.issue-state-toggle.active-skills-all,
-.issue-state-toggle.active-skills-global {
+.issue-state-toggle.active {
   background: var(--text-muted);
   color: #fff;
   border-color: var(--text-muted);
-}
-
-.issue-state-toggle.active-skills-project {
-  background: #3b82f6;
-  color: #fff;
-  border-color: #3b82f6;
 }
 
 .issues-search {

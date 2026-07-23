@@ -888,9 +888,9 @@
           </div>
           <div x-show="skillsExpanded" x-collapse style="padding:0 12px 8px 12px">
             <div class="issue-state-toggles" style="margin-bottom:6px" x-show="!skillsLoading && !skillsError && skills.length > 0">
-              <button class="issue-state-toggle" :class="{ 'active-skills-all': skillsFilter === 'all' }" @click="skillsFilter = 'all'">All</button>
-              <button class="issue-state-toggle" :class="{ 'active-skills-global': skillsFilter === 'global' }" @click="skillsFilter = 'global'">Global</button>
-              <button class="issue-state-toggle" :class="{ 'active-skills-project': skillsFilter === 'project' }" @click="skillsFilter = 'project'">Project</button>
+              <button class="issue-state-toggle" :class="{ 'active': skillsFilter === 'all' }" @click="skillsFilter = 'all'">All</button>
+              <button class="issue-state-toggle" :class="{ 'active': skillsFilter === 'global' }" @click="skillsFilter = 'global'">Global</button>
+              <button class="issue-state-toggle" :class="{ 'active': skillsFilter === 'project' }" @click="skillsFilter = 'project'">Project</button>
             </div>
             <div x-show="skillsLoading" class="issues-loading">Loading...</div>
             <div x-show="!skillsLoading && skillsError" class="issues-error" x-text="skillsError"></div>
@@ -916,10 +916,10 @@
             </span>
             <div class="issue-state-toggles" x-show="issuesExpanded" @click.stop>
               <button class="issue-state-toggle"
-                      :class="{ 'active-open': githubIssuesState === 'open' }"
+                      :class="{ 'active': githubIssuesState === 'open' }"
                       @click="toggleIssueState('open')">Open</button>
               <button class="issue-state-toggle"
-                      :class="{ 'active-closed': githubIssuesState === 'closed' }"
+                      :class="{ 'active': githubIssuesState === 'closed' }"
                       @click="toggleIssueState('closed')">Closed</button>
             </div>
           </div>
@@ -973,10 +973,10 @@
             </span>
             <div class="issue-state-toggles" x-show="pullsExpanded" @click.stop>
               <button class="issue-state-toggle"
-                      :class="{ 'active-open': githubPullsState === 'open' }"
+                      :class="{ 'active': githubPullsState === 'open' }"
                       @click="togglePullState('open')">Open</button>
               <button class="issue-state-toggle"
-                      :class="{ 'active-closed': githubPullsState === 'closed' }"
+                      :class="{ 'active': githubPullsState === 'closed' }"
                       @click="togglePullState('closed')">Closed</button>
             </div>
           </div>
@@ -1229,9 +1229,9 @@
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                 <span style="font-weight:600;font-size:14px;">Issues</span>
                 <div class="issue-state-toggles" @click.stop>
-                  <button class="issue-state-toggle" :class="{ 'active-open': githubIssuesState === 'open' }"
+                  <button class="issue-state-toggle" :class="{ 'active': githubIssuesState === 'open' }"
                           @click="toggleIssueState('open')">Open</button>
-                  <button class="issue-state-toggle" :class="{ 'active-closed': githubIssuesState === 'closed' }"
+                  <button class="issue-state-toggle" :class="{ 'active': githubIssuesState === 'closed' }"
                           @click="toggleIssueState('closed')">Closed</button>
                 </div>
               </div>
