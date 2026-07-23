@@ -913,16 +913,11 @@ body {
 }
 
 .issue-state-toggle.active-skills-all,
-.issue-state-toggle.active-skills-global {
-  background: var(--text-muted);
-  color: #fff;
-  border-color: var(--text-muted);
-}
-
+.issue-state-toggle.active-skills-global,
 .issue-state-toggle.active-skills-project {
-  background: #3b82f6;
+  background: #238636;
   color: #fff;
-  border-color: #3b82f6;
+  border-color: #238636;
 }
 
 .issues-search {
