@@ -915,7 +915,7 @@
               Issues
             </span>
           </div>
-          <div class="issue-state-toggles" style="margin-bottom:6px" @click.stop>
+          <div class="issue-state-toggles" x-show="issuesExpanded" style="margin-bottom:6px" @click.stop>
             <button class="issue-state-toggle"
                     :class="{ 'active-open': githubIssuesState === 'open' }"
                     @click="toggleIssueState('open')">Open</button>
@@ -972,7 +972,7 @@
               Pull Requests
             </span>
           </div>
-          <div class="issue-state-toggles" style="margin-bottom:6px" @click.stop>
+          <div class="issue-state-toggles" x-show="pullsExpanded" style="margin-bottom:6px" @click.stop>
             <button class="issue-state-toggle"
                     :class="{ 'active-open': githubPullsState === 'open' }"
                     @click="togglePullState('open')">Open</button>
