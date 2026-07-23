@@ -915,7 +915,7 @@
               Issues
             </span>
           </div>
-          <div class="issue-state-toggles" x-show="issuesExpanded" style="margin-bottom:6px" @click.stop>
+          <div class="issue-state-toggles" x-show="issuesExpanded" style="margin-bottom:6px;padding:0 12px" @click.stop>
             <button class="issue-state-toggle"
                     :class="{ 'active-open': githubIssuesState === 'open' }"
                     @click="toggleIssueState('open')">Open</button>
@@ -923,7 +923,7 @@
                     :class="{ 'active-closed': githubIssuesState === 'closed' }"
                     @click="toggleIssueState('closed')">Closed</button>
           </div>
-          <div x-show="issuesExpanded" x-collapse style="padding-top:6px">
+          <div x-show="issuesExpanded" x-collapse style="padding:6px 12px 8px">
             <input type="text" class="issues-search" placeholder="Search issues..."
                    x-model="githubIssuesSearch"
                    @input="searchIssues()">
@@ -972,7 +972,7 @@
               Pull Requests
             </span>
           </div>
-          <div class="issue-state-toggles" x-show="pullsExpanded" style="margin-bottom:6px" @click.stop>
+          <div class="issue-state-toggles" x-show="pullsExpanded" style="margin-bottom:6px;padding:0 12px" @click.stop>
             <button class="issue-state-toggle"
                     :class="{ 'active-open': githubPullsState === 'open' }"
                     @click="togglePullState('open')">Open</button>
@@ -980,7 +980,7 @@
                     :class="{ 'active-closed': githubPullsState === 'closed' }"
                     @click="togglePullState('closed')">Closed</button>
           </div>
-          <div x-show="pullsExpanded" x-collapse style="padding-top:6px">
+          <div x-show="pullsExpanded" x-collapse style="padding:6px 12px 8px">
             <input type="text" class="issues-search" placeholder="Search pull requests..."
                    x-model="githubPullsSearch"
                    @input="searchPulls()">
