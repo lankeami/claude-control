@@ -144,6 +144,59 @@ func TestPutSettings_MaskedAuthtoken(t *testing.T) {
 	}
 }
 
+func TestPutSettings_PreservesManagerConfigFields(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := db.Open(filepath.Join(tmpDir, "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	mgr := managed.NewManager(managed.Config{
+		ClaudeBin:   "claude",
+		Mode:        "interactive",
+		BinaryPath:  "/usr/local/bin/claude-controller",
+		ServerPort:  9999,
+		KeyFilePath: "/tmp/api.key",
+	})
+	envPath := filepath.Join(tmpDir, ".env")
+	router := NewRouter(store, "test-key", mgr, envPath, nil, "test-server-id", nil, "default")
+	ts := httptest.NewServer(router)
+	t.Cleanup(ts.Close)
+
+	settings := map[string]string{
+		"claude_bin":  "/usr/bin/claude",
+		"claude_args": "--flag1",
+		"claude_env":  "K1=V1",
+	}
+	req := authReq("PUT", ts.URL+"/api/settings", settings)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	cfg := mgr.Config()
+	if cfg.ClaudeBin != "/usr/bin/claude" {
+		t.Errorf("ClaudeBin = %q, want /usr/bin/claude", cfg.ClaudeBin)
+	}
+	if cfg.Mode != "interactive" {
+		t.Errorf("Mode = %q, want interactive (hot-reload must not wipe the managed backend mode)", cfg.Mode)
+	}
+	if cfg.BinaryPath != "/usr/local/bin/claude-controller" {
+		t.Errorf("BinaryPath = %q, want /usr/local/bin/claude-controller", cfg.BinaryPath)
+	}
+	if cfg.ServerPort != 9999 {
+		t.Errorf("ServerPort = %d, want 9999", cfg.ServerPort)
+	}
+	if cfg.KeyFilePath != "/tmp/api.key" {
+		t.Errorf("KeyFilePath = %q, want /tmp/api.key", cfg.KeyFilePath)
+	}
+}
+
 func TestPutSettings_RestartRequired(t *testing.T) {
 	ts, _, _, envPath := newTestServerWithManager(t)
 	os.WriteFile(envPath, []byte("PORT=8080\n"), 0600)
