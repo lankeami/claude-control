@@ -43,10 +43,6 @@ func MigrateLegacy(instanceName string) (bool, error) {
 const controllerEnvMarker = "# Managed session config"
 
 func migrateLegacyEnv(legacyEnv, instDir string) (bool, error) {
-	if _, err := os.Stat(filepath.Join(instDir, ".env")); err == nil {
-		return false, nil
-	}
-
 	data, err := os.ReadFile(legacyEnv)
 	if err != nil {
 		return false, nil
@@ -55,13 +51,29 @@ func migrateLegacyEnv(legacyEnv, instDir string) (bool, error) {
 		return false, nil
 	}
 
-	if err := os.MkdirAll(instDir, 0755); err != nil {
-		return false, err
+	migrated := false
+	// shortcuts.json is written by the settings API next to the .env file.
+	files := map[string]string{
+		legacyEnv: ".env",
+		filepath.Join(filepath.Dir(legacyEnv), "shortcuts.json"): "shortcuts.json",
 	}
-	if err := copyFile(legacyEnv, filepath.Join(instDir, ".env")); err != nil {
-		return false, err
+	for src, name := range files {
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		dst := filepath.Join(instDir, name)
+		if _, err := os.Stat(dst); err == nil {
+			continue
+		}
+		if err := os.MkdirAll(instDir, 0755); err != nil {
+			return migrated, err
+		}
+		if err := copyFile(src, dst); err != nil {
+			return migrated, err
+		}
+		migrated = true
 	}
-	return true, nil
+	return migrated, nil
 }
 
 func migrateLegacyDirs(legacyDir, instDir string) (bool, error) {
