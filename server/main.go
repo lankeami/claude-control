@@ -25,6 +25,7 @@ import (
 	"github.com/jaychinthrajah/claude-controller/server/api"
 	"github.com/jaychinthrajah/claude-controller/server/db"
 	"github.com/jaychinthrajah/claude-controller/server/hooksignal"
+	"github.com/jaychinthrajah/claude-controller/server/instance"
 	"github.com/jaychinthrajah/claude-controller/server/managed"
 	"github.com/jaychinthrajah/claude-controller/server/mcp"
 	"github.com/jaychinthrajah/claude-controller/server/scheduler"
@@ -62,9 +63,20 @@ func main() {
 	}
 
 	port := flag.Int("port", 0, "port to listen on (default: 8080, auto-detect if occupied)")
-	dbPath := flag.String("db", "", "path to SQLite database (default: ~/.claude-controller/data.db)")
+	dbPath := flag.String("db", "", "path to SQLite database (default: ~/.claude-controller/{instance}/claude.db)")
 	managedModeFlag := flag.String("managed-mode", "", "managed session backend: interactive or print (default: MANAGED_MODE env, then interactive)")
+	instanceName := flag.String("instance", "default", "instance name (default: default)")
 	flag.Parse()
+
+	instReg, err := instance.New()
+	if err != nil {
+		log.Fatalf("Failed to initialize instance registry: %v", err)
+	}
+
+	inst, err := instReg.Get(*instanceName)
+	if err != nil {
+		log.Fatalf("Instance %q not found: %v", *instanceName, err)
+	}
 
 	if *port == 0 {
 		if p := os.Getenv("PORT"); p != "" {
@@ -74,15 +86,22 @@ func main() {
 			}
 		}
 		if *port == 0 {
-			*port = findAvailablePort(8080)
+			preferred := inst.Port
+			if preferred == 0 {
+				preferred = 8080
+			}
+			*port = findAvailablePort(preferred)
 		}
 	}
 
 	if *dbPath == "" {
-		home, _ := os.UserHomeDir()
-		dir := filepath.Join(home, ".claude-controller")
+		var err error
+		*dbPath, err = instance.DBPath(*instanceName)
+		if err != nil {
+			log.Fatalf("Failed to determine database path: %v", err)
+		}
+		dir := filepath.Dir(*dbPath)
 		os.MkdirAll(dir, 0755)
-		*dbPath = filepath.Join(dir, "data.db")
 	}
 
 	store, err := db.Open(*dbPath)
@@ -101,8 +120,10 @@ func main() {
 	sched.Reconcile()
 	sched.Start()
 
-	loadDotEnv(".env")
-	envPath, _ := filepath.Abs(".env")
+	envPath, err := instance.EnvPath(*instanceName)
+	if err == nil {
+		loadDotEnv(envPath)
+	}
 	binaryPath, _ := os.Executable()
 	managedCfg := managed.Config{
 		ClaudeBin:   envOrDefault("CLAUDE_BIN", "claude"),
@@ -125,7 +146,7 @@ func main() {
 	}
 
 	serverID := fmt.Sprintf("%d", time.Now().UnixNano())
-	router := api.NewRouter(store, apiKey, mgr, envPath, shutdownFunc, serverID, sched.Trigger)
+	router := api.NewRouter(store, apiKey, mgr, envPath, shutdownFunc, serverID, sched.Trigger, *instanceName)
 
 	// Start local server
 	bindHost := "localhost"
