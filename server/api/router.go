@@ -41,6 +41,9 @@ type Server struct {
 	// process spawn and outlives individual turns, so it must look up the
 	// live turn state here instead of capturing it.
 	interactiveTurns sync.Map
+	// budgetWarned tracks sessions already warned about exceeding their cost
+	// estimate, so the warning fires once per session per server lifetime.
+	budgetWarned sync.Map
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string, taskTrigger TaskTrigger, instanceName string) http.Handler {
