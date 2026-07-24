@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // MigrateLegacy copies the pre-multi-instance database and API key from
@@ -26,7 +27,41 @@ func MigrateLegacy(instanceName string) (bool, error) {
 		return false, err
 	}
 
-	return migrateLegacyDirs(legacyDir, instDir)
+	dbMigrated, err := migrateLegacyDirs(legacyDir, instDir)
+	if err != nil {
+		return dbMigrated, err
+	}
+
+	// Pre-multi-instance, settings were saved to .env in the server's
+	// working directory.
+	envMigrated, err := migrateLegacyEnv(".env", instDir)
+	return dbMigrated || envMigrated, err
+}
+
+// controllerEnvMarker is a section header formatEnvFile always writes, used to
+// distinguish a controller settings file from an unrelated project's .env.
+const controllerEnvMarker = "# Managed session config"
+
+func migrateLegacyEnv(legacyEnv, instDir string) (bool, error) {
+	if _, err := os.Stat(filepath.Join(instDir, ".env")); err == nil {
+		return false, nil
+	}
+
+	data, err := os.ReadFile(legacyEnv)
+	if err != nil {
+		return false, nil
+	}
+	if !strings.Contains(string(data), controllerEnvMarker) {
+		return false, nil
+	}
+
+	if err := os.MkdirAll(instDir, 0755); err != nil {
+		return false, err
+	}
+	if err := copyFile(legacyEnv, filepath.Join(instDir, ".env")); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func migrateLegacyDirs(legacyDir, instDir string) (bool, error) {

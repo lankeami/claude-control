@@ -139,6 +139,85 @@ func TestMigrateLegacySkipsMissingSidecarsAndKey(t *testing.T) {
 	}
 }
 
+const controllerEnv = "# Server\nPORT=8080\n\n# Managed session config\nCLAUDE_BIN=claude\n"
+
+func TestMigrateLegacyEnvCopiesControllerEnv(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, controllerEnv)
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if !migrated {
+		t.Fatal("expected env migration to happen")
+	}
+	if got := readFile(t, filepath.Join(instDir, ".env")); got != controllerEnv {
+		t.Errorf(".env = %q, want %q", got, controllerEnv)
+	}
+	if got := readFile(t, legacyEnv); got != controllerEnv {
+		t.Errorf("legacy .env modified: %q", got)
+	}
+}
+
+func TestMigrateLegacyEnvSkipsForeignEnv(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, "DATABASE_URL=postgres://foo\nSECRET=bar\n")
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if migrated {
+		t.Fatal("must not migrate a non-controller .env")
+	}
+	if _, err := os.Stat(filepath.Join(instDir, ".env")); !os.IsNotExist(err) {
+		t.Error("instance .env should not have been created")
+	}
+}
+
+func TestMigrateLegacyEnvNoopWhenInstanceEnvExists(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	if err := os.MkdirAll(instDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, controllerEnv)
+	writeFile(t, filepath.Join(instDir, ".env"), "PORT=9090\n")
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if migrated {
+		t.Fatal("must not overwrite existing instance .env")
+	}
+	if got := readFile(t, filepath.Join(instDir, ".env")); got != "PORT=9090\n" {
+		t.Errorf("instance .env overwritten: %q", got)
+	}
+}
+
+func TestMigrateLegacyEnvNoopWhenLegacyMissing(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+
+	migrated, err := migrateLegacyEnv(filepath.Join(base, ".env"), instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if migrated {
+		t.Fatal("expected no migration when legacy .env missing")
+	}
+}
+
 func TestMigrateLegacyOnlyDefaultInstance(t *testing.T) {
 	migrated, err := MigrateLegacy("work")
 	if err != nil {

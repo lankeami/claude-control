@@ -106,7 +106,7 @@ func main() {
 		if err != nil {
 			log.Printf("Warning: failed to migrate legacy database: %v", err)
 		} else if migrated {
-			log.Printf("Migrated legacy database and API key from ~/.claude-controller/ to %s", dir)
+			log.Printf("Migrated legacy configuration (database, API key, settings) to %s", dir)
 		}
 	}
 
