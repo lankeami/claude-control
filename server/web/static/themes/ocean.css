@@ -1,0 +1,31 @@
+/* Ocean theme - blue palette for personal instances */
+:root {
+  --theme-primary: #0066cc;
+  --theme-accent: #0052a3;
+  --theme-name: "Personal";
+}
+
+:root:not(:root) {
+  --bg: #ffffff;
+  --accent: var(--theme-primary);
+  --accent-hover: var(--theme-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: var(--theme-primary);
+    --accent-hover: var(--theme-accent);
+  }
+}
+
+.sidebar-header {
+  border-bottom: 3px solid var(--theme-primary);
+}
+
+.btn-primary {
+  background: var(--theme-primary);
+}
+
+.btn-primary:hover {
+  background: var(--theme-accent);
+}

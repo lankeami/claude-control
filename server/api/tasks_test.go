@@ -20,7 +20,7 @@ func newTestServerWithTrigger(t *testing.T, trigger TaskTrigger) (*httptest.Serv
 	}
 	t.Cleanup(func() { store.Close() })
 
-	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"), nil, "test-server-id", trigger)
+	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"), nil, "test-server-id", trigger, "default")
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 	return ts, store

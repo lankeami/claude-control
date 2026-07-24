@@ -26,8 +26,19 @@ fi
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""')
 
-# Load config (override with CLAUDE_CONTROLLER_CONFIG env var)
-CONFIG_FILE="${CLAUDE_CONTROLLER_CONFIG:-$HOME/.claude-controller.json}"
+# Resolve config: explicit override > per-instance config > legacy default-instance config.
+# A non-default instance must NOT fall back to the legacy config — that would
+# silently route its sessions to another instance's server.
+INSTANCE="${CLAUDE_CONTROLLER_INSTANCE:-default}"
+if [[ -n "${CLAUDE_CONTROLLER_CONFIG:-}" ]]; then
+    CONFIG_FILE="$CLAUDE_CONTROLLER_CONFIG"
+elif [[ -f "$HOME/.claude-controller/$INSTANCE/hook-config.json" ]]; then
+    CONFIG_FILE="$HOME/.claude-controller/$INSTANCE/hook-config.json"
+elif [[ "$INSTANCE" == "default" ]]; then
+    CONFIG_FILE="$HOME/.claude-controller.json"
+else
+    exit 0  # Non-default instance without config, exit silently
+fi
 if [[ ! -f "$CONFIG_FILE" ]]; then
     exit 0  # No config, exit silently
 fi
@@ -51,7 +62,7 @@ REGISTER_RESP=$(curl -sf --max-time 5 \
     -X POST "$SERVER_URL/api/sessions/register" \
     -H "$AUTH_HEADER" \
     -H "Content-Type: application/json" \
-    -d "{\"computer_name\": \"$COMPUTER_NAME\", \"project_path\": \"$CWD\", \"transcript_path\": \"$TRANSCRIPT_PATH\"}" 2>/dev/null) || exit 0
+    -d "{\"computer_name\": \"$COMPUTER_NAME\", \"project_path\": \"$CWD\", \"transcript_path\": \"$TRANSCRIPT_PATH\", \"instance\": \"$INSTANCE\"}" 2>/dev/null) || exit 0
 
 SERVER_SESSION_ID=$(echo "$REGISTER_RESP" | jq -r '.id')
 

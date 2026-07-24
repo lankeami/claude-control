@@ -24,6 +24,7 @@ type Server struct {
 	taskTrigger       TaskTrigger
 	workflowEngine    *managed.WorkflowEngine
 	envPath           string
+	instanceName      string // name of this instance
 	permissions       *PermissionManager
 	pendingQuestions  *PendingQuestionManager
 	shutdownFunc      func() // called to trigger server restart
@@ -42,8 +43,8 @@ type Server struct {
 	interactiveTurns sync.Map
 }
 
-func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string, taskTrigger TaskTrigger) http.Handler {
-	s := &Server{store: store, manager: mgr, envPath: envPath, permissions: NewPermissionManager(), pendingQuestions: NewPendingQuestionManager(), shutdownFunc: shutdownFunc, serverID: serverID, taskTrigger: taskTrigger}
+func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string, taskTrigger TaskTrigger, instanceName string) http.Handler {
+	s := &Server{store: store, manager: mgr, envPath: envPath, instanceName: instanceName, permissions: NewPermissionManager(), pendingQuestions: NewPendingQuestionManager(), shutdownFunc: shutdownFunc, serverID: serverID, taskTrigger: taskTrigger}
 
 	// Initialize workflow engine with callbacks wired to the server
 	s.workflowEngine = managed.NewWorkflowEngine(
@@ -95,6 +96,7 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	// Pairing/status endpoints
 	apiMux.HandleFunc("GET /api/pairing", s.handlePairing)
 	apiMux.HandleFunc("GET /api/status", s.handleStatus)
+	apiMux.HandleFunc("GET /api/instance", s.handleGetInstance)
 
 	// Browse endpoints
 	apiMux.HandleFunc("GET /api/browse", s.handleBrowse)

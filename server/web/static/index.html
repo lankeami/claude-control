@@ -6,6 +6,20 @@
   <title>Claude Controller</title>
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" id="theme-stylesheet" href="/themes/ocean.css">
+  <script>
+    (async () => {
+      try {
+        const response = await fetch('/api/instance');
+        const data = await response.json();
+        const themeLink = document.getElementById('theme-stylesheet');
+        themeLink.href = `/themes/${data.theme}.css`;
+        document.title = `Claude Controller - ${data.name}`;
+      } catch (e) {
+        console.log('Failed to load instance info, using default theme');
+      }
+    })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js" integrity="sha384-qSFej5dZNviyoPgYJ5+Xk4bEbX8AYddxAHPuzs1aSgRiXxJ3qmyWNaPsRkpv/+x5" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">

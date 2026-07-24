@@ -398,7 +398,7 @@ func TestInteractiveSessionIDConflictRotatesAndRetries(t *testing.T) {
 
 	cfg := managed.Config{ClaudeBin: "/bin/bash", ClaudeArgs: []string{script}, Mode: "interactive", BinaryPath: "/usr/local/bin/claude-controller", ServerPort: 8080}
 	mgr := managed.NewManager(cfg)
-	router := NewRouter(store, "test-api-key", mgr, filepath.Join(dir, ".env"), nil, "test-server-id", nil)
+	router := NewRouter(store, "test-api-key", mgr, filepath.Join(dir, ".env"), nil, "test-server-id", nil, "default")
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 

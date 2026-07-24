@@ -30,7 +30,7 @@ func setupMockTestServer(t *testing.T) (*httptest.Server, *db.Store, *MockManage
 
 	mock := NewMockManager()
 	envPath := filepath.Join(dir, ".env")
-	router := NewRouter(store, "test-api-key", mock, envPath, nil, "test-server-id", nil)
+	router := NewRouter(store, "test-api-key", mock, envPath, nil, "test-server-id", nil, "default")
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 	return ts, store, mock
