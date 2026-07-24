@@ -139,6 +139,172 @@ func TestMigrateLegacySkipsMissingSidecarsAndKey(t *testing.T) {
 	}
 }
 
+const controllerEnv = "# Server\nPORT=8080\n\n# Managed session config\nCLAUDE_BIN=claude\n"
+
+func TestMigrateLegacyEnvCopiesControllerEnv(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, controllerEnv)
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if !migrated {
+		t.Fatal("expected env migration to happen")
+	}
+	if got := readFile(t, filepath.Join(instDir, ".env")); got != controllerEnv {
+		t.Errorf(".env = %q, want %q", got, controllerEnv)
+	}
+	if got := readFile(t, legacyEnv); got != controllerEnv {
+		t.Errorf("legacy .env modified: %q", got)
+	}
+}
+
+func TestMigrateLegacyEnvSkipsForeignEnv(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, "DATABASE_URL=postgres://foo\nSECRET=bar\n")
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if migrated {
+		t.Fatal("must not migrate a non-controller .env")
+	}
+	if _, err := os.Stat(filepath.Join(instDir, ".env")); !os.IsNotExist(err) {
+		t.Error("instance .env should not have been created")
+	}
+}
+
+func TestMigrateLegacyEnvNoopWhenInstanceEnvExists(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	if err := os.MkdirAll(instDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, controllerEnv)
+	writeFile(t, filepath.Join(instDir, ".env"), "PORT=9090\n")
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if migrated {
+		t.Fatal("must not overwrite existing instance .env")
+	}
+	if got := readFile(t, filepath.Join(instDir, ".env")); got != "PORT=9090\n" {
+		t.Errorf("instance .env overwritten: %q", got)
+	}
+}
+
+func TestMigrateLegacyEnvCopiesShortcuts(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, controllerEnv)
+	writeFile(t, filepath.Join(base, "shortcuts.json"), `[{"key":"👍","value":"yes"}]`)
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if !migrated {
+		t.Fatal("expected migration to happen")
+	}
+	if got := readFile(t, filepath.Join(instDir, "shortcuts.json")); got != `[{"key":"👍","value":"yes"}]` {
+		t.Errorf("shortcuts.json = %q", got)
+	}
+}
+
+func TestMigrateLegacyEnvCopiesShortcutsWhenInstanceEnvExists(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	if err := os.MkdirAll(instDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, controllerEnv)
+	writeFile(t, filepath.Join(base, "shortcuts.json"), `[{"key":"👍","value":"yes"}]`)
+	writeFile(t, filepath.Join(instDir, ".env"), "PORT=9090\n")
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if !migrated {
+		t.Fatal("expected shortcuts migration to happen")
+	}
+	if got := readFile(t, filepath.Join(instDir, ".env")); got != "PORT=9090\n" {
+		t.Errorf("instance .env overwritten: %q", got)
+	}
+	if got := readFile(t, filepath.Join(instDir, "shortcuts.json")); got != `[{"key":"👍","value":"yes"}]` {
+		t.Errorf("shortcuts.json = %q", got)
+	}
+}
+
+func TestMigrateLegacyEnvDoesNotOverwriteInstanceShortcuts(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	if err := os.MkdirAll(instDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, controllerEnv)
+	writeFile(t, filepath.Join(base, "shortcuts.json"), `[{"key":"old"}]`)
+	writeFile(t, filepath.Join(instDir, "shortcuts.json"), `[{"key":"new"}]`)
+
+	if _, err := migrateLegacyEnv(legacyEnv, instDir); err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if got := readFile(t, filepath.Join(instDir, "shortcuts.json")); got != `[{"key":"new"}]` {
+		t.Errorf("instance shortcuts.json overwritten: %q", got)
+	}
+}
+
+func TestMigrateLegacyEnvNoShortcutsWhenForeignEnv(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+	legacyEnv := filepath.Join(base, ".env")
+
+	writeFile(t, legacyEnv, "DATABASE_URL=postgres://foo\n")
+	writeFile(t, filepath.Join(base, "shortcuts.json"), `[{"key":"old"}]`)
+
+	migrated, err := migrateLegacyEnv(legacyEnv, instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if migrated {
+		t.Fatal("must not migrate anything next to a foreign .env")
+	}
+	if _, err := os.Stat(filepath.Join(instDir, "shortcuts.json")); !os.IsNotExist(err) {
+		t.Error("shortcuts.json should not have been created")
+	}
+}
+
+func TestMigrateLegacyEnvNoopWhenLegacyMissing(t *testing.T) {
+	base := t.TempDir()
+	instDir := filepath.Join(base, "default")
+
+	migrated, err := migrateLegacyEnv(filepath.Join(base, ".env"), instDir)
+	if err != nil {
+		t.Fatalf("migrateLegacyEnv: %v", err)
+	}
+	if migrated {
+		t.Fatal("expected no migration when legacy .env missing")
+	}
+}
+
 func TestMigrateLegacyOnlyDefaultInstance(t *testing.T) {
 	migrated, err := MigrateLegacy("work")
 	if err != nil {
