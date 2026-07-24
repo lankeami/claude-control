@@ -10,7 +10,12 @@ import (
 type hookCmd struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
+	Timeout int    `json:"timeout,omitempty"`
 }
+
+// permissionRequestHookTimeout must outlast the server's 5-minute permission
+// long-poll so the hook, not Claude Code's hook timeout, decides the outcome.
+const permissionRequestHookTimeout = 360
 
 type hookMatcher struct {
 	Hooks []hookCmd `json:"hooks"`
@@ -24,18 +29,19 @@ func WriteSessionSettings(dir, binaryPath, sessionID string, port int, allowedTo
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
-	mk := func(event string) []hookMatcher {
+	mk := func(event string, timeout int) []hookMatcher {
 		cmd := fmt.Sprintf("%q hook-signal --event %s --session-id %s --port %d", binaryPath, event, sessionID, port)
 		if keyFilePath != "" {
 			cmd += fmt.Sprintf(" --key-file %q", keyFilePath)
 		}
-		return []hookMatcher{{Hooks: []hookCmd{{Type: "command", Command: cmd}}}}
+		return []hookMatcher{{Hooks: []hookCmd{{Type: "command", Command: cmd, Timeout: timeout}}}}
 	}
 	settings := map[string]any{
 		"hooks": map[string]any{
-			"SessionStart": mk("session_start"),
-			"Stop":         mk("stop"),
-			"Notification": mk("notification"),
+			"SessionStart":      mk("session_start", 0),
+			"Stop":              mk("stop", 0),
+			"Notification":      mk("notification", 0),
+			"PermissionRequest": mk("permission_request", permissionRequestHookTimeout),
 		},
 	}
 	var tools []string

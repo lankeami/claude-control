@@ -54,6 +54,11 @@ func (s *Server) handleHookEvent(w http.ResponseWriter, r *http.Request) {
 	case "stop":
 		s.manager.SignalStop(sessionID)
 	case "notification":
+		// While a permission request is pending, the actionable card in the UI
+		// supersedes the TUI's bare "needs your permission" notification.
+		if s.permissions.Get(sessionID) != nil {
+			break
+		}
 		evt, _ := json.Marshal(map[string]string{"type": "notification", "message": req.Message})
 		s.manager.GetBroadcaster(sessionID).Send(string(evt))
 		if req.Message != "" {

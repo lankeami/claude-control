@@ -109,6 +109,76 @@ func TestHookEventNotificationBroadcasts(t *testing.T) {
 	}
 }
 
+func TestHookEventNotificationSuppressedWhilePermissionPending(t *testing.T) {
+	ts, store, mock := setupMockTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/hook-notif-perm", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	// Start a blocking permission request (the PermissionRequest hook path).
+	permDone := make(chan struct{})
+	go func() {
+		defer close(permDone)
+		req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/permission-request",
+			strings.NewReader(`{"tool_name":"WebFetch","description":"fetch","input":{"url":"https://x"}}`))
+		req.Header.Set("Authorization", "Bearer test-api-key")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+
+	// The input_request broadcast proves the pending permission is registered.
+	select {
+	case msg := <-ch:
+		if !strings.Contains(msg, `"input_request"`) {
+			t.Fatalf("expected input_request broadcast, got %s", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("input_request not broadcast")
+	}
+
+	// The TUI's redundant "needs your permission" notification must be dropped
+	// while the actionable permission card is pending.
+	resp, err := postHookEvent(ts, sess.ID, `{"event":"notification","message":"Claude needs your permission to use WebFetch"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	select {
+	case msg := <-ch:
+		t.Errorf("notification should be suppressed while permission pending, got broadcast: %s", msg)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	msgs, _ := store.ListMessages(sess.ID)
+	for _, m := range msgs {
+		if m.Role == "system" && strings.Contains(m.Content, "needs your permission") {
+			t.Error("notification persisted despite pending permission")
+		}
+	}
+
+	// Unblock the long-poll.
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/permission-respond",
+		strings.NewReader(`{"decision":"deny"}`))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
+	}
+	<-permDone
+}
+
 func TestHookEventUnknownSessionReturns404(t *testing.T) {
 	ts, _, _ := setupMockTestServer(t)
 	resp, err := postHookEvent(ts, "missing", `{"event":"stop"}`)
