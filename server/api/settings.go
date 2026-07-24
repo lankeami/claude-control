@@ -7,8 +7,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/jaychinthrajah/claude-controller/server/managed"
 )
 
 type Shortcut struct {
@@ -158,7 +156,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Hot-reload manager config
+	// Hot-reload manager config. Only the claude-invocation fields are
+	// settings-controlled — start from the current config so startup-derived
+	// fields (Mode, BinaryPath, ServerPort, KeyFilePath) survive the reload.
 	if s.manager != nil {
 		claudeBin := payload.ClaudeBin
 		if claudeBin == "" {
@@ -168,11 +168,11 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		if payload.ClaudeEnv != "" {
 			claudeEnv = strings.Split(payload.ClaudeEnv, ",")
 		}
-		s.manager.UpdateConfig(managed.Config{
-			ClaudeBin:  claudeBin,
-			ClaudeArgs: strings.Fields(payload.ClaudeArgs),
-			ClaudeEnv:  claudeEnv,
-		})
+		cfg := s.manager.Config()
+		cfg.ClaudeBin = claudeBin
+		cfg.ClaudeArgs = strings.Fields(payload.ClaudeArgs)
+		cfg.ClaudeEnv = claudeEnv
+		s.manager.UpdateConfig(cfg)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
