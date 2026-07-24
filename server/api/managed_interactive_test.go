@@ -41,6 +41,13 @@ func assistantTranscriptLine(text string, in, out int) string {
 	return fmt.Sprintf(`{"type":"assistant","timestamp":"2026-06-12T00:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":%q}],"usage":{"input_tokens":%d,"output_tokens":%d}}}`, text, in, out)
 }
 
+// assistantTranscriptLineWithID mimics real transcripts, where one API
+// response is split into multiple JSONL entries (one per content block) that
+// all share the same message ID and repeat the same usage stats.
+func assistantTranscriptLineWithID(msgID, text string, in, out int) string {
+	return fmt.Sprintf(`{"type":"assistant","timestamp":"2026-06-12T00:00:00Z","message":{"id":%q,"role":"assistant","content":[{"type":"text","text":%q}],"usage":{"input_tokens":%d,"output_tokens":%d}}}`, msgID, text, in, out)
+}
+
 func TestInteractiveTurnTouchesActivityWhileWaiting(t *testing.T) {
 	ts, store, mock := setupInteractiveTestServer(t)
 	sess, err := store.CreateManagedSession("/tmp/int-touch", `["Bash"]`, 50, 5.0, 0)
@@ -214,7 +221,104 @@ drain:
 	}
 }
 
-func TestInteractiveBudgetExceededStopsSession(t *testing.T) {
+// TestInteractiveTurnCountDedupesByMessageID: real transcripts split one API
+// response into multiple entries sharing a message ID. Only unique message
+// IDs may count toward max_turns — duplicate entries must not trigger the
+// ESC interrupt early.
+func TestInteractiveTurnCountDedupesByMessageID(t *testing.T) {
+	old := escStopFallback
+	escStopFallback = 200 * time.Millisecond
+	defer func() { escStopFallback = old }()
+
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-dedupe", `["Bash"]`, 2, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := sendMessage(ts, sess.ID, "long task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	waitForTranscriptFn(t, mock, sess.ID)
+	// Three entries, all the same API response — must count as ONE turn.
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLineWithID("msg_1", "text block", 10, 10))
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLineWithID("msg_1", "tool block", 10, 10))
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLineWithID("msg_1", "another block", 10, 10))
+
+	time.Sleep(300 * time.Millisecond)
+	if n := mock.InterruptInteractiveCount(); n != 0 {
+		t.Fatalf("InterruptInteractive calls = %d after duplicate entries, want 0", n)
+	}
+
+	// A second unique message ID reaches max_turns=2 — now interrupt.
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLineWithID("msg_2", "step 2", 10, 10))
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && mock.InterruptInteractiveCount() == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := mock.InterruptInteractiveCount(); n != 1 {
+		t.Fatalf("InterruptInteractive calls = %d, want 1", n)
+	}
+	mock.SignalStop(sess.ID)
+}
+
+// TestInteractiveUsageCountedOncePerMessage: duplicate entries repeat the
+// same usage stats; tokens must be summed once per message ID.
+func TestInteractiveUsageCountedOncePerMessage(t *testing.T) {
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-usage", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	resp, err := sendMessage(ts, sess.ID, "count my tokens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	waitForTranscriptFn(t, mock, sess.ID)
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLineWithID("msg_1", "text", 100, 50))
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLineWithID("msg_1", "tool", 100, 50))
+	time.Sleep(100 * time.Millisecond)
+	mock.SignalStop(sess.ID)
+
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case msg := <-ch:
+			var obj struct {
+				Type  string `json:"type"`
+				Usage struct {
+					InputTokens  int `json:"input_tokens"`
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			}
+			json.Unmarshal([]byte(msg), &obj)
+			if obj.Type == "result" {
+				if obj.Usage.InputTokens != 100 || obj.Usage.OutputTokens != 50 {
+					t.Fatalf("usage = %d/%d, want 100/50 (duplicate entries double-counted)",
+						obj.Usage.InputTokens, obj.Usage.OutputTokens)
+				}
+				return
+			}
+		case <-timeout:
+			t.Fatal("never saw result event")
+		}
+	}
+}
+
+// TestInteractiveBudgetExceededWarnsOnceWithoutPausing: interactive sessions
+// bill the subscription — the cost figure is an estimate. Crossing the cap
+// must warn exactly once and never block the session or auto-continue.
+func TestInteractiveBudgetExceededWarnsOnceWithoutPausing(t *testing.T) {
 	ts, store, mock := setupInteractiveTestServer(t)
 	sess, err := store.CreateManagedSession("/tmp/int-budget", `["Bash"]`, 50, 0.01, 0)
 	if err != nil {
@@ -227,28 +331,55 @@ func TestInteractiveBudgetExceededStopsSession(t *testing.T) {
 	ch := b.Subscribe()
 	defer b.Unsubscribe(ch)
 
-	resp, err := sendMessage(ts, sess.ID, "one more thing")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-
-	waitForTranscriptFn(t, mock, sess.ID)
-	mock.SignalStop(sess.ID)
-
-	var sawBudget bool
-	timeout := time.After(3 * time.Second)
-	for !sawBudget {
-		select {
-		case msg := <-ch:
-			if strings.Contains(msg, `"budget_exceeded"`) {
-				sawBudget = true
+	runTurn := func(text string, promptCount int) {
+		t.Helper()
+		resp, err := sendMessage(ts, sess.ID, text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		waitForTranscriptFn(t, mock, sess.ID)
+		// Wait for the prompt to be typed so the orchestrator is past its
+		// stale-stop drain before we signal.
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) && len(mock.SentPromptsCopy()) < promptCount {
+			time.Sleep(10 * time.Millisecond)
+		}
+		mock.SignalStop(sess.ID)
+		timeout := time.After(3 * time.Second)
+		for {
+			select {
+			case msg := <-ch:
+				if strings.Contains(msg, `"done"`) {
+					return
+				}
+			case <-timeout:
+				t.Fatal("turn never finished")
 			}
-		case <-timeout:
-			t.Fatal("no budget_exceeded event")
 		}
 	}
+
+	runTurn("first turn over budget", 1)
 	pollActivityState(t, store, sess.ID, "waiting", 2*time.Second)
+	runTurn("second turn over budget", 2)
+	pollActivityState(t, store, sess.ID, "waiting", 2*time.Second)
+
+	msgs, _ := store.ListMessages(sess.ID)
+	var warnings, paused int
+	for _, m := range msgs {
+		if m.Role == "system" && strings.Contains(m.Content, "udget") {
+			warnings++
+			if strings.Contains(m.Content, "paused") {
+				paused++
+			}
+		}
+	}
+	if warnings != 1 {
+		t.Errorf("budget warnings = %d, want exactly 1", warnings)
+	}
+	if paused != 0 {
+		t.Errorf("found %d 'paused' budget messages — budget must not pause sessions", paused)
+	}
 }
 
 func userEchoTranscriptLine(text string) string {

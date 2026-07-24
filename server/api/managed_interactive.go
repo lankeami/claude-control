@@ -80,6 +80,11 @@ type interactiveTurnState struct {
 	interruptedFor string // "" | "max_turns" | "budget"
 	promptEchoed   bool   // the typed prompt appeared in the transcript
 	questionCh     chan struct{}
+	// seenMsgIDs tracks assistant message IDs already counted this turn.
+	// Native transcripts split one API response into multiple JSONL entries
+	// (one per content block) that share a message ID and repeat the same
+	// usage stats — counting each entry doubles turn counts and token sums.
+	seenMsgIDs map[string]bool
 }
 
 func (t *interactiveTurnState) reset() {
@@ -90,6 +95,7 @@ func (t *interactiveTurnState) reset() {
 	t.outputTokens = 0
 	t.interruptedFor = ""
 	t.promptEchoed = false
+	t.seenMsgIDs = make(map[string]bool)
 	// Drain any stale question signal
 	select {
 	case <-t.questionCh:
@@ -123,6 +129,7 @@ type interactiveTranscriptEntry struct {
 	Type        string `json:"type"`
 	IsSidechain bool   `json:"isSidechain"`
 	Message     struct {
+		ID      string          `json:"id"`
 		Content json.RawMessage `json:"content"`
 		Usage   struct {
 			InputTokens  int `json:"input_tokens"`
@@ -353,9 +360,19 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 				}
 			}
 			cur.mu.Lock()
-			cur.assistantCount++
-			cur.inputTokens += entry.Message.Usage.InputTokens
-			cur.outputTokens += entry.Message.Usage.OutputTokens
+			if cur.seenMsgIDs == nil {
+				cur.seenMsgIDs = make(map[string]bool)
+			}
+			// Count each API response once, not once per content-block entry.
+			firstEntry := entry.Message.ID == "" || !cur.seenMsgIDs[entry.Message.ID]
+			if firstEntry {
+				if entry.Message.ID != "" {
+					cur.seenMsgIDs[entry.Message.ID] = true
+				}
+				cur.assistantCount++
+				cur.inputTokens += entry.Message.Usage.InputTokens
+				cur.outputTokens += entry.Message.Usage.OutputTokens
+			}
 			count := cur.assistantCount
 			alreadyInterrupted := cur.interruptedFor != ""
 			if maxTurns > 0 && count >= maxTurns && !alreadyInterrupted {
@@ -555,16 +572,18 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			return
 		}
 
-		// Budget enforcement from accumulated transcript usage.
+		// Budget is informational for interactive sessions — they bill the
+		// subscription and the accumulated cost is an estimate. Warn once,
+		// never pause the session or block auto-continue.
 		if sess.MaxBudgetUSD > 0 {
 			if total, err := s.store.SessionCostTotal(sessionID); err == nil && total > sess.MaxBudgetUSD {
-				log.Printf("session %s: budget exceeded ($%.4f > $%.2f)", sessionID, total, sess.MaxBudgetUSD)
-				budgetEvt, _ := json.Marshal(map[string]any{"type": "budget_exceeded", "total": total, "budget": sess.MaxBudgetUSD})
-				broadcaster.Send(string(budgetEvt))
-				_, _ = s.store.CreateMessage(sessionID, "system",
-					fmt.Sprintf("Budget limit reached ($%.2f of $%.2f). Session paused.", total, sess.MaxBudgetUSD), 0)
-				s.finishInteractiveTurn(sessionID, broadcaster)
-				return
+				if _, warned := s.budgetWarned.LoadOrStore(sessionID, true); !warned {
+					log.Printf("session %s: cost estimate exceeded budget ($%.4f > $%.2f), warning only", sessionID, total, sess.MaxBudgetUSD)
+					budgetEvt, _ := json.Marshal(map[string]any{"type": "budget_exceeded", "total": total, "budget": sess.MaxBudgetUSD})
+					broadcaster.Send(string(budgetEvt))
+					_, _ = s.store.CreateMessage(sessionID, "system",
+						fmt.Sprintf("Cost estimate ($%.2f) has exceeded this session's budget ($%.2f). Interactive sessions bill your subscription, so this is informational only.", total, sess.MaxBudgetUSD), 0)
+				}
 			}
 		}
 

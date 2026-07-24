@@ -2224,7 +2224,7 @@ document.addEventListener('alpine:init', () => {
             this.chatMessages.push({
               id: 'budget-' + Date.now(),
               role: 'system',
-              content: `Budget limit reached ($${(data.total || 0).toFixed(2)} of $${(data.budget || 0).toFixed(2)}). Session paused.`
+              content: `Cost estimate ($${(data.total || 0).toFixed(2)}) has exceeded this session's budget ($${(data.budget || 0).toFixed(2)}). Informational only — the session keeps running.`
             });
             this.$nextTick(() => this.scrollToBottom(true));
             return;
