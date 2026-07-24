@@ -102,6 +102,12 @@ func main() {
 		}
 		dir := filepath.Dir(*dbPath)
 		os.MkdirAll(dir, 0755)
+		migrated, err := instance.MigrateLegacy(*instanceName)
+		if err != nil {
+			log.Printf("Warning: failed to migrate legacy database: %v", err)
+		} else if migrated {
+			log.Printf("Migrated legacy database and API key from ~/.claude-controller/ to %s", dir)
+		}
 	}
 
 	store, err := db.Open(*dbPath)
