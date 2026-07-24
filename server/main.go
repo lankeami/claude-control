@@ -49,13 +49,20 @@ func main() {
 
 	if len(os.Args) >= 2 && os.Args[1] == "hook-signal" {
 		fs := flag.NewFlagSet("hook-signal", flag.ExitOnError)
-		event := fs.String("event", "", "hook event name (session_start|stop|notification)")
+		event := fs.String("event", "", "hook event name (session_start|stop|notification|permission_request)")
 		sessionID := fs.String("session-id", "", "managed session ID")
 		hookPort := fs.Int("port", 8080, "server port")
 		keyFile := fs.String("key-file", "", "path to api.key (default ~/.claude-controller/api.key)")
 		fs.Parse(os.Args[2:])
 		// Errors are intentionally swallowed: a broken relay must never
-		// block Claude from finishing its turn.
+		// block Claude from finishing its turn. For permission_request,
+		// exiting 0 with no output makes Claude fall back to its TUI dialog.
+		if *event == "permission_request" {
+			if err := hooksignal.RunPermissionRequest(*sessionID, *hookPort, *keyFile, os.Stdin, os.Stdout); err != nil {
+				log.Printf("hook-signal: %v", err)
+			}
+			return
+		}
 		if err := hooksignal.Run(*event, *sessionID, *hookPort, *keyFile, os.Stdin); err != nil {
 			log.Printf("hook-signal: %v", err)
 		}

@@ -3402,6 +3402,8 @@ Please review this PR and provide feedback.`;
                 }
                 return;
             }
+            // A pending permission card means we're waiting on the user, not stalled.
+            if (this.pendingPermission) return;
             const activePill = this.chatMessages.find(m => m.role === 'activity' && m.pillState === 'active');
             if (activePill) {
                 const elapsed = Math.round((Date.now() - this.lastEventTime) / 1000);

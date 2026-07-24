@@ -13,6 +13,7 @@ type settingsFile struct {
 		Hooks []struct {
 			Type    string `json:"type"`
 			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
 		} `json:"hooks"`
 	} `json:"hooks"`
 	Permissions struct {
@@ -68,6 +69,23 @@ func TestWriteSessionSettings(t *testing.T) {
 
 	if len(sf.Permissions.Allow) != 2 || sf.Permissions.Allow[0] != "Bash" || sf.Permissions.Allow[1] != "Read" {
 		t.Errorf("permissions.allow = %v", sf.Permissions.Allow)
+	}
+
+	perm, ok := sf.Hooks["PermissionRequest"]
+	if !ok || len(perm) != 1 || len(perm[0].Hooks) != 1 {
+		t.Fatalf("missing PermissionRequest hook: %s", data)
+	}
+	pr := perm[0].Hooks[0]
+	if !strings.Contains(pr.Command, "--event permission_request") {
+		t.Errorf("PermissionRequest hook missing event flag: %s", pr.Command)
+	}
+	if !strings.Contains(pr.Command, "--session-id sess-1") || !strings.Contains(pr.Command, "--port 8080") {
+		t.Errorf("PermissionRequest hook command malformed: %s", pr.Command)
+	}
+	// Must outlast the server's 5-minute permission long-poll so the hook,
+	// not Claude Code's hook timeout, decides the outcome.
+	if pr.Timeout < 330 {
+		t.Errorf("PermissionRequest hook timeout = %d, want >= 330", pr.Timeout)
 	}
 }
 
