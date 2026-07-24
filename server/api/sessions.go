@@ -12,12 +12,19 @@ type registerRequest struct {
 	ComputerName   string `json:"computer_name"`
 	ProjectPath    string `json:"project_path"`
 	TranscriptPath string `json:"transcript_path"`
+	Instance       string `json:"instance"`
 }
 
 func (s *Server) handleRegisterSession(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Empty instance = legacy hooks that predate multi-instance support.
+	if req.Instance != "" && req.Instance != s.instanceName {
+		http.Error(w, `{"error":"instance mismatch"}`, http.StatusConflict)
 		return
 	}
 

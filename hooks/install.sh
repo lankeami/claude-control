@@ -17,8 +17,16 @@ DEFAULT_SETTINGS="$CLAUDE_DIR_RESOLVED/settings.json"
 read -p "Claude settings file [$DEFAULT_SETTINGS]: " input_settings
 SETTINGS_FILE="${input_settings:-$DEFAULT_SETTINGS}"
 
+# Get instance name (each instance runs its own server with its own port/db/key)
+read -p "Instance name [default]: " input_instance
+INSTANCE="${input_instance:-default}"
+
 # Get config file location (hooks read this at runtime)
-DEFAULT_CONFIG="$HOME/.claude-controller.json"
+if [[ "$INSTANCE" == "default" ]]; then
+    DEFAULT_CONFIG="$HOME/.claude-controller.json"
+else
+    DEFAULT_CONFIG="$HOME/.claude-controller/$INSTANCE/hook-config.json"
+fi
 read -p "Controller config file [$DEFAULT_CONFIG]: " input_config
 CONFIG_FILE="${input_config:-$DEFAULT_CONFIG}"
 
@@ -37,6 +45,7 @@ SERVER_URL="${input_url:-http://localhost:$PORT}"
 read -p "API key (from QR code or server output): " API_KEY
 
 # Write config
+mkdir -p "$(dirname "$CONFIG_FILE")"
 cat > "$CONFIG_FILE" <<EOF
 {
   "server_url": "$SERVER_URL",
@@ -56,13 +65,17 @@ fi
 STOP_HOOK="$SCRIPT_DIR/stop.sh"
 NOTIFY_HOOK="$SCRIPT_DIR/notify.sh"
 
-if [[ "$CONFIG_FILE" == "$DEFAULT_CONFIG" ]]; then
-    STOP_CMD="$STOP_HOOK"
-    NOTIFY_CMD="$NOTIFY_HOOK"
-else
-    STOP_CMD="CLAUDE_CONTROLLER_CONFIG=$CONFIG_FILE $STOP_HOOK"
-    NOTIFY_CMD="CLAUDE_CONTROLLER_CONFIG=$CONFIG_FILE $NOTIFY_HOOK"
+# The hooks resolve per-instance config from CLAUDE_CONTROLLER_INSTANCE, so a
+# config at the standard per-instance path only needs the instance name.
+ENV_PREFIX=""
+if [[ "$INSTANCE" != "default" ]]; then
+    ENV_PREFIX="CLAUDE_CONTROLLER_INSTANCE=$INSTANCE "
 fi
+if [[ "$CONFIG_FILE" != "$DEFAULT_CONFIG" ]]; then
+    ENV_PREFIX="${ENV_PREFIX}CLAUDE_CONTROLLER_CONFIG=$CONFIG_FILE "
+fi
+STOP_CMD="${ENV_PREFIX}${STOP_HOOK}"
+NOTIFY_CMD="${ENV_PREFIX}${NOTIFY_HOOK}"
 
 # Add hooks to Claude Code settings using jq
 jq --arg stop "$STOP_CMD" --arg notify "$NOTIFY_CMD" '

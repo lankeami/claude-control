@@ -21,7 +21,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *db.Store) {
 
 	// Fake trigger mirrors production shape: creates the run record without executing.
 	trigger := func(task db.ScheduledTask) (*db.TaskRun, error) { return store.CreateTaskRun(task.ID) }
-	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"), nil, "test-server-id", trigger)
+	router := NewRouter(store, "test-key", nil, filepath.Join(t.TempDir(), ".env"), nil, "test-server-id", trigger, "default")
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 	return ts, store
@@ -58,6 +58,37 @@ func TestRegisterSession(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&session)
 	if session["computer_name"] != "mac1" {
 		t.Errorf("unexpected: %v", session)
+	}
+}
+
+func TestRegisterSessionInstanceValidation(t *testing.T) {
+	ts, _ := newTestServer(t) // server runs as instance "default"
+
+	cases := []struct {
+		name     string
+		instance string
+		want     int
+	}{
+		{"matching instance", "default", http.StatusOK},
+		{"empty instance (legacy hooks)", "", http.StatusOK},
+		{"mismatched instance", "work", http.StatusConflict},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := map[string]string{"computer_name": "mac1", "project_path": "/proj", "instance": tc.instance}
+			req := authReq("POST", ts.URL+"/api/sessions/register", body)
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != tc.want {
+				t.Errorf("instance %q: expected %d, got %d", tc.instance, tc.want, resp.StatusCode)
+			}
+		})
 	}
 }
 

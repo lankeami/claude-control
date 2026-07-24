@@ -371,6 +371,65 @@ The hooks read from `~/.claude-controller.json`:
 }
 ```
 
+## Multiple Instances
+
+Run several isolated controllers side by side — e.g. a **personal** instance using your personal Claude account and a **work** instance using your work account. Each instance gets its own database, `.env`, API key, port, and UI theme, so sessions, settings, and billing never mix.
+
+### Setup
+
+Instances are registered in `~/.claude-controller/instances.json`. Add an entry per instance:
+
+```json
+{
+  "default": { "name": "default", "port": 8080, "theme": "ocean", "account": "" },
+  "personal": { "name": "personal", "port": 8080, "theme": "ocean", "account": "jay@personal.com" },
+  "work": { "name": "work", "port": 8081, "theme": "forest", "account": "jay@company.com" }
+}
+```
+
+Then launch each instance:
+
+```bash
+cd server && go run . --instance personal   # port 8080, ocean (blue) theme
+cd server && go run . --instance work       # port 8081, forest (green) theme
+```
+
+Omitting `--instance` uses the `default` instance, which behaves exactly like a single-instance install.
+
+### Per-instance layout
+
+Each instance stores its state under `~/.claude-controller/<instance>/`:
+
+| File | Purpose |
+|------|---------|
+| `claude.db` | SQLite database (sessions, messages, prompts) |
+| `.env` | Instance environment (`CLAUDE_BIN`, `MANAGED_MODE`, `NGROK_AUTHTOKEN`, ...) |
+| `api.key` | Auto-generated API key |
+| `hook-config.json` | Hook-mode config (`server_url`, `computer_name`, `api_key`) |
+
+To point an instance at a different Claude account, set `CLAUDE_ENV` in that instance's `.env` (e.g. `CLAUDE_ENV=CLAUDE_CONFIG_DIR=/Users/you/.claude-work`) so managed sessions launch `claude` with that account's config directory.
+
+### Theming
+
+The web UI loads a theme based on the instance name (`/api/instance` returns `{name, theme}`), and the browser tab title shows the instance name so you can tell tabs apart:
+
+- **ocean** (blue, `#0066cc`) — default for all instances
+- **forest** (green, `#228B22`) — used by the `work` instance
+
+Theme CSS lives in `server/web/static/themes/`. Add a new `<name>.css` there to create additional themes.
+
+### Hook mode across instances
+
+Hooks resolve their config per instance via the `CLAUDE_CONTROLLER_INSTANCE` env var:
+
+1. `CLAUDE_CONTROLLER_CONFIG` (explicit override), else
+2. `~/.claude-controller/$CLAUDE_CONTROLLER_INSTANCE/hook-config.json`, else
+3. `~/.claude-controller.json` (legacy path, `default` instance only)
+
+Run `./hooks/install.sh` and enter the instance name when prompted — it writes the per-instance config and embeds `CLAUDE_CONTROLLER_INSTANCE=<name>` in the registered hook command. Hooks also send the instance name when registering a session, and the server rejects registrations meant for a different instance (HTTP 409), so a misconfigured port can't leak sessions into the wrong database.
+
+> **Note:** instance-aware hooks are currently macOS/Linux (bash) only; the PowerShell hooks always use the legacy `default` config.
+
 ## Requirements
 
 - **Server:** Go 1.22+ (native) or Docker
