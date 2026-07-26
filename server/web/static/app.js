@@ -3223,7 +3223,9 @@ Please review this PR and provide feedback.`;
         this.renderedContentCache[cacheKey] = {
           html: this.viewerFullHtml,
           fileType: this.viewerFileType,
-          binary: true,
+          // Not "binary" in the viewer sense: media renders via the raw endpoint.
+          // A true value here made cache hits show "Binary file — cannot display".
+          binary: false,
           truncated: false,
         };
         return;

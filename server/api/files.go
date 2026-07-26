@@ -48,8 +48,7 @@ func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess, err := s.store.GetSessionByID(sessionID)
-	if err != nil {
+	if _, err := s.store.GetSessionByID(sessionID); err != nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
@@ -59,19 +58,6 @@ func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "file not found", http.StatusNotFound)
 		return
-	}
-
-	// CWD boundary check
-	if sess.CWD != "" {
-		resolvedCWD, err := filepath.EvalSymlinks(sess.CWD)
-		if err != nil {
-			resolvedCWD = sess.CWD
-		}
-		rel, err := filepath.Rel(resolvedCWD, resolved)
-		if err != nil || len(rel) >= 2 && rel[:2] == ".." {
-			http.Error(w, "file is outside session working directory", http.StatusForbidden)
-			return
-		}
 	}
 
 	// Verify file exists
@@ -226,8 +212,7 @@ func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess, err := s.store.GetSessionByID(sessionID)
-	if err != nil {
+	if _, err := s.store.GetSessionByID(sessionID); err != nil {
 		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
 		return
 	}
@@ -245,19 +230,6 @@ func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 			Binary:    false,
 		})
 		return
-	}
-
-	// Validate resolved path is within session CWD or /tmp/
-	if sess.CWD != "" && !strings.HasPrefix(resolved, os.TempDir()+string(filepath.Separator)) {
-		resolvedCWD, err := filepath.EvalSymlinks(sess.CWD)
-		if err != nil {
-			resolvedCWD = sess.CWD
-		}
-		rel, err := filepath.Rel(resolvedCWD, resolved)
-		if err != nil || len(rel) >= 2 && rel[:2] == ".." {
-			http.Error(w, `{"error":"file is outside session working directory"}`, http.StatusForbidden)
-			return
-		}
 	}
 
 	// Read the file
