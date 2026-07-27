@@ -70,7 +70,8 @@ func TestHandleGetFileRaw(t *testing.T) {
 		}
 	})
 
-	t.Run("serves file outside session CWD", func(t *testing.T) {
+	t.Run("serves file in system temp dir outside session CWD", func(t *testing.T) {
+		// t.TempDir() lives under os.TempDir(), which is an allowed root
 		outsideDir := t.TempDir()
 		outsidePath := filepath.Join(outsideDir, "outside.txt")
 		os.WriteFile(outsidePath, []byte("outside content"), 0644)
@@ -84,6 +85,34 @@ func TestHandleGetFileRaw(t *testing.T) {
 		}
 		if w.Body.String() != "outside content" {
 			t.Fatalf("expected 'outside content', got %q", w.Body.String())
+		}
+	})
+
+	t.Run("serves file in /tmp", func(t *testing.T) {
+		f, err := os.CreateTemp("/tmp", "cc-raw-*.txt")
+		if err != nil {
+			t.Skipf("cannot create file in /tmp: %v", err)
+		}
+		defer os.Remove(f.Name())
+		f.WriteString("tmp content")
+		f.Close()
+
+		req := httptest.NewRequest("GET", "/api/files/raw?path="+f.Name()+"&session_id="+sessID+"&key=test-key", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("file outside CWD and temp dirs returns 403", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/files/raw?path=/etc/passwd&session_id="+sessID+"&key=test-key", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("expected 403, got %d", w.Code)
 		}
 	})
 
@@ -189,7 +218,7 @@ func TestHandleGetFileContent(t *testing.T) {
 		}
 	})
 
-	t.Run("returns content for file outside session CWD", func(t *testing.T) {
+	t.Run("returns content for file in system temp dir", func(t *testing.T) {
 		outsideDir := t.TempDir()
 		p := filepath.Join(outsideDir, "outside.txt")
 		os.WriteFile(p, []byte("outside content"), 0644)
@@ -204,6 +233,35 @@ func TestHandleGetFileContent(t *testing.T) {
 		}
 		if !resp.Exists || resp.Content != "outside content" {
 			t.Fatalf("expected content 'outside content', got exists=%v content=%q", resp.Exists, resp.Content)
+		}
+	})
+
+	t.Run("returns content for file in /tmp", func(t *testing.T) {
+		f, err := os.CreateTemp("/tmp", "cc-content-*.txt")
+		if err != nil {
+			t.Skipf("cannot create file in /tmp: %v", err)
+		}
+		defer os.Remove(f.Name())
+		f.WriteString("tmp content")
+		f.Close()
+
+		w := get(f.Name())
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp fileContentResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if !resp.Exists || resp.Content != "tmp content" {
+			t.Fatalf("expected content 'tmp content', got exists=%v content=%q", resp.Exists, resp.Content)
+		}
+	})
+
+	t.Run("file outside CWD and temp dirs returns 403", func(t *testing.T) {
+		w := get("/etc/passwd")
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
 		}
 	})
 

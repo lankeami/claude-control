@@ -39,6 +39,28 @@ func isMediaFile(path string) bool {
 	return mediaExtensions[ext]
 }
 
+// pathWithinAllowedRoots reports whether resolved (a symlink-resolved absolute
+// path) lies within the session CWD or a temp directory. Roots are also
+// symlink-resolved before comparing (on macOS /tmp -> /private/tmp), so
+// symlinks can't be used to escape the boundary.
+func pathWithinAllowedRoots(resolved, cwd string) bool {
+	roots := []string{os.TempDir(), "/tmp"}
+	if cwd != "" {
+		roots = append(roots, cwd)
+	}
+	for _, root := range roots {
+		resolvedRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			resolvedRoot = root
+		}
+		rel, err := filepath.Rel(resolvedRoot, resolved)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
 	filePath := r.URL.Query().Get("path")
 	sessionID := r.URL.Query().Get("session_id")
@@ -48,7 +70,8 @@ func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.store.GetSessionByID(sessionID); err != nil {
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
@@ -57,6 +80,11 @@ func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
 	resolved, err := filepath.EvalSymlinks(filePath)
 	if err != nil {
 		http.Error(w, "file not found", http.StatusNotFound)
+		return
+	}
+
+	if !pathWithinAllowedRoots(resolved, sess.CWD) {
+		http.Error(w, "file is outside session working directory and temp dirs", http.StatusForbidden)
 		return
 	}
 
@@ -212,7 +240,8 @@ func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.store.GetSessionByID(sessionID); err != nil {
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil {
 		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
 		return
 	}
@@ -229,6 +258,11 @@ func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 			Truncated: false,
 			Binary:    false,
 		})
+		return
+	}
+
+	if !pathWithinAllowedRoots(resolved, sess.CWD) {
+		http.Error(w, `{"error":"file is outside session working directory and temp dirs"}`, http.StatusForbidden)
 		return
 	}
 
