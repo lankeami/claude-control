@@ -1358,9 +1358,9 @@ document.addEventListener('alpine:init', () => {
 
     // --- End slash commands ---
 
-    sendShortcut(value) {
+    sendShortcut(value, mode) {
       this.showShortcutPicker = false;
-      this.inputText = value;
+      this.inputText = mode === 'shell' ? '! ' + value : value;
       this.handleInput();
     },
 

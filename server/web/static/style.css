@@ -2516,6 +2516,19 @@ body {
   text-align: center;
 }
 
+.shortcut-mode-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 4px;
+  flex-shrink: 0;
+  line-height: 14px;
+  opacity: 0.85;
+}
+
 /* Shortcut picker backdrop — hidden on desktop */
 .shortcut-picker-backdrop {
   display: none;

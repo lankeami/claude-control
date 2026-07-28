@@ -383,3 +383,42 @@ func TestGetSettings_NoShortcutsFile_ReturnsEmptyArray(t *testing.T) {
 		t.Errorf("expected 0 shortcuts, got %d", len(result.Shortcuts))
 	}
 }
+
+func TestShortcut_ModeField_UnmarshalShellMode(t *testing.T) {
+	data := `{"key":"/test","value":"npm test","mode":"shell"}`
+	var s Shortcut
+	if err := json.Unmarshal([]byte(data), &s); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if s.Mode != "shell" {
+		t.Errorf("expected Mode=shell, got %q", s.Mode)
+	}
+}
+
+func TestShortcut_ModeField_DefaultsToNormal_WhenMissing(t *testing.T) {
+	ts, _, _, envPath := newTestServerWithManager(t)
+
+	scPath := shortcutsFilePath(envPath)
+	scData := `[{"key":"/hello","value":"Hello world"}]`
+	if err := os.WriteFile(scPath, []byte(scData), 0600); err != nil {
+		t.Fatalf("failed to write shortcuts.json: %v", err)
+	}
+
+	req := authReq("GET", ts.URL+"/api/settings", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var result settingsPayload
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(result.Shortcuts) != 1 {
+		t.Fatalf("expected 1 shortcut, got %d", len(result.Shortcuts))
+	}
+	if result.Shortcuts[0].Mode != "normal" {
+		t.Errorf("expected Mode=normal for shortcut without mode field, got %q", result.Shortcuts[0].Mode)
+	}
+}

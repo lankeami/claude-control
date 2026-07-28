@@ -12,6 +12,7 @@ import (
 type Shortcut struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+	Mode  string `json:"mode"`
 }
 
 type settingsPayload struct {
@@ -45,6 +46,11 @@ func readShortcuts(envPath string) []Shortcut {
 	var shortcuts []Shortcut
 	if err := json.Unmarshal(data, &shortcuts); err != nil {
 		return []Shortcut{}
+	}
+	for i := range shortcuts {
+		if shortcuts[i].Mode == "" {
+			shortcuts[i].Mode = "normal"
+		}
 	}
 	return shortcuts
 }
