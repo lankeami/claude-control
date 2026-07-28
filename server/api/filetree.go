@@ -229,16 +229,18 @@ func gitListFiles(cwd string) ([]string, error) {
 }
 
 type gitSummaryInfo struct {
-	Branch    string `json:"branch"`
-	RepoName  string `json:"repo_name,omitempty"`
-	RepoURL   string `json:"repo_url,omitempty"`
-	Modified  int    `json:"modified"`
-	Added     int    `json:"added"`
-	Deleted   int    `json:"deleted"`
-	Untracked int    `json:"untracked"`
-	Staged    int    `json:"staged"`
-	Ahead     int    `json:"ahead"`
-	Behind    int    `json:"behind"`
+	Branch      string `json:"branch"`
+	RepoName    string `json:"repo_name,omitempty"`
+	RepoURL     string `json:"repo_url,omitempty"`
+	Modified    int    `json:"modified"`
+	Added       int    `json:"added"`
+	Deleted     int    `json:"deleted"`
+	Untracked   int    `json:"untracked"`
+	Staged      int    `json:"staged"`
+	Ahead       int    `json:"ahead"`
+	Behind      int    `json:"behind"`
+	OpenPRNumber int   `json:"open_pr_number,omitempty"`
+	OpenPRURL   string `json:"open_pr_url,omitempty"`
 }
 
 func gitSummary(cwd string) gitSummaryInfo {
@@ -249,6 +251,22 @@ func gitSummary(cwd string) gitSummaryInfo {
 	cmd.Dir = cwd
 	if out, err := cmd.Output(); err == nil {
 		info.Branch = strings.TrimSpace(string(out))
+	}
+
+	// Look up open PR for the current branch (fail silently if gh unavailable or no PR)
+	if info.Branch != "" && info.Branch != "HEAD" {
+		cmdPR := exec.Command("gh", "pr", "view", "--json", "number,url")
+		cmdPR.Dir = cwd
+		if out, err := cmdPR.Output(); err == nil {
+			var pr struct {
+				Number int    `json:"number"`
+				URL    string `json:"url"`
+			}
+			if err := json.Unmarshal(out, &pr); err == nil && pr.Number > 0 {
+				info.OpenPRNumber = pr.Number
+				info.OpenPRURL = pr.URL
+			}
+		}
 	}
 
 	// Get remote URL and derive repo name + browsable URL

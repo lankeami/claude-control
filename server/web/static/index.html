@@ -875,6 +875,7 @@
           </div>
           <div class="git-branch-row">
             <span class="git-branch-icon">⎇</span>
+            <a x-show="gitInfo?.open_pr_number" :href="gitInfo?.open_pr_url" target="_blank" rel="noopener" class="git-pr-link" x-text="'(#' + gitInfo?.open_pr_number + ')'"></a>
             <span class="git-branch-name" x-text="gitInfo?.branch || 'detached'"></span>
             <span class="git-ahead" x-show="gitInfo?.ahead > 0" x-text="'↑' + gitInfo?.ahead" title="Commits ahead of remote"></span>
             <span class="git-behind" x-show="gitInfo?.behind > 0" x-text="'↓' + gitInfo?.behind" title="Commits behind remote"></span>
@@ -1196,6 +1197,7 @@
             <div class="git-status-bar" x-show="gitInfo" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
               <div class="git-branch-row">
                 <span class="git-branch-icon">&#9143;</span>
+                <a x-show="gitInfo?.open_pr_number" :href="gitInfo?.open_pr_url" target="_blank" rel="noopener" class="git-pr-link" x-text="'(#' + gitInfo?.open_pr_number + ')'"></a>
                 <span class="git-branch-name" x-text="gitInfo?.branch || 'detached'"></span>
                 <span class="git-ahead" x-show="gitInfo?.ahead > 0" x-text="'&#8593;' + gitInfo?.ahead"></span>
                 <span class="git-behind" x-show="gitInfo?.behind > 0" x-text="'&#8595;' + gitInfo?.behind"></span>
