@@ -600,9 +600,9 @@
                     </template>
                     <template x-for="(sc, idx) in shortcuts" :key="idx">
                       <button class="shortcut-picker-item" @click="sendShortcut(sc.value, sc.mode)"
+                              :class="{ 'shortcut-picker-item--shell': sc.mode === 'shell' }"
                               :title="sc.mode === 'shell' ? '$ ' + sc.value : sc.value">
                         <span class="shortcut-picker-key" x-text="sc.key"></span>
-                        <span x-show="sc.mode === 'shell'" class="shortcut-mode-badge">$</span>
                       </button>
                     </template>
                   </div>

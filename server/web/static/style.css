@@ -2500,7 +2500,6 @@ body {
   color: var(--text);
   font-size: 20px;
   transition: background 0.1s, transform 0.1s;
-  position: relative;
 }
 .shortcut-picker-item:hover {
   background: var(--bg-secondary);
@@ -2517,19 +2516,11 @@ body {
   text-align: center;
 }
 
-.shortcut-mode-badge {
-  position: absolute;
-  bottom: 3px;
-  right: 3px;
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 3px;
-  padding: 0 2px;
-  line-height: 12px;
-  opacity: 0.85;
-  pointer-events: none;
+.shortcut-picker-item--shell {
+  background: rgba(34, 197, 94, 0.15);
+}
+.shortcut-picker-item--shell:hover {
+  background: rgba(34, 197, 94, 0.25);
 }
 
 /* Shortcut picker backdrop — hidden on desktop */
