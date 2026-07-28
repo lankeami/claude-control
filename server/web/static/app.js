@@ -1360,8 +1360,19 @@ document.addEventListener('alpine:init', () => {
 
     sendShortcut(value, mode) {
       this.showShortcutPicker = false;
-      this.inputText = mode === 'shell' ? '! ' + value : value;
-      this.handleInput();
+      const sess = this.currentSession;
+      if (mode === 'shell' && sess?.mode === 'managed') {
+        // Managed sessions have a dedicated shell-execute path; no '!' prefix needed.
+        this.inputText = value;
+        this.executeShell();
+      } else if (mode === 'shell') {
+        // Hook sessions: Claude Code TUI interprets leading '!' as shell command.
+        this.inputText = '! ' + value;
+        this.handleInput();
+      } else {
+        this.inputText = value;
+        this.handleInput();
+      }
     },
 
     shortcutReorder(fromIdx, toIdx) {
