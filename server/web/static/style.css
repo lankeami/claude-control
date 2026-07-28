@@ -2500,6 +2500,7 @@ body {
   color: var(--text);
   font-size: 20px;
   transition: background 0.1s, transform 0.1s;
+  position: relative;
 }
 .shortcut-picker-item:hover {
   background: var(--bg-secondary);
@@ -2517,16 +2518,18 @@ body {
 }
 
 .shortcut-mode-badge {
-  font-size: 10px;
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  font-size: 9px;
   font-weight: 700;
   color: var(--accent);
   border: 1px solid var(--accent);
   border-radius: 3px;
-  padding: 0 3px;
-  margin-left: 4px;
-  flex-shrink: 0;
-  line-height: 14px;
+  padding: 0 2px;
+  line-height: 12px;
   opacity: 0.85;
+  pointer-events: none;
 }
 
 /* Shortcut picker backdrop — hidden on desktop */
