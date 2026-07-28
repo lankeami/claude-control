@@ -599,7 +599,9 @@
                       <div class="shortcut-picker-empty">No shortcuts configured &mdash; add them in Settings</div>
                     </template>
                     <template x-for="(sc, idx) in shortcuts" :key="idx">
-                      <button class="shortcut-picker-item" @click="sendShortcut(sc.value)" :title="sc.value">
+                      <button class="shortcut-picker-item" @click="sendShortcut(sc.value, sc.mode)"
+                              :class="{ 'shortcut-picker-item--shell': sc.mode === 'shell' }"
+                              :title="sc.mode === 'shell' ? '$ ' + sc.value : sc.value">
                         <span class="shortcut-picker-key" x-text="sc.key"></span>
                       </button>
                     </template>
@@ -2109,11 +2111,16 @@
                        class="modal-input" style="width:70px; flex-shrink:0; text-align:center;">
                 <input x-model="shortcut.value" type="text" placeholder="Message to send..."
                        class="modal-input" style="flex:1;">
+                <select x-model="shortcut.mode" class="modal-input"
+                        style="width:80px; flex-shrink:0;" title="Shortcut mode">
+                  <option value="normal">Normal</option>
+                  <option value="shell">Shell $</option>
+                </select>
                 <button @click="settingsForm.shortcuts.splice(idx, 1)" class="btn btn-sm"
                         style="padding:4px 8px; flex-shrink:0; color:var(--red);" title="Remove shortcut">&times;</button>
               </div>
             </template>
-            <button @click="settingsForm.shortcuts.push({key:'', value:''})" class="btn btn-sm"
+            <button @click="settingsForm.shortcuts.push({key:'', value:'', mode:'normal'})" class="btn btn-sm"
                     style="font-size:12px; color:var(--accent);">+ Add Shortcut</button>
           </div>
 

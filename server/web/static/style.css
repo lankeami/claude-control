@@ -2516,6 +2516,13 @@ body {
   text-align: center;
 }
 
+.shortcut-picker-item--shell {
+  background: rgba(34, 197, 94, 0.15);
+}
+.shortcut-picker-item--shell:hover {
+  background: rgba(34, 197, 94, 0.25);
+}
+
 /* Shortcut picker backdrop — hidden on desktop */
 .shortcut-picker-backdrop {
   display: none;
