@@ -73,6 +73,7 @@ type ghAPIIssue struct {
 	Title       string           `json:"title"`
 	State       string           `json:"state"`
 	CreatedAt   string           `json:"created_at"`
+	UpdatedAt   string           `json:"updated_at"`
 	User        ghAPIUser        `json:"user"`
 	Labels      []ghAPILabel     `json:"labels"`
 	Body        string           `json:"body"`
@@ -348,6 +349,7 @@ type pullResponse struct {
 	Title     string       `json:"title"`
 	State     string       `json:"state"`
 	CreatedAt string       `json:"created_at"`
+	UpdatedAt string       `json:"updated_at"`
 	Author    string       `json:"author"`
 	Labels    []issueLabel `json:"labels"`
 	Body      string       `json:"body"`
@@ -369,6 +371,7 @@ func reshapeAPIPull(g ghAPIIssue) pullResponse {
 		Title:     g.Title,
 		State:     g.State,
 		CreatedAt: g.CreatedAt,
+		UpdatedAt: g.UpdatedAt,
 		Author:    g.User.Login,
 		Labels:    labels,
 		Body:      g.Body,

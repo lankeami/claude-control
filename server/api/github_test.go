@@ -191,6 +191,29 @@ func TestGetGithubIssue_ManagedNoCWDReturns400(t *testing.T) {
 	}
 }
 
+func TestReshapeAPIPullUpdatedAt(t *testing.T) {
+	input := ghAPIIssue{
+		Number:    42,
+		Title:     "Test PR",
+		State:     "open",
+		CreatedAt: "2026-07-01T10:00:00Z",
+		UpdatedAt: "2026-07-29T14:30:00Z",
+		User:      ghAPIUser{Login: "lankeami"},
+	}
+
+	result := reshapeAPIPull(input)
+
+	if result.UpdatedAt == "" {
+		t.Fatal("pullResponse.UpdatedAt is empty; want the updated_at from the GitHub API response")
+	}
+	if result.UpdatedAt != "2026-07-29T14:30:00Z" {
+		t.Fatalf("pullResponse.UpdatedAt = %q; want %q", result.UpdatedAt, "2026-07-29T14:30:00Z")
+	}
+	if result.Author != "lankeami" {
+		t.Fatalf("pullResponse.Author = %q; want %q", result.Author, "lankeami")
+	}
+}
+
 func TestListGithubIssues_DefaultParamsAccepted(t *testing.T) {
 	ts, store := setupTestServer(t)
 	defer ts.Close()
