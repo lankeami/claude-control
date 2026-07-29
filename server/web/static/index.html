@@ -1011,7 +1011,7 @@
                   <div class="issue-dot" :class="pull.state"></div>
                   <div class="issue-row-content">
                     <div class="issue-row-title" x-text="pull.title"></div>
-                    <div class="issue-row-meta" x-text="'#' + pull.number + ' · ' + issueTimeAgo(pull.updated_at)"></div>
+                    <div class="issue-row-meta" x-text="'#' + pull.number + ' · ' + pull.author + ' · ' + issueTimeAgo(pull.updated_at)"></div>
                   </div>
                 </div>
               </template>
