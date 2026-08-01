@@ -947,6 +947,12 @@ body {
   overflow-y: auto;
 }
 
+/* Full-height variant for mobile tabs where the tab container scrolls */
+.issue-list.full {
+  max-height: none;
+  overflow-y: visible;
+}
+
 .issue-row {
   display: flex;
   align-items: flex-start;
