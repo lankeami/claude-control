@@ -1258,7 +1258,7 @@
               <div x-show="githubIssuesLoading" class="issues-loading">Loading...</div>
               <div x-show="!githubIssuesLoading && githubIssuesError" class="issues-error" x-text="githubIssuesError"></div>
               <div x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length === 0" class="issues-empty">No issues found</div>
-              <div class="issue-list" x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length > 0">
+              <div class="issue-list full" x-show="!githubIssuesLoading && !githubIssuesError && githubIssues.length > 0">
                 <template x-for="issue in githubIssues" :key="issue.number">
                   <div class="issue-row" @click="fetchIssueDetail(selectedSessionId, issue.number)">
                     <div class="issue-dot" :class="issue.state"></div>
@@ -1315,17 +1315,22 @@
           <div>
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
               <span style="font-weight:600;font-size:14px;">Skills</span>
-              <span class="file-count-badge" x-show="skills.length > 0" x-text="skills.length"></span>
+              <span class="file-count-badge" x-show="filteredSkills.length > 0" x-text="filteredSkills.length"></span>
               <button class="file-tree-refresh" @click="fetchSkills(selectedSessionId)" title="Refresh">&#8635;</button>
+            </div>
+            <div class="issue-state-toggles" style="margin-bottom:6px" x-show="!skillsLoading && !skillsError && skills.length > 0">
+              <button class="issue-state-toggle" :class="{ 'active-skills-all': skillsFilter === 'all' }" @click="skillsFilter = 'all'">All</button>
+              <button class="issue-state-toggle" :class="{ 'active-skills-global': skillsFilter === 'global' }" @click="skillsFilter = 'global'">Global</button>
+              <button class="issue-state-toggle" :class="{ 'active-skills-project': skillsFilter === 'project' }" @click="skillsFilter = 'project'">Project</button>
             </div>
             <div x-show="skillsLoading" class="issues-loading">Loading...</div>
             <div x-show="!skillsLoading && skillsError" class="issues-error" x-text="skillsError"></div>
             <div x-show="!skillsLoading && !skillsError && skills.length === 0" class="issues-empty">No skills found</div>
-            <div class="issue-list" x-show="!skillsLoading && !skillsError && skills.length > 0">
-              <template x-for="skill in skills" :key="skill.name">
+            <div class="issue-list full" x-show="!skillsLoading && !skillsError && skills.length > 0">
+              <template x-for="skill in filteredSkills" :key="skill.name">
                 <div class="issue-row" @click="mobileMenuOpen=false; sendSkill(skill.name)" :title="skill.description || skill.name">
                   <div class="issue-row-content">
-                    <div class="issue-row-title" x-text="skill.name"></div>
+                    <div class="issue-row-title" x-text="skill.name" :style="skill.dir === 'project' ? 'color: #3b82f6' : ''"></div>
                   </div>
                 </div>
               </template>
