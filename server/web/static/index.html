@@ -1058,7 +1058,7 @@
        :style="mobileMenuOpen ? 'transform:translateX(0)' : 'transform:translateX(-100%)'">
     <!-- Menu Header -->
     <div class="mobile-menu-header">
-      <span style="font-weight:600;">Claude Controller</span>
+      <span style="font-weight:600;" x-text="selectedSession ? sessionName(selectedSession) : 'Claude Controller'"></span>
       <button class="mobile-menu-close" @click="mobileMenuOpen = false; mobileOverlay = null" aria-label="Close menu">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
           <path d="M5.3 5.3a1 1 0 011.4 0L10 8.6l3.3-3.3a1 1 0 111.4 1.4L11.4 10l3.3 3.3a1 1 0 01-1.4 1.4L10 11.4l-3.3 3.3a1 1 0 01-1.4-1.4L8.6 10 5.3 6.7a1 1 0 010-1.4z"/>
