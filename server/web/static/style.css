@@ -14,6 +14,7 @@
   --red: #dc2626;
   --card-pending-bg: #f0fdf4;
   --card-pending-border: #16a34a;
+  --item-bg: rgba(255, 255, 255, 0.7);
   --sidebar-width: 260px;
 }
 
@@ -25,6 +26,7 @@
     --text-muted: #999999;
     --border: #333333;
     --card-pending-bg: #0a2614;
+    --item-bg: rgba(255, 255, 255, 0.08);
   }
   .session-item.recently-active { background: rgba(37, 99, 235, 0.15); }
 }
@@ -149,7 +151,7 @@ body {
   cursor: pointer;
   font-size: 0.8125rem;
   transition: background 0.1s;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--item-bg);
 }
 .session-item.recently-active { background: rgba(37, 99, 235, 0.08); border-left: 3px solid var(--accent); }
 .session-item:hover { background: var(--border); }
