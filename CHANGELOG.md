@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-06
+
+- [e86a12f](https://github.com/lankeami/claude-control/commit/e86a12fe3490c358ab29727e7e06e8b8a1b6a27e) fix: stay silent on AskUserQuestion in PermissionRequest hook (#245)
+  The generated per-session settings wire the PermissionRequest hook with no matcher, so it fired for AskUserQuestion too, relaying it to the web UI as an Allow/Deny card and blocking the TUI question dialog. The question card only appeared after interrupting the session.
+
 ## 2026-08-05
 
 - fix: autoship runner crashes under `set -euo pipefail` (#243)
