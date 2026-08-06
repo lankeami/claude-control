@@ -204,6 +204,26 @@ func TestRunPermissionRequestServerErrorWritesNothing(t *testing.T) {
 	}
 }
 
+func TestRunPermissionRequestAskUserQuestionStaysSilent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("AskUserQuestion must not be relayed to the server")
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+
+	stdin := strings.NewReader(`{"hook_event_name":"PermissionRequest","session_id":"cli-uuid","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Pick one","options":[{"label":"A"},{"label":"B"}]}]}}`)
+	var stdout strings.Builder
+	if err := RunPermissionRequest("m1", port, writeKey(t), stdin, &stdout); err != nil {
+		t.Fatal(err)
+	}
+	// Silence lets the TUI render its native question dialog, which the
+	// pending-question card + PTY keystroke flow drives.
+	if stdout.Len() != 0 {
+		t.Errorf("stdout should be empty for AskUserQuestion, got: %s", stdout.String())
+	}
+}
+
 func TestRunPermissionRequestUnknownDecisionWritesNothing(t *testing.T) {
 	_, port, _, _, _ := permReqServer(t, `{"decision":"shrug"}`)
 

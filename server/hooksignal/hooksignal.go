@@ -100,6 +100,13 @@ func RunPermissionRequest(sessionID string, port int, keyFile string, stdin io.R
 	raw, _ := io.ReadAll(io.LimitReader(stdin, 1<<20))
 	_ = json.Unmarshal(raw, &input) // tolerate malformed input
 
+	// AskUserQuestion is answered via the pending-question card + PTY
+	// keystrokes, not Allow/Deny. Stay silent so the TUI renders its native
+	// question dialog instead of blocking on a relayed permission prompt.
+	if input.ToolName == "AskUserQuestion" {
+		return nil
+	}
+
 	var toolInputFields struct {
 		Description string `json:"description"`
 	}
