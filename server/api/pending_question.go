@@ -29,19 +29,37 @@ type PendingQuestionManager struct {
 	mu      sync.Mutex
 	pending map[string]*PendingQuestion
 	waiters map[string]chan struct{}
+	// resolved remembers the last resolved tool_use_id per session. The same
+	// question is detected twice — live via the PreToolUse hook and again when
+	// the CLI flushes the buffered assistant entry to the transcript at
+	// resolution time — and the second detection must not resurface the card.
+	resolved map[string]string
 }
 
 func NewPendingQuestionManager() *PendingQuestionManager {
 	return &PendingQuestionManager{
-		pending: make(map[string]*PendingQuestion),
-		waiters: make(map[string]chan struct{}),
+		pending:  make(map[string]*PendingQuestion),
+		waiters:  make(map[string]chan struct{}),
+		resolved: make(map[string]string),
 	}
 }
 
-func (pq *PendingQuestionManager) Set(sessionID string, q *PendingQuestion) {
+// Set stores q as the session's pending question. It returns false (and
+// stores nothing) when q duplicates the currently pending question or the
+// most recently resolved one.
+func (pq *PendingQuestionManager) Set(sessionID string, q *PendingQuestion) bool {
 	pq.mu.Lock()
 	defer pq.mu.Unlock()
+	if q.ToolUseID != "" {
+		if cur := pq.pending[sessionID]; cur != nil && cur.ToolUseID == q.ToolUseID {
+			return false
+		}
+		if pq.resolved[sessionID] == q.ToolUseID {
+			return false
+		}
+	}
 	pq.pending[sessionID] = q
+	return true
 }
 
 func (pq *PendingQuestionManager) Get(sessionID string) *PendingQuestion {
@@ -64,6 +82,9 @@ func (pq *PendingQuestionManager) WaitForClear(sessionID string) <-chan struct{}
 func (pq *PendingQuestionManager) Delete(sessionID string) {
 	pq.mu.Lock()
 	defer pq.mu.Unlock()
+	if cur := pq.pending[sessionID]; cur != nil && cur.ToolUseID != "" {
+		pq.resolved[sessionID] = cur.ToolUseID
+	}
 	delete(pq.pending, sessionID)
 	if ch, ok := pq.waiters[sessionID]; ok {
 		select {

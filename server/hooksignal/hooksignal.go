@@ -44,19 +44,28 @@ func Run(event, sessionID string, port int, keyFile string, stdin io.Reader) err
 	}
 
 	var input struct {
-		SessionID      string `json:"session_id"`
-		TranscriptPath string `json:"transcript_path"`
-		Message        string `json:"message"`
+		SessionID      string          `json:"session_id"`
+		TranscriptPath string          `json:"transcript_path"`
+		Message        string          `json:"message"`
+		ToolUseID      string          `json:"tool_use_id"`
+		ToolInput      json.RawMessage `json:"tool_input"`
 	}
 	raw, _ := io.ReadAll(io.LimitReader(stdin, 1<<20))
 	_ = json.Unmarshal(raw, &input) // tolerate malformed input
 
-	body, err := json.Marshal(map[string]string{
+	payload := map[string]any{
 		"event":             event,
 		"claude_session_id": input.SessionID,
 		"transcript_path":   input.TranscriptPath,
 		"message":           input.Message,
-	})
+	}
+	if input.ToolUseID != "" {
+		payload["tool_use_id"] = input.ToolUseID
+	}
+	if len(input.ToolInput) > 0 {
+		payload["tool_input"] = input.ToolInput
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}

@@ -328,22 +328,11 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			for _, toolName := range extractToolNames(line) {
 				_, _ = s.store.CreateMessage(sessionID, "activity", toolName, 0)
 			}
-			questionDetected := false
+			// Fallback question detection: the CLI only flushes this entry
+			// once the question is resolved, so normally the PreToolUse hook
+			// has already registered it and this is a deduped no-op.
 			if pq := extractAskUserQuestion(line); pq != nil {
-				log.Printf("session %s: AskUserQuestion detected in transcript, storing pending question (tool_use_id=%s)", sessionID, pq.ToolUseID)
-				s.pendingQuestions.Set(sessionID, pq)
-				questionDetected = true
-				// Broadcast a structured question event so the frontend
-				// picks it up via SSE without polling.
-				if qData, err := json.Marshal(map[string]interface{}{
-					"type":        "pending_question",
-					"pending":     true,
-					"tool_use_id": pq.ToolUseID,
-					"questions":   pq.Questions,
-					"created_at":  pq.CreatedAt,
-				}); err == nil {
-					broadcaster.Send(string(qData))
-				}
+				s.registerPendingQuestion(sessionID, pq, "transcript")
 			}
 			extractSessionFiles(line, sessionID, s.store)
 
@@ -353,12 +342,6 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			}
 			cur := v.(*interactiveTurnState)
 
-			if questionDetected {
-				select {
-				case cur.questionCh <- struct{}{}:
-				default:
-				}
-			}
 			cur.mu.Lock()
 			if cur.seenMsgIDs == nil {
 				cur.seenMsgIDs = make(map[string]bool)
@@ -388,6 +371,14 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		case "user":
 			if !hasOnlyTextContent(entry.Message.Content) {
 				broadcaster.Send(line)
+				// A tool_result for the pending question means it was answered
+				// outside the web UI (TUI/terminal) — clear the card and let
+				// the turn loop resume via the WaitForClear channel.
+				if pq := s.pendingQuestions.Get(sessionID); pq != nil && hasToolResultFor(entry.Message.Content, pq.ToolUseID) {
+					log.Printf("session %s: pending question %s answered outside the UI, clearing", sessionID, pq.ToolUseID)
+					s.pendingQuestions.Delete(sessionID)
+					broadcaster.Send(`{"type":"question_cleared"}`)
+				}
 			} else if v, ok := s.interactiveTurns.Load(sessionID); ok {
 				v.(*interactiveTurnState).markPromptEchoed()
 			}
@@ -708,6 +699,58 @@ func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <
 			}
 		}
 	}
+}
+
+// registerPendingQuestion stores a detected AskUserQuestion, broadcasts the
+// question card to the UI, and unblocks the turn loop. Duplicate detections
+// of the same tool_use_id (PreToolUse hook + transcript flush at resolution)
+// are dropped by the manager.
+func (s *Server) registerPendingQuestion(sessionID string, pq *PendingQuestion, source string) {
+	if !s.pendingQuestions.Set(sessionID, pq) {
+		return
+	}
+	log.Printf("session %s: AskUserQuestion detected via %s, storing pending question (tool_use_id=%s)", sessionID, source, pq.ToolUseID)
+	if qData, err := json.Marshal(map[string]interface{}{
+		"type":        "pending_question",
+		"pending":     true,
+		"tool_use_id": pq.ToolUseID,
+		"questions":   pq.Questions,
+		"created_at":  pq.CreatedAt,
+	}); err == nil {
+		s.manager.GetBroadcaster(sessionID).Send(string(qData))
+	}
+	if v, ok := s.interactiveTurns.Load(sessionID); ok {
+		t := v.(*interactiveTurnState)
+		// A question proves the prompt reached Claude even when the CLI
+		// hasn't flushed the transcript yet — without this, the prompt
+		// confirmer re-sends Enter and answers the dialog's default option.
+		t.markPromptEchoed()
+		select {
+		case t.questionCh <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// hasToolResultFor reports whether a user entry's content contains a
+// tool_result block for the given tool_use_id.
+func hasToolResultFor(content json.RawMessage, toolUseID string) bool {
+	if toolUseID == "" {
+		return false
+	}
+	var blocks []struct {
+		Type      string `json:"type"`
+		ToolUseID string `json:"tool_use_id"`
+	}
+	if json.Unmarshal(content, &blocks) != nil {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Type == "tool_result" && b.ToolUseID == toolUseID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) finishInteractiveTurn(sessionID string, broadcaster *managed.Broadcaster) {

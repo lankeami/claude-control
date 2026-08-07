@@ -113,3 +113,37 @@ func TestSessionDirIsPerSession(t *testing.T) {
 		t.Fatalf("SessionDir not per-session: %s vs %s", a, b)
 	}
 }
+
+func TestWriteSessionSettingsQuestionHook(t *testing.T) {
+	dir := t.TempDir()
+	path, err := WriteSessionSettings(dir, "/usr/local/bin/claude-controller", "sess-q", 9999, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	var sf struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &sf); err != nil {
+		t.Fatal(err)
+	}
+	matchers, ok := sf.Hooks["PreToolUse"]
+	if !ok || len(matchers) != 1 {
+		t.Fatalf("missing PreToolUse hook: %s", data)
+	}
+	if matchers[0].Matcher != "AskUserQuestion" {
+		t.Errorf("PreToolUse matcher = %q, want AskUserQuestion", matchers[0].Matcher)
+	}
+	if len(matchers[0].Hooks) != 1 || !strings.Contains(matchers[0].Hooks[0].Command, "--event question") {
+		t.Errorf("PreToolUse hook command = %v", matchers[0].Hooks)
+	}
+	// The lifecycle hooks must not gain a matcher (they apply to all events).
+	if m := sf.Hooks["Stop"]; len(m) != 1 || m[0].Matcher != "" {
+		t.Errorf("Stop hook unexpectedly has matcher %q", m[0].Matcher)
+	}
+}

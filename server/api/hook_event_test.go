@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -177,6 +178,81 @@ func TestHookEventNotificationSuppressedWhilePermissionPending(t *testing.T) {
 		resp.Body.Close()
 	}
 	<-permDone
+}
+
+func TestHookEventQuestionRegistersPendingAndBroadcasts(t *testing.T) {
+	ts, store, mock := setupMockTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/hook-question", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	body := `{"event":"question","tool_use_id":"toolu_q1","tool_input":{"questions":[{"question":"Which color?","header":"Color","options":[{"label":"Red"},{"label":"Blue"}]}]}}`
+	resp, err := postHookEvent(ts, sess.ID, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	select {
+	case msg := <-ch:
+		if !strings.Contains(msg, `"pending_question"`) || !strings.Contains(msg, "Which color?") {
+			t.Errorf("broadcast = %s", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending_question not broadcast")
+	}
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID+"/pending-question", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	getResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getResp.Body.Close()
+	var buf strings.Builder
+	if _, err := io.Copy(&buf, getResp.Body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `"pending":true`) || !strings.Contains(buf.String(), "toolu_q1") {
+		t.Errorf("pending-question = %s", buf.String())
+	}
+
+	// A duplicate detection of the same tool_use_id (transcript flush at
+	// resolution time) must not re-broadcast the card.
+	resp2, err := postHookEvent(ts, sess.ID, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+	select {
+	case msg := <-ch:
+		t.Errorf("duplicate question re-broadcast: %s", msg)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestHookEventQuestionInvalidPayloadReturns400(t *testing.T) {
+	ts, store, _ := setupMockTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/hook-question-bad", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := postHookEvent(ts, sess.ID, `{"event":"question","tool_use_id":"toolu_q2","tool_input":{}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
 }
 
 func TestHookEventUnknownSessionReturns404(t *testing.T) {

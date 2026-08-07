@@ -193,3 +193,43 @@ func TestHandleDismissQuestion_NotManaged(t *testing.T) {
 		t.Errorf("status=%d, want 400 for non-managed session", resp.StatusCode)
 	}
 }
+
+func TestPendingQuestionManagerDedup(t *testing.T) {
+	m := NewPendingQuestionManager()
+	q := &PendingQuestion{ToolUseID: "toolu_1", Questions: []PendingQuestionItem{{Question: "q?"}}}
+
+	if !m.Set("s1", q) {
+		t.Fatal("first Set must succeed")
+	}
+	if m.Set("s1", q) {
+		t.Error("Set of already-pending tool_use_id must be a no-op")
+	}
+	m.Delete("s1")
+	if m.Set("s1", q) {
+		t.Error("Set of a resolved tool_use_id must be a no-op")
+	}
+	q2 := &PendingQuestion{ToolUseID: "toolu_2", Questions: q.Questions}
+	if !m.Set("s1", q2) {
+		t.Error("Set of a new tool_use_id must succeed")
+	}
+	// No cross-session bleed.
+	if !m.Set("s2", q) {
+		t.Error("resolved IDs must be tracked per session")
+	}
+}
+
+func TestHasToolResultFor(t *testing.T) {
+	content := []byte(`[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]`)
+	if !hasToolResultFor(content, "toolu_1") {
+		t.Error("matching tool_result not detected")
+	}
+	if hasToolResultFor(content, "toolu_other") {
+		t.Error("non-matching tool_use_id matched")
+	}
+	if hasToolResultFor(content, "") {
+		t.Error("empty tool_use_id must never match")
+	}
+	if hasToolResultFor([]byte(`"plain text"`), "toolu_1") {
+		t.Error("string content must not match")
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // handleHookEvent receives turn-lifecycle signals from the hook-signal
@@ -12,10 +13,12 @@ func (s *Server) handleHookEvent(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
 	var req struct {
-		Event           string `json:"event"`
-		ClaudeSessionID string `json:"claude_session_id"`
-		TranscriptPath  string `json:"transcript_path"`
-		Message         string `json:"message"`
+		Event           string          `json:"event"`
+		ClaudeSessionID string          `json:"claude_session_id"`
+		TranscriptPath  string          `json:"transcript_path"`
+		Message         string          `json:"message"`
+		ToolUseID       string          `json:"tool_use_id"`
+		ToolInput       json.RawMessage `json:"tool_input"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -53,10 +56,27 @@ func (s *Server) handleHookEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	case "stop":
 		s.manager.SignalStop(sessionID)
+	case "question":
+		// PreToolUse hook for AskUserQuestion — the only real-time signal,
+		// since the CLI doesn't flush the transcript entry until the question
+		// is resolved.
+		var input struct {
+			Questions []PendingQuestionItem `json:"questions"`
+		}
+		if err := json.Unmarshal(req.ToolInput, &input); err != nil || len(input.Questions) == 0 {
+			http.Error(w, "invalid question payload", http.StatusBadRequest)
+			return
+		}
+		s.registerPendingQuestion(sessionID, &PendingQuestion{
+			ToolUseID: req.ToolUseID,
+			Questions: input.Questions,
+			CreatedAt: time.Now(),
+		}, "hook")
 	case "notification":
-		// While a permission request is pending, the actionable card in the UI
-		// supersedes the TUI's bare "needs your permission" notification.
-		if s.permissions.Get(sessionID) != nil {
+		// While a permission request or question is pending, the actionable
+		// card in the UI supersedes the TUI's bare "needs your permission"
+		// notification.
+		if s.permissions.Get(sessionID) != nil || s.pendingQuestions.Get(sessionID) != nil {
 			break
 		}
 		evt, _ := json.Marshal(map[string]string{"type": "notification", "message": req.Message})
