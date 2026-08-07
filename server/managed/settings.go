@@ -18,7 +18,8 @@ type hookCmd struct {
 const permissionRequestHookTimeout = 360
 
 type hookMatcher struct {
-	Hooks []hookCmd `json:"hooks"`
+	Matcher string    `json:"matcher,omitempty"`
+	Hooks   []hookCmd `json:"hooks"`
 }
 
 // WriteSessionSettings generates a Claude Code settings file for a managed
@@ -36,12 +37,18 @@ func WriteSessionSettings(dir, binaryPath, sessionID string, port int, allowedTo
 		}
 		return []hookMatcher{{Hooks: []hookCmd{{Type: "command", Command: cmd, Timeout: timeout}}}}
 	}
+	// AskUserQuestion never reaches the transcript while it is pending (the
+	// CLI buffers the assistant entry until the question is resolved), so a
+	// PreToolUse hook is the only real-time signal that a question is up.
+	question := mk("question", 0)
+	question[0].Matcher = "AskUserQuestion"
 	settings := map[string]any{
 		"hooks": map[string]any{
 			"SessionStart":      mk("session_start", 0),
 			"Stop":              mk("stop", 0),
 			"Notification":      mk("notification", 0),
 			"PermissionRequest": mk("permission_request", permissionRequestHookTimeout),
+			"PreToolUse":        question,
 		},
 	}
 	var tools []string

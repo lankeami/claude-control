@@ -235,3 +235,33 @@ func TestRunPermissionRequestUnknownDecisionWritesNothing(t *testing.T) {
 		t.Errorf("stdout should be empty for unknown decision, got: %s", stdout.String())
 	}
 }
+
+func TestRunQuestionForwardsToolInput(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Write([]byte("{}"))
+	}))
+	defer srv.Close()
+
+	keyFile := filepath.Join(t.TempDir(), "api.key")
+	os.WriteFile(keyFile, []byte("sk-test-key"), 0600)
+	u, _ := url.Parse(srv.URL)
+	port, _ := strconv.Atoi(u.Port())
+
+	stdin := strings.NewReader(`{"hook_event_name":"PreToolUse","session_id":"cli-uuid","tool_name":"AskUserQuestion","tool_use_id":"toolu_q","tool_input":{"questions":[{"question":"Which?","options":[{"label":"A"}]}]}}`)
+	if err := Run("question", "managed-1", port, keyFile, stdin); err != nil {
+		t.Fatal(err)
+	}
+
+	if gotBody["event"] != "question" || gotBody["tool_use_id"] != "toolu_q" {
+		t.Errorf("body = %v", gotBody)
+	}
+	ti, ok := gotBody["tool_input"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool_input missing or wrong type: %v", gotBody["tool_input"])
+	}
+	if _, ok := ti["questions"]; !ok {
+		t.Errorf("tool_input.questions missing: %v", ti)
+	}
+}

@@ -49,7 +49,7 @@ func main() {
 
 	if len(os.Args) >= 2 && os.Args[1] == "hook-signal" {
 		fs := flag.NewFlagSet("hook-signal", flag.ExitOnError)
-		event := fs.String("event", "", "hook event name (session_start|stop|notification|permission_request)")
+		event := fs.String("event", "", "hook event name (session_start|stop|notification|permission_request|question)")
 		sessionID := fs.String("session-id", "", "managed session ID")
 		hookPort := fs.Int("port", 8080, "server port")
 		keyFile := fs.String("key-file", "", "path to api.key (default ~/.claude-controller/api.key)")
