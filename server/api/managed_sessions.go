@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +28,8 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 		MaxTurns               int     `json:"max_turns"`
 		MaxBudgetUSD           float64 `json:"max_budget_usd"`
 		CompactEveryNContinues int     `json:"compact_every_n_continues"`
+		Worktree               bool    `json:"worktree"`
+		Name                   string  `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -34,6 +38,14 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 	if req.CWD == "" {
 		http.Error(w, "cwd is required", http.StatusBadRequest)
 		return
+	}
+	if req.Worktree {
+		wtPath, err := addWorktree(req.CWD, req.Name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.CWD = wtPath
 	}
 	if req.AllowedTools == "" {
 		req.AllowedTools = `["Bash","Read","Edit","Write","Glob","Grep"]`
@@ -59,9 +71,34 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
+	if req.Name != "" {
+		if err := s.store.UpdateSessionName(sess.ID, req.Name); err == nil {
+			sess.Name = req.Name
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sess)
+}
+
+// worktreeNameRe strips anything unsafe for a branch/directory name.
+var worktreeNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+
+// addWorktree creates a git worktree of repoCWD in a sibling directory named
+// after the session name, on a new branch of the same name. Returns the
+// worktree path.
+func addWorktree(repoCWD, name string) (string, error) {
+	name = worktreeNameRe.ReplaceAllString(strings.TrimSpace(name), "-")
+	name = strings.Trim(name, "-.")
+	if name == "" {
+		return "", fmt.Errorf("a session name is required to create a worktree")
+	}
+	wtPath := strings.TrimRight(repoCWD, "/") + "-" + name
+	cmd := exec.Command("git", "-C", repoCWD, "worktree", "add", wtPath, "-b", name)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git worktree add failed: %s", strings.TrimSpace(string(out)))
+	}
+	return wtPath, nil
 }
 
 // buildPersistentArgs builds CLI args for a persistent process (no message in args).

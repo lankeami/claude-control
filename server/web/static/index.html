@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script type="module" src="/option-selector.js"></script>
+  <script type="module" src="/session-conflict.js"></script>
   <script type="module" src="/agent-tracker.js"></script>
   <script defer src="/app.js"></script>
   <script defer src="/alpine.min.js"></script>
@@ -1682,6 +1683,31 @@
         <button class="btn btn-sm" @click="showNewSessionModal = false">Cancel</button>
         <button class="btn btn-sm btn-primary" @click="createManagedSession()" :disabled="!newSessionCWD.trim()">
           Open
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Conflict Modal: repo already has a session -->
+  <div x-show="sessionConflict.open" x-cloak
+       class="modal-backdrop" style="z-index:110;"
+       @click.self="sessionConflict.open = false">
+    <div class="modal-sm">
+      <div class="modal-header desktop-modal-title">
+        <h3>Session already exists</h3>
+        <button class="modal-close-btn" @click="sessionConflict.open = false" aria-label="Close">&times;</button>
+      </div>
+      <div style="padding: 12px 16px;">
+        <p style="margin: 0 0 8px;">A session is already open for <code x-text="sessionConflict.cwd"></code>.</p>
+        <p style="margin: 0 0 8px;">Open another session in a new git worktree?</p>
+        <input type="text" class="modal-input" placeholder="New session name (e.g. hotfix)"
+               x-model="sessionConflict.name"
+               @keydown.enter="resolveConflict('yes')">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-sm" @click="resolveConflict('no')">No, go to existing</button>
+        <button class="btn btn-sm btn-primary" @click="resolveConflict('yes')" :disabled="!sessionConflict.name.trim()">
+          Yes, new worktree
         </button>
       </div>
     </div>

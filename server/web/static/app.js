@@ -44,6 +44,7 @@ document.addEventListener('alpine:init', () => {
     pendingQuestion: null,
     pendingQuestionOtherText: '',
     newSessionCWD: '',
+    sessionConflict: { open: false, cwd: '', name: '' },
     sessionSSE: null,
     sseReconnectAttempts: 0,
     sseReconnectTimer: null,
@@ -1659,16 +1660,31 @@ document.addEventListener('alpine:init', () => {
 
     async createManagedSession() {
       if (!this.newSessionCWD.trim()) return;
+      await this.postSessionCreate({ cwd: this.newSessionCWD.trim() });
+    },
+
+    async selectRecentDir(path) {
+      this.newSessionCWD = path;
+      await this.postSessionCreate({ cwd: path });
+    },
+
+    // Shared create path. On 409 opens the conflict dialog instead of erroring.
+    async postSessionCreate(payload) {
       try {
         const res = await fetch('/api/sessions/create', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cwd: this.newSessionCWD.trim() })
+          body: JSON.stringify(payload)
         });
+        if (res.status === 409 && !payload.worktree) {
+          this.openSessionConflict(payload.cwd);
+          return;
+        }
         if (!res.ok) throw new Error(await res.text());
         const sess = await res.json();
         this.showNewSessionModal = false;
         this.newSessionCWD = '';
+        this.sessionConflict = { open: false, cwd: '', name: '' };
         await this.pollState();
         this.selectSession(sess.id);
         this.toast('Session created');
@@ -1677,32 +1693,27 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    async selectRecentDir(path) {
-      this.newSessionCWD = path;
-      try {
-        const res = await fetch('/api/sessions/create', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cwd: path })
-        });
-        if (res.status === 409) {
-          // Session already exists — find and select it
-          const match = this.sessions.find(s => s.cwd === path);
-          if (match) {
-            this.showNewSessionModal = false;
-            this.selectSession(match.id);
-            this.toast('Switched to existing session');
-            return;
-          }
-        }
-        if (!res.ok) throw new Error(await res.text());
-        const sess = await res.json();
-        this.showNewSessionModal = false;
-        this.selectSession(sess.id);
-        this.toast('Session created');
-      } catch (e) {
-        this.toast('Error: ' + e.message);
+    openSessionConflict(cwd) {
+      this.sessionConflict = { open: true, cwd, name: '' };
+    },
+
+    async resolveConflict(decision) {
+      const result = window._ccResolveSessionConflict(decision, {
+        cwd: this.sessionConflict.cwd,
+        name: this.sessionConflict.name,
+        sessions: this.sessions,
+      });
+      if (result.action === 'error') {
+        this.toast(result.message);
+        return;
       }
+      if (result.action === 'select') {
+        this.sessionConflict = { open: false, cwd: '', name: '' };
+        this.showNewSessionModal = false;
+        this.selectSession(result.sessionId);
+        return;
+      }
+      await this.postSessionCreate(result.payload);
     },
 
     async createNewProject() {
