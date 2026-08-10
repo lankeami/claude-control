@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -29,6 +30,34 @@ const (
 )
 
 var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+
+// localNow returns the current time in the machine's *current* local zone.
+// Go caches time.Local at process start, so a long-running server would keep
+// evaluating cron expressions in a stale zone after the system timezone
+// changes (e.g. laptop travel). Re-resolving /etc/localtime each call keeps
+// schedules on the machine's wall clock.
+// ponytail: falls back to the process-cached zone on Windows or when
+// /etc/localtime is not a symlink — no worse than the old behavior there.
+func localNow() time.Time {
+	if link, err := os.Readlink("/etc/localtime"); err == nil {
+		if name := zoneNameFromLocaltime(link); name != "" {
+			if loc, err := time.LoadLocation(name); err == nil {
+				return time.Now().In(loc)
+			}
+		}
+	}
+	return time.Now()
+}
+
+// zoneNameFromLocaltime extracts the IANA zone name from an /etc/localtime
+// symlink target, e.g. /var/db/timezone/zoneinfo/America/New_York.
+func zoneNameFromLocaltime(link string) string {
+	const marker = "zoneinfo/"
+	if i := strings.Index(link, marker); i >= 0 {
+		return link[i+len(marker):]
+	}
+	return ""
+}
 
 type Scheduler struct {
 	store   *db.Store
@@ -98,7 +127,7 @@ func (s *Scheduler) Reconcile() {
 		log.Printf("scheduler: reconciliation failed: %v", err)
 		return
 	}
-	now := time.Now()
+	now := localNow()
 	for _, task := range tasks {
 		sched, err := cronParser.Parse(task.CronExpression)
 		if err != nil {
@@ -119,7 +148,7 @@ func (s *Scheduler) Reconcile() {
 }
 
 func (s *Scheduler) checkAndExecuteTasks() {
-	tasks, err := s.store.GetTasksDueForExecution(time.Now())
+	tasks, err := s.store.GetTasksDueForExecution(localNow())
 	if err != nil {
 		log.Printf("scheduler: failed to get due tasks: %v", err)
 		return
@@ -134,7 +163,7 @@ func (s *Scheduler) checkAndExecuteTasks() {
 			s.running.Delete(task.ID)
 			continue
 		}
-		nextRun := sched.Next(time.Now())
+		nextRun := sched.Next(localNow())
 		s.store.UpdateTaskNextRun(task.ID, nextRun)
 		s.spawnTask(task)
 	}
@@ -287,7 +316,7 @@ func (s *Scheduler) stampSchedulerSessionName(task db.ScheduledTask, sessID stri
 	if sess.Name != "" && !strings.HasPrefix(sess.Name, schedulerSessionPrefix) {
 		return
 	}
-	name := fmt.Sprintf("%s%s — %s", schedulerSessionPrefix, task.Name, time.Now().Format("Jan 2 15:04"))
+	name := fmt.Sprintf("%s%s — %s", schedulerSessionPrefix, task.Name, localNow().Format("Jan 2 15:04"))
 	if err := s.store.UpdateSessionName(sessID, name); err != nil {
 		log.Printf("scheduler: failed to name session %s: %v", sessID, err)
 	}

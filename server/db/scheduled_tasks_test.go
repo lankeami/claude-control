@@ -217,3 +217,96 @@ func TestScheduledTaskModelField(t *testing.T) {
 		t.Errorf("model: got %q, want empty", task2.Model)
 	}
 }
+
+func rawTaskColumn(t *testing.T, store *Store, column, taskID string) string {
+	t.Helper()
+	var raw string
+	if err := store.db.QueryRow("SELECT CAST("+column+" AS TEXT) FROM scheduled_tasks WHERE id = ?", taskID).Scan(&raw); err != nil {
+		t.Fatalf("read raw %s: %v", column, err)
+	}
+	return raw
+}
+
+func TestUpdateTaskNextRunStoresCanonicalUTC(t *testing.T) {
+	store := newTestStore(t)
+	task, err := store.CreateScheduledTask("", "TZ task", "shell", "echo hi", "/tmp", "31 9 * * *", "")
+	if err != nil {
+		t.Fatalf("CreateScheduledTask: %v", err)
+	}
+	pdt := time.FixedZone("PDT", -7*3600)
+	next := time.Date(2026, 8, 10, 9, 31, 0, 0, pdt) // 16:31 UTC
+	if err := store.UpdateTaskNextRun(task.ID, next); err != nil {
+		t.Fatalf("UpdateTaskNextRun: %v", err)
+	}
+
+	raw := rawTaskColumn(t, store, "next_run_at", task.ID)
+	if raw != "2026-08-10 16:31:00" {
+		t.Errorf("next_run_at raw value: got %q, want canonical UTC %q", raw, "2026-08-10 16:31:00")
+	}
+
+	got, err := store.GetScheduledTaskByID(task.ID)
+	if err != nil {
+		t.Fatalf("GetScheduledTaskByID: %v", err)
+	}
+	if got.NextRunAt == nil || !got.NextRunAt.Equal(next) {
+		t.Errorf("next_run_at round-trip: got %v, want instant %v", got.NextRunAt, next)
+	}
+}
+
+func TestUpdateTaskLastRunStoresCanonicalUTC(t *testing.T) {
+	store := newTestStore(t)
+	task, err := store.CreateScheduledTask("", "TZ task", "shell", "echo hi", "/tmp", "31 9 * * *", "")
+	if err != nil {
+		t.Fatalf("CreateScheduledTask: %v", err)
+	}
+	edt := time.FixedZone("EDT", -4*3600)
+	last := time.Date(2026, 8, 10, 12, 31, 42, 0, edt) // 16:31:42 UTC
+	if err := store.UpdateTaskLastRun(task.ID, last); err != nil {
+		t.Fatalf("UpdateTaskLastRun: %v", err)
+	}
+
+	raw := rawTaskColumn(t, store, "last_run_at", task.ID)
+	if raw != "2026-08-10 16:31:42" {
+		t.Errorf("last_run_at raw value: got %q, want canonical UTC %q", raw, "2026-08-10 16:31:42")
+	}
+
+	got, err := store.GetScheduledTaskByID(task.ID)
+	if err != nil {
+		t.Fatalf("GetScheduledTaskByID: %v", err)
+	}
+	if got.LastRunAt == nil || !got.LastRunAt.Equal(last) {
+		t.Errorf("last_run_at round-trip: got %v, want instant %v", got.LastRunAt, last)
+	}
+}
+
+// Regression for the 3-hour-late firing: a next_run_at written by a process
+// in one timezone must compare correctly against a "now" expressed in another.
+func TestGetTasksDueForExecutionCrossTimezone(t *testing.T) {
+	store := newTestStore(t)
+	task, err := store.CreateScheduledTask("", "Cross TZ", "shell", "echo hi", "/tmp", "31 9 * * *", "")
+	if err != nil {
+		t.Fatalf("CreateScheduledTask: %v", err)
+	}
+	edt := time.FixedZone("EDT", -4*3600)
+	pdt := time.FixedZone("PDT", -7*3600)
+	due := time.Date(2026, 8, 10, 9, 31, 0, 0, edt) // 13:31 UTC
+	if err := store.UpdateTaskNextRun(task.ID, due); err != nil {
+		t.Fatalf("UpdateTaskNextRun: %v", err)
+	}
+
+	tasks, err := store.GetTasksDueForExecution(due.Add(time.Minute).In(pdt))
+	if err != nil {
+		t.Fatalf("GetTasksDueForExecution: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Errorf("one minute past due (cross-zone now): got %d tasks, want 1", len(tasks))
+	}
+
+	tasks, err = store.GetTasksDueForExecution(due.Add(-time.Minute).In(pdt))
+	if err != nil {
+		t.Fatalf("GetTasksDueForExecution: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Errorf("one minute before due (cross-zone now): got %d tasks, want 0", len(tasks))
+	}
+}

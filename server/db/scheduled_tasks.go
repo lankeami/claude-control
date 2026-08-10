@@ -238,8 +238,17 @@ func (s *Store) ListTaskRuns(taskID string, limit int) ([]TaskRun, error) {
 
 // Scheduler helpers
 
+// sqlTime renders a time as the canonical UTC string SQLite's datetime('now')
+// produces, so stored timestamps compare correctly regardless of the timezone
+// the writing process ran in. The driver would otherwise bind time.Time as
+// Go's String() output (zone abbreviation, monotonic suffix), which breaks
+// lexicographic comparisons across zones.
+func sqlTime(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05")
+}
+
 func (s *Store) UpdateTaskNextRun(id string, nextRunAt time.Time) error {
-	_, err := s.db.Exec("UPDATE scheduled_tasks SET next_run_at = ? WHERE id = ?", nextRunAt, id)
+	_, err := s.db.Exec("UPDATE scheduled_tasks SET next_run_at = ? WHERE id = ?", sqlTime(nextRunAt), id)
 	if err != nil {
 		return fmt.Errorf("update task next run: %w", err)
 	}
@@ -247,7 +256,7 @@ func (s *Store) UpdateTaskNextRun(id string, nextRunAt time.Time) error {
 }
 
 func (s *Store) UpdateTaskLastRun(id string, lastRunAt time.Time) error {
-	_, err := s.db.Exec("UPDATE scheduled_tasks SET last_run_at = ? WHERE id = ?", lastRunAt, id)
+	_, err := s.db.Exec("UPDATE scheduled_tasks SET last_run_at = ? WHERE id = ?", sqlTime(lastRunAt), id)
 	if err != nil {
 		return fmt.Errorf("update task last run: %w", err)
 	}
@@ -257,7 +266,7 @@ func (s *Store) UpdateTaskLastRun(id string, lastRunAt time.Time) error {
 func (s *Store) GetTasksDueForExecution(now time.Time) ([]ScheduledTask, error) {
 	rows, err := s.db.Query(
 		"SELECT "+taskColumns+" FROM scheduled_tasks WHERE next_run_at <= ? AND enabled = 1 ORDER BY next_run_at ASC",
-		now,
+		sqlTime(now),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get tasks due: %w", err)
