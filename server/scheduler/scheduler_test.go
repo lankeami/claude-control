@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -147,5 +148,42 @@ func TestReconcileStaleRuns(t *testing.T) {
 	got, _ := store.GetTaskRunByID(run.ID)
 	if got.Status != "failed" {
 		t.Errorf("stale run should be marked failed, got %q", got.Status)
+	}
+}
+
+func TestZoneNameFromLocaltime(t *testing.T) {
+	cases := []struct {
+		link, want string
+	}{
+		{"/var/db/timezone/zoneinfo/America/New_York", "America/New_York"},
+		{"/usr/share/zoneinfo/Europe/Paris", "Europe/Paris"},
+		{"/usr/share/zoneinfo/UTC", "UTC"},
+		{"/etc/not-a-zone", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := zoneNameFromLocaltime(c.link); got != c.want {
+			t.Errorf("zoneNameFromLocaltime(%q): got %q, want %q", c.link, got, c.want)
+		}
+	}
+}
+
+// localNow must reflect the machine's *current* zone, not the zone cached in
+// time.Local at process start.
+func TestLocalNowUsesCurrentSystemZone(t *testing.T) {
+	link, err := os.Readlink("/etc/localtime")
+	if err != nil {
+		t.Skip("/etc/localtime is not a symlink on this system")
+	}
+	name := zoneNameFromLocaltime(link)
+	if name == "" {
+		t.Skipf("cannot derive zone name from %q", link)
+	}
+	got := localNow()
+	if got.Location().String() != name {
+		t.Errorf("localNow location: got %q, want %q", got.Location(), name)
+	}
+	if diff := time.Since(got); diff < -time.Second || diff > time.Second {
+		t.Errorf("localNow drifted from now by %v", diff)
 	}
 }

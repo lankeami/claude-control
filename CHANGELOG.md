@@ -2,6 +2,8 @@
 
 ## 2026-08-10
 
+- [c8294be](https://github.com/lankeami/claude-control/commit/c8294becb76309c918c77d153c0c27068e7cff82) fix: cron scheduler fires at stale-timezone wall-clock times (#250)
+  Two compounding defects made scheduled tasks fire hours late after the machine's timezone changed while the server was running:
 - [fdca53b](https://github.com/lankeami/claude-control/commit/fdca53b2203790bdead9379f350d8589047d074f) fix: unwedge managed sessions after an unknown slash command (#248)
   Two changes: - SendPrompt writes ESC before the bracketed paste, closing any leftover TUI overlay (e.g. the slash-command suggestion dropdown an unknown command leaves open) that would otherwise swallow the paste. - The transcript watcher now recognizes the CLI's "Unknown command: /foo" system entry, surfaces a specific error naming the command, and finishes the turn cleanly instead of hanging until the generic "Prompt submission not confirmed" warning.
 
