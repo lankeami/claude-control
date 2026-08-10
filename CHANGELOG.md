@@ -2,6 +2,8 @@
 
 ## 2026-08-10
 
+- [674c2de](https://github.com/lankeami/claude-control/commit/674c2de4b701b4fe391e66d011595ed96ddda0a6) feat: support multiple sessions per repo via worktrees with confirm prompt
+  When creating a session for a repo that already has one, the web UI now asks: Yes opens a new session in a fresh git worktree with a distinct name; No selects the existing session. Server accepts worktree+name on POST /api/sessions/create and runs git worktree add; plain duplicate creates still 409.
 - [c8294be](https://github.com/lankeami/claude-control/commit/c8294becb76309c918c77d153c0c27068e7cff82) fix: cron scheduler fires at stale-timezone wall-clock times (#250)
   Two compounding defects made scheduled tasks fire hours late after the machine's timezone changed while the server was running:
 - [fdca53b](https://github.com/lankeami/claude-control/commit/fdca53b2203790bdead9379f350d8589047d074f) fix: unwedge managed sessions after an unknown slash command (#248)
