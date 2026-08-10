@@ -3,8 +3,11 @@ package api
 import (
 	"bufio"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -855,5 +858,80 @@ func TestStaleState_ServerRestart(t *testing.T) {
 	got4, _ := store.GetSessionByID(s4.ID)
 	if got4.ActivityState != "idle" {
 		t.Errorf("s4 activity_state = %q, want idle", got4.ActivityState)
+	}
+}
+
+// initTestGitRepo creates a git repo with one commit and returns its path.
+func initTestGitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir() + "/repo"
+	for _, args := range [][]string{
+		{"init", dir},
+		{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "--allow-empty", "-m", "init"},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return dir
+}
+
+func TestCreateManagedSessionWorktree(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	repo := initTestGitRepo(t)
+
+	post := func(body string) *http.Response {
+		req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/create", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer test-api-key")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	// First session on the repo itself
+	resp := post(`{"cwd": "` + repo + `"}`)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("first create status=%d, want 200", resp.StatusCode)
+	}
+
+	// Duplicate plain create still conflicts
+	resp = post(`{"cwd": "` + repo + `"}`)
+	resp.Body.Close()
+	if resp.StatusCode != 409 {
+		t.Fatalf("duplicate create status=%d, want 409", resp.StatusCode)
+	}
+
+	// Worktree create succeeds with a distinct cwd and the given name
+	resp = post(`{"cwd": "` + repo + `", "worktree": true, "name": "hotfix"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("worktree create status=%d, want 200: %s", resp.StatusCode, b)
+	}
+	var sess map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&sess)
+	wantCWD := repo + "-hotfix"
+	if sess["cwd"] != wantCWD {
+		t.Errorf("cwd=%v, want %s", sess["cwd"], wantCWD)
+	}
+	if sess["name"] != "hotfix" {
+		t.Errorf("name=%v, want hotfix", sess["name"])
+	}
+	if _, err := os.Stat(wantCWD + "/.git"); err != nil {
+		t.Errorf("worktree dir not created: %v", err)
+	}
+
+	// Worktree create on a non-git dir fails with 400
+	resp = post(`{"cwd": "` + t.TempDir() + `", "worktree": true, "name": "x"}`)
+	resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("non-git worktree create status=%d, want 400", resp.StatusCode)
 	}
 }
