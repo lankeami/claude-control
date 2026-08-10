@@ -2,6 +2,8 @@
 
 ## 2026-08-10
 
+- [fc36b74](https://github.com/lankeami/claude-control/commit/fc36b74482cd288460a05638312b8da9b82b22dd) feat: add /release skill for minor-bump-by-default GitHub releases
+  Adds .claude/skills/release/SKILL.md: finds the previous v* tag, bumps the minor version unless an explicit version is given, runs pre-flight checks (on main, clean tree, up to date with origin), tags main, and publishes a categorized release via gh.
 - [674c2de](https://github.com/lankeami/claude-control/commit/674c2de4b701b4fe391e66d011595ed96ddda0a6) feat: support multiple sessions per repo via worktrees with confirm prompt
   When creating a session for a repo that already has one, the web UI now asks: Yes opens a new session in a fresh git worktree with a distinct name; No selects the existing session. Server accepts worktree+name on POST /api/sessions/create and runs git worktree add; plain duplicate creates still 409.
 - [c8294be](https://github.com/lankeami/claude-control/commit/c8294becb76309c918c77d153c0c27068e7cff82) fix: cron scheduler fires at stale-timezone wall-clock times (#250)
