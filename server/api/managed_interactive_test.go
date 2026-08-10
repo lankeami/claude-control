@@ -816,3 +816,52 @@ done:
 		}
 	}
 }
+
+func TestConfirmPromptSubmissionSurfacesUnknownCommand(t *testing.T) {
+	old := promptEchoTimeout
+	promptEchoTimeout = 100 * time.Millisecond
+	defer func() { promptEchoTimeout = old }()
+
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-unknown-cmd", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := sendMessage(ts, sess.ID, "/git-user-timeline u=x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// The CLI rejects the typo'd slash command: it emits a system transcript
+	// entry and never starts a turn (no user echo, no Stop hook).
+	mock.EmitTranscriptLine(sess.ID, `{"type":"system","subtype":"informational","content":"Unknown command: /git-user-timeline","level":"warning"}`)
+
+	// The turn must finish cleanly without a Stop hook.
+	pollActivityState(t, store, sess.ID, "waiting", 2*time.Second)
+
+	msgs, err := store.ListMessages(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var specific, generic bool
+	for _, m := range msgs {
+		if m.Role != "system" {
+			continue
+		}
+		if strings.Contains(m.Content, "/git-user-timeline") && strings.Contains(strings.ToLower(m.Content), "unknown command") {
+			specific = true
+		}
+		if strings.Contains(m.Content, "not confirmed") {
+			generic = true
+		}
+	}
+	if !specific {
+		t.Error("no system message naming the unknown command was persisted")
+	}
+	if generic {
+		t.Error("generic 'not confirmed' warning fired instead of the specific unknown-command error")
+	}
+}

@@ -65,9 +65,10 @@ func buildInteractiveArgs(sess *db.Session, settingsPath, trustPrompt string) []
 type turnEndReason int
 
 const (
-	turnEndStop     turnEndReason = iota // Stop hook fired (normal turn completion)
-	turnEndDied                          // Process exited
-	turnEndQuestion                      // AskUserQuestion detected in transcript
+	turnEndStop           turnEndReason = iota // Stop hook fired (normal turn completion)
+	turnEndDied                                // Process exited
+	turnEndQuestion                            // AskUserQuestion detected in transcript
+	turnEndUnknownCommand                      // CLI rejected the prompt as an unknown slash command
 )
 
 // interactiveTurnState tracks per-turn counters shared between the transcript
@@ -80,6 +81,8 @@ type interactiveTurnState struct {
 	interruptedFor string // "" | "max_turns" | "budget"
 	promptEchoed   bool   // the typed prompt appeared in the transcript
 	questionCh     chan struct{}
+	unknownCmd     string // slash command the CLI rejected ("Unknown command: ...")
+	unknownCmdCh   chan struct{}
 	// seenMsgIDs tracks assistant message IDs already counted this turn.
 	// Native transcripts split one API response into multiple JSONL entries
 	// (one per content block) that share a message ID and repeat the same
@@ -96,11 +99,34 @@ func (t *interactiveTurnState) reset() {
 	t.interruptedFor = ""
 	t.promptEchoed = false
 	t.seenMsgIDs = make(map[string]bool)
-	// Drain any stale question signal
+	t.unknownCmd = ""
+	// Drain any stale signals
 	select {
 	case <-t.questionCh:
 	default:
 	}
+	select {
+	case <-t.unknownCmdCh:
+	default:
+	}
+}
+
+// markUnknownCommand records that the CLI rejected the prompt as an unknown
+// slash command and unblocks the turn loop.
+func (t *interactiveTurnState) markUnknownCommand(cmd string) {
+	t.mu.Lock()
+	t.unknownCmd = cmd
+	t.mu.Unlock()
+	select {
+	case t.unknownCmdCh <- struct{}{}:
+	default:
+	}
+}
+
+func (t *interactiveTurnState) unknownCommand() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.unknownCmd
 }
 
 func (t *interactiveTurnState) markPromptEchoed() {
@@ -126,8 +152,9 @@ func (t *interactiveTurnState) snapshot() (count, in, out int, interrupted strin
 // interactiveTranscriptEntry is a tolerant parse of a transcript JSONL line. Unknown
 // fields pass through untouched because we forward the raw line.
 type interactiveTranscriptEntry struct {
-	Type        string `json:"type"`
-	IsSidechain bool   `json:"isSidechain"`
+	Type        string          `json:"type"`
+	IsSidechain bool            `json:"isSidechain"`
+	Content     json.RawMessage `json:"content"` // top-level content of system entries
 	Message     struct {
 		ID      string          `json:"id"`
 		Content json.RawMessage `json:"content"`
@@ -237,7 +264,7 @@ func (s *Server) sendMessageInteractive(sess *db.Session, message string, imageP
 	// Register this message's turn state so the long-lived transcript
 	// callback (registered at spawn, possibly by an earlier message's
 	// goroutine) feeds counters into the current turn.
-	turn := &interactiveTurnState{questionCh: make(chan struct{}, 1)}
+	turn := &interactiveTurnState{questionCh: make(chan struct{}, 1), unknownCmdCh: make(chan struct{}, 1)}
 	s.interactiveTurns.Store(sessionID, turn)
 
 	prompt := message
@@ -382,6 +409,17 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			} else if v, ok := s.interactiveTurns.Load(sessionID); ok {
 				v.(*interactiveTurnState).markPromptEchoed()
 			}
+		case "system":
+			// The CLI rejects a typo'd slash command with a system entry and
+			// never starts a turn — surface it instead of hanging until the
+			// generic "not confirmed" warning.
+			var text string
+			if json.Unmarshal(entry.Content, &text) == nil && strings.HasPrefix(text, "Unknown command:") {
+				cmd := strings.TrimSpace(strings.TrimPrefix(text, "Unknown command:"))
+				if v, ok := s.interactiveTurns.Load(sessionID); ok {
+					v.(*interactiveTurnState).markUnknownCommand(cmd)
+				}
+			}
 		}
 	}
 
@@ -480,6 +518,20 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		})
 
 		reason := s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+
+		// The CLI rejected the prompt as an unknown slash command — no turn
+		// ever started, so skip result/cost synthesis and finish cleanly.
+		if reason == turnEndUnknownCommand {
+			close(turnOver)
+			msg := fmt.Sprintf("The CLI rejected `/%s` as an unknown command — check the skill or command name.",
+				strings.TrimPrefix(turn.unknownCommand(), "/"))
+			log.Printf("session %s: %s", sessionID, msg)
+			_, _ = s.store.CreateMessage(sessionID, "system", msg, 0)
+			evt, _ := json.Marshal(map[string]any{"type": "system", "error": true, "message": msg})
+			broadcaster.Send(string(evt))
+			s.finishInteractiveTurn(sessionID, broadcaster)
+			return
+		}
 
 		// AskUserQuestion detected — transition to waiting, then resume when
 		// the user responds (or abort if Stop/death occurs while waiting).
@@ -687,6 +739,8 @@ func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <
 			return turnEndDied
 		case <-turn.questionCh:
 			return turnEndQuestion
+		case <-turn.unknownCmdCh:
+			return turnEndUnknownCommand
 		case <-ticker.C:
 			s.manager.TouchInteractive(sessionID)
 			_, _, _, interrupted := turn.snapshot()

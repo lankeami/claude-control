@@ -368,3 +368,24 @@ func TestInteractiveDoesNotBlockShellGuard(t *testing.T) {
 		t.Fatal("interactive proc must not count as a one-shot process (shell guard)")
 	}
 }
+
+func TestSendPromptSendsEscBeforePaste(t *testing.T) {
+	fastReady(t)
+	script := writeScript(t, `exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("esc1", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("esc1", time.Second)
+
+	if err := m.SendPrompt("esc1", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	// ESC must immediately precede the bracketed paste: it closes any
+	// leftover TUI overlay (e.g. the slash-command suggestion dropdown
+	// after an unknown command) that would otherwise swallow the paste.
+	waitFor(t, 2*time.Second, func() bool {
+		return strings.Contains(proc.LastOutput(), "\x1b\x1b[200~hello\x1b[201~")
+	})
+}

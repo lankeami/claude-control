@@ -256,6 +256,13 @@ func (m *Manager) SendPrompt(sessionID, text string) error {
 	}
 	proc.LastActivity = time.Now()
 	proc.waitReady(sessionID)
+	// ESC first: closes any leftover TUI overlay (e.g. the slash-command
+	// suggestion dropdown left open by an unknown command) that would
+	// otherwise swallow the paste. No-op on an idle input box.
+	if _, err := proc.PTY.Write([]byte("\x1b")); err != nil {
+		return err
+	}
+	time.Sleep(50 * time.Millisecond)
 	if _, err := proc.PTY.Write([]byte("\x1b[200~" + text + "\x1b[201~")); err != nil {
 		return err
 	}
