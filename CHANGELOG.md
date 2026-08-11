@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-11
+
+- [887c065](https://github.com/lankeami/claude-control/commit/887c0658b643199b580f9e4310245440c034b6c8) fix: dedup managed AskUserQuestion cards by tool_use_id
+  Two front-end paths create a question card from the same tool call: the typed pending_question SSE event (real-time, from the PreToolUse hook) and the raw assistant tool_use block. In the interactive backend the CLI buffers the AskUserQuestion transcript entry until the question resolves, so the second path fires at resolution and pushes a stale, unanswerable duplicate carrying the same tool_use_id — the "2 of the same questions" bug.
+
 ## 2026-08-10
 
 - [fc36b74](https://github.com/lankeami/claude-control/commit/fc36b74482cd288460a05638312b8da9b82b22dd) feat: add /release skill for minor-bump-by-default GitHub releases
