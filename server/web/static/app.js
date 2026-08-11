@@ -2106,24 +2106,7 @@ document.addEventListener('alpine:init', () => {
 
           // Pending question pushed via SSE (replaces polling)
           if (data.type === 'pending_question' && data.pending && data.questions && data.questions.length > 0) {
-            if (!this.pendingQuestion) {
-              const alreadyShown = this.chatMessages.some(m => m.role === 'question' && !m.answered);
-              if (!alreadyShown) {
-                this.pendingQuestion = {
-                  toolUseId: data.tool_use_id,
-                  questions: data.questions,
-                  timestamp: data.created_at
-                };
-                this.pendingQuestionOtherText = '';
-                this.chatMessages.push({
-                  id: 'question-' + Date.now(),
-                  role: 'question',
-                  questions: data.questions,
-                  timestamp: data.created_at
-                });
-                this.$nextTick(() => this.scrollToBottom(true));
-              }
-            }
+            this.showQuestionCard(data.tool_use_id, data.questions, data.created_at);
             return;
           }
 
@@ -2295,19 +2278,7 @@ document.addEventListener('alpine:init', () => {
                     ? block.input.questions
                     : null;
                   if (questions) {
-                    this.pendingQuestion = {
-                      toolUseId: block.id,
-                      questions: questions,
-                      timestamp: new Date().toISOString()
-                    };
-                    this.pendingQuestionOtherText = '';
-                    this.chatMessages.push({
-                      id: 'question-' + Date.now(),
-                      role: 'question',
-                      questions: questions,
-                      timestamp: new Date().toISOString()
-                    });
-                    this.$nextTick(() => this.scrollToBottom(true));
+                    this.showQuestionCard(block.id, questions, new Date().toISOString());
                   } else {
                     this.chatMessages.push({
                       id: 'question-error-' + Date.now(),
@@ -2485,6 +2456,27 @@ document.addEventListener('alpine:init', () => {
       this.pendingPermission = null;
     },
 
+    // showQuestionCard is the single entry point for surfacing an
+    // AskUserQuestion. Both front-end paths (the typed pending_question SSE
+    // event and the raw assistant tool_use block) call it, and it dedups by
+    // tool_use_id so the buffered-transcript flush at resolution time can't
+    // push a second, unanswerable copy of a question already shown.
+    showQuestionCard(toolUseId, questions, timestamp) {
+      const exists = window._ccQuestionCardExists || (() => false);
+      if (exists(this.chatMessages, toolUseId)) return false;
+      this.pendingQuestion = { toolUseId, questions, timestamp };
+      this.pendingQuestionOtherText = '';
+      this.chatMessages.push({
+        id: 'question-' + Date.now(),
+        role: 'question',
+        toolUseId,
+        questions,
+        timestamp
+      });
+      this.$nextTick(() => this.scrollToBottom(true));
+      return true;
+    },
+
     async respondToQuestion(msg, questionIdx, optionIdx, label, optionCount) {
       if (msg.answered || !this.selectedSessionId) return;
       msg.answered = true;
@@ -2551,19 +2543,7 @@ document.addEventListener('alpine:init', () => {
           if (data.pending && data.questions && data.questions.length > 0) {
             const errIdx = this.chatMessages.findIndex(m => m.role === 'question_error');
             if (errIdx >= 0) this.chatMessages.splice(errIdx, 1);
-            this.pendingQuestion = {
-              toolUseId: data.tool_use_id,
-              questions: data.questions,
-              timestamp: data.created_at
-            };
-            this.pendingQuestionOtherText = '';
-            this.chatMessages.push({
-              id: 'question-' + Date.now(),
-              role: 'question',
-              questions: data.questions,
-              timestamp: data.created_at
-            });
-            this.$nextTick(() => this.scrollToBottom(true));
+            this.showQuestionCard(data.tool_use_id, data.questions, data.created_at);
           } else {
             setTimeout(doRetry, retryInterval);
           }
@@ -2582,19 +2562,7 @@ document.addEventListener('alpine:init', () => {
         });
         const data = await r.json();
         if (data.pending && data.questions && data.questions.length > 0) {
-          this.pendingQuestion = {
-            toolUseId: data.tool_use_id,
-            questions: data.questions,
-            timestamp: data.created_at
-          };
-          this.pendingQuestionOtherText = '';
-          this.chatMessages.push({
-            id: 'question-' + Date.now(),
-            role: 'question',
-            questions: data.questions,
-            timestamp: data.created_at
-          });
-          this.$nextTick(() => this.scrollToBottom(true));
+          this.showQuestionCard(data.tool_use_id, data.questions, data.created_at);
         } else {
           this.toast('No pending question found');
         }
