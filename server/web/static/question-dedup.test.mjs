@@ -81,9 +81,13 @@ test('both SSE question paths route through the shared showQuestionCard helper',
 test('question cards carry their toolUseId so cross-path dedup works', () => {
   const defIdx = appJs.indexOf('showQuestionCard(toolUseId, questions, timestamp)');
   assert.ok(defIdx > 0, 'showQuestionCard method definition present');
-  const fn = appJs.slice(defIdx, defIdx + 500);
+  const fn = appJs.slice(defIdx, defIdx + 1000);
   assert.match(fn, /role:\s*'question'/);
   assert.match(fn, /toolUseId/);
+  // Regression: the option buttons bind :disabled="msg.answered". If the
+  // message ships without an `answered` key, Alpine renders the buttons
+  // disabled and the card cannot be clicked. It must be defined (false).
+  assert.match(fn, /answered:\s*false/);
 });
 
 test('index.html loads the question-dedup module before app.js', () => {

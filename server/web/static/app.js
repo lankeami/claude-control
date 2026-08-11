@@ -2470,6 +2470,11 @@ document.addEventListener('alpine:init', () => {
         id: 'question-' + Date.now(),
         role: 'question',
         toolUseId,
+        // answered must be a defined (falsy) property, not absent: the option
+        // buttons bind :disabled="msg.answered", and Alpine renders them
+        // disabled when the key is missing entirely — leaving the card
+        // unclickable until an explicit value exists.
+        answered: false,
         questions,
         timestamp
       });
