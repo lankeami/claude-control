@@ -2,6 +2,8 @@
 
 ## 2026-08-11
 
+- [90113dd](https://github.com/lankeami/claude-control/commit/90113dd877fd8a97b3251584d5757f30d478ff84) fix: make managed AskUserQuestion option buttons clickable
+  The option buttons bind :disabled="msg.answered". The question message was pushed without an `answered` key at all, and Alpine renders the buttons disabled when the bound property is absent — so the card showed but no answer could be selected (the "unable to select the answers" report). Initialize answered:false on the message so the buttons are enabled until the question is actually answered.
 - [887c065](https://github.com/lankeami/claude-control/commit/887c0658b643199b580f9e4310245440c034b6c8) fix: dedup managed AskUserQuestion cards by tool_use_id
   Two front-end paths create a question card from the same tool call: the typed pending_question SSE event (real-time, from the PreToolUse hook) and the raw assistant tool_use block. In the interactive backend the CLI buffers the AskUserQuestion transcript entry until the question resolves, so the second path fires at resolution and pushes a stale, unanswerable duplicate carrying the same tool_use_id — the "2 of the same questions" bug.
 
