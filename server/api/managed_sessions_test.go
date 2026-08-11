@@ -917,7 +917,7 @@ func TestCreateManagedSessionWorktree(t *testing.T) {
 	}
 	var sess map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&sess)
-	wantCWD := repo + "-hotfix"
+	wantCWD := repo + "/.claude-worktrees/hotfix"
 	if sess["cwd"] != wantCWD {
 		t.Errorf("cwd=%v, want %s", sess["cwd"], wantCWD)
 	}
@@ -926,6 +926,9 @@ func TestCreateManagedSessionWorktree(t *testing.T) {
 	}
 	if _, err := os.Stat(wantCWD + "/.git"); err != nil {
 		t.Errorf("worktree dir not created: %v", err)
+	}
+	if data, _ := os.ReadFile(repo + "/.git/info/exclude"); !strings.Contains(string(data), ".claude-worktrees/") {
+		t.Errorf("exclude file missing .claude-worktrees/ entry: %q", data)
 	}
 
 	// Worktree create on a non-git dir fails with 400

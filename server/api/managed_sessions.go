@@ -84,21 +84,50 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 // worktreeNameRe strips anything unsafe for a branch/directory name.
 var worktreeNameRe = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
-// addWorktree creates a git worktree of repoCWD in a sibling directory named
-// after the session name, on a new branch of the same name. Returns the
-// worktree path.
+// addWorktree creates a git worktree of repoCWD under
+// <repo>/.claude-worktrees/<name> (Claude Code's worktree convention), on a
+// new branch of the same name. Returns the worktree path.
 func addWorktree(repoCWD, name string) (string, error) {
 	name = worktreeNameRe.ReplaceAllString(strings.TrimSpace(name), "-")
 	name = strings.Trim(name, "-.")
 	if name == "" {
 		return "", fmt.Errorf("a session name is required to create a worktree")
 	}
-	wtPath := strings.TrimRight(repoCWD, "/") + "-" + name
+	wtPath := strings.TrimRight(repoCWD, "/") + "/.claude-worktrees/" + name
 	cmd := exec.Command("git", "-C", repoCWD, "worktree", "add", wtPath, "-b", name)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git worktree add failed: %s", strings.TrimSpace(string(out)))
 	}
+	excludeWorktreeDir(repoCWD)
 	return wtPath, nil
+}
+
+// excludeWorktreeDir keeps .claude-worktrees/ out of git status via
+// .git/info/exclude. Best-effort: failures leave the dir visible, nothing worse.
+func excludeWorktreeDir(repoCWD string) {
+	out, err := exec.Command("git", "-C", repoCWD, "rev-parse", "--git-common-dir").Output()
+	if err != nil {
+		return
+	}
+	gitDir := strings.TrimSpace(string(out))
+	if !strings.HasPrefix(gitDir, "/") {
+		gitDir = strings.TrimRight(repoCWD, "/") + "/" + gitDir
+	}
+	excludePath := gitDir + "/info/exclude"
+	if data, err := os.ReadFile(excludePath); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.TrimSpace(line) == ".claude-worktrees/" {
+				return
+			}
+		}
+	}
+	os.MkdirAll(gitDir+"/info", 0o755)
+	f, err := os.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(".claude-worktrees/\n")
 }
 
 // buildPersistentArgs builds CLI args for a persistent process (no message in args).
