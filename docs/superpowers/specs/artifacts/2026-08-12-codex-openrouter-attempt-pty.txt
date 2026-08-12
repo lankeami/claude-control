@@ -1,0 +1,16 @@
+^DOpenAI Codex v0.147.0
+--------
+workdir: /private/tmp/claude-501/-Users-jaychinthrajah-workspaces--personal--claude-control/63f9ece2-c1e3-422f-863a-d8ce14a131e8/scratchpad
+model: openai/gpt-4o-mini
+provider: openrouter
+approval: never
+sandbox: read-only
+reasoning effort: none
+reasoning summaries: none
+session id: 019ff641-a378-7973-bf46-258236cc58a2
+--------
+user
+Reply with exactly: POC-OK
+warning: Model metadata for `openai/gpt-4o-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+ERROR: Missing environment variable: `OPENROUTER_API_KEY`.
+ERROR: Missing environment variable: `OPENROUTER_API_KEY`.
