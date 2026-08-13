@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-12
+
+- [5343d29](https://github.com/lankeami/claude-control/commit/5343d290f0a876bb3d528d29156aaba0d2e125b1) Spike: evaluate OpenRouter for Claude Code / Codex agent switching (#259)
+  Research doc with conditional-GO recommendation (agents native, OpenRouter optional per-agent config), PoC artifacts from Codex CLI 0.147.0 under PTY, and links to execution issues #260-#262.
+
 ## 2026-08-11
 
 - [90113dd](https://github.com/lankeami/claude-control/commit/90113dd877fd8a97b3251584d5757f30d478ff84) fix: make managed AskUserQuestion option buttons clickable
