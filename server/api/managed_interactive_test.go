@@ -865,3 +865,119 @@ func TestConfirmPromptSubmissionSurfacesUnknownCommand(t *testing.T) {
 		t.Error("generic 'not confirmed' warning fired instead of the specific unknown-command error")
 	}
 }
+
+func TestInteractiveLocalSlashCommandCompletesWithoutStopHook(t *testing.T) {
+	old := localCommandFallback
+	localCommandFallback = 200 * time.Millisecond
+	defer func() { localCommandFallback = old }()
+
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-local-cmd", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	resp, err := sendMessage(ts, sess.ID, "/reload-skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// No transcript lines emitted, no Stop hook — the local command fallback
+	// must end the turn without stalling.
+
+	pollActivityState(t, store, sess.ID, "waiting", 2*time.Second)
+
+	var sawDone bool
+	timeout := time.After(2 * time.Second)
+	for !sawDone {
+		select {
+		case msg := <-ch:
+			var obj map[string]any
+			json.Unmarshal([]byte(msg), &obj)
+			if obj["type"] == "done" {
+				sawDone = true
+			}
+		case <-timeout:
+			t.Fatal("turn never completed — /reload-skills stalled")
+		}
+	}
+
+	// No error messages should be persisted (unlike unknown commands).
+	msgs, _ := store.ListMessages(sess.ID)
+	for _, m := range msgs {
+		if m.Role == "system" && strings.Contains(m.Content, "unknown command") {
+			t.Errorf("unexpected unknown-command error: %s", m.Content)
+		}
+		if m.Role == "system" && strings.Contains(m.Content, "not confirmed") {
+			t.Error("prompt confirmation warning fired for a local command")
+		}
+	}
+}
+
+func TestInteractiveSlashCommandWithModelTurnUsesStopHook(t *testing.T) {
+	old := localCommandFallback
+	localCommandFallback = 200 * time.Millisecond
+	defer func() { localCommandFallback = old }()
+
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-skill-cmd", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	resp, err := sendMessage(ts, sess.ID, "/some-skill do stuff")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// The CLI started a model turn — user echo + assistant activity appear.
+	mock.EmitTranscriptLine(sess.ID, userEchoTranscriptLine("some-skill do stuff"))
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLine("executing skill", 100, 50))
+
+	// Wait for prompt to be typed, then signal Stop normally.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(mock.SentPromptsCopy()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	mock.SignalStop(sess.ID)
+
+	// The turn must complete via Stop hook (normal path), not the local
+	// command fallback — verified by seeing a result event with cost.
+	var sawResult bool
+	timeout := time.After(3 * time.Second)
+	for {
+		select {
+		case msg := <-ch:
+			var obj map[string]any
+			json.Unmarshal([]byte(msg), &obj)
+			if obj["type"] == "result" {
+				sawResult = true
+			}
+			if obj["type"] == "done" {
+				if !sawResult {
+					t.Error("done without result — local command fallback fired instead of Stop hook")
+				}
+				return
+			}
+		case <-timeout:
+			t.Fatal("turn never completed")
+		}
+	}
+}

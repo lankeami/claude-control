@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-15
+
+- [8736ab4](https://github.com/lankeami/claude-control/commit/8736ab4df8d9bbfc91d0def436b12bc76072869b) fix: resolve /reload-skills stall by adding local command fallback timeout
+  Slash commands processed locally by the CLI (e.g. /reload-skills) never trigger a Stop hook or produce transcript activity, so waitForTurnEnd blocked indefinitely. Adds a 5s fallback: if a slash command produces no transcript echo or assistant activity within the timeout, the turn ends cleanly without waiting for a Stop hook.
+
 ## 2026-08-12
 
 - [5343d29](https://github.com/lankeami/claude-control/commit/5343d290f0a876bb3d528d29156aaba0d2e125b1) Spike: evaluate OpenRouter for Claude Code / Codex agent switching (#259)

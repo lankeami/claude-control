@@ -20,6 +20,10 @@ import (
 // on interrupts). Variable so tests can shorten it.
 var escStopFallback = 10 * time.Second
 
+// localCommandFallback is how long we wait before concluding a slash command
+// was handled locally by the CLI (no model turn started). Variable for tests.
+var localCommandFallback = 5 * time.Second
+
 // transcriptDiscoveryFallback is how long we wait for the SessionStart hook
 // to report the transcript path before computing it locally.
 var transcriptDiscoveryFallback = 30 * time.Second
@@ -69,6 +73,7 @@ const (
 	turnEndDied                                // Process exited
 	turnEndQuestion                            // AskUserQuestion detected in transcript
 	turnEndUnknownCommand                      // CLI rejected the prompt as an unknown slash command
+	turnEndLocalCommand                        // Slash command processed locally by the CLI (no model turn)
 )
 
 // interactiveTurnState tracks per-turn counters shared between the transcript
@@ -83,6 +88,7 @@ type interactiveTurnState struct {
 	questionCh     chan struct{}
 	unknownCmd     string // slash command the CLI rejected ("Unknown command: ...")
 	unknownCmdCh   chan struct{}
+	slashCmd       bool   // prompt starts with "/" — enables local command fallback
 	// seenMsgIDs tracks assistant message IDs already counted this turn.
 	// Native transcripts split one API response into multiple JSONL entries
 	// (one per content block) that share a message ID and repeat the same
@@ -464,6 +470,7 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 
 	for {
 		turn.reset()
+		turn.slashCmd = strings.HasPrefix(currentPrompt, "/")
 		// Drain stale stop signals from previous turns
 		for {
 			select {
@@ -518,6 +525,15 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		})
 
 		reason := s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+
+		// Slash command processed locally by the CLI — no model turn, no
+		// cost, no result to synthesize. Return to the input prompt.
+		if reason == turnEndLocalCommand {
+			close(turnOver)
+			log.Printf("session %s: local command completed, returning to prompt", sessionID)
+			s.finishInteractiveTurn(sessionID, broadcaster)
+			return
+		}
 
 		// The CLI rejected the prompt as an unknown slash command — no turn
 		// ever started, so skip result/cost synthesis and finish cleanly.
@@ -730,6 +746,7 @@ func (s *Server) confirmPromptSubmission(sessionID string, turn *interactiveTurn
 func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <-chan struct{}, turn *interactiveTurnState) turnEndReason {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
+	turnStart := time.Now()
 	var interruptedAt time.Time
 	for {
 		select {
@@ -750,6 +767,10 @@ func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <
 			if !interruptedAt.IsZero() && time.Since(interruptedAt) > escStopFallback {
 				log.Printf("session %s: no Stop hook after interrupt, assuming turn ended", sessionID)
 				return turnEndStop
+			}
+			if turn.slashCmd && !turn.submitted() && time.Since(turnStart) > localCommandFallback {
+				log.Printf("session %s: slash command completed locally (no model turn after %s)", sessionID, localCommandFallback)
+				return turnEndLocalCommand
 			}
 		}
 	}
