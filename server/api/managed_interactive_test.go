@@ -981,3 +981,76 @@ func TestInteractiveSlashCommandWithModelTurnUsesStopHook(t *testing.T) {
 		}
 	}
 }
+
+func TestSupersedeCancelsOldTurn(t *testing.T) {
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-supersede", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	// Send first message — starts goroutine 1 in waitForTurnEnd.
+	resp, err := sendMessage(ts, sess.ID, "long running task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// Emit transcript activity so goroutine 1 is in waitForTurnEnd (past
+	// prompt confirmation).
+	mock.EmitTranscriptLine(sess.ID, userEchoTranscriptLine("long running task"))
+	mock.EmitTranscriptLine(sess.ID, assistantTranscriptLine("working on it", 100, 50))
+
+	// Wait for the prompt to be typed.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(mock.SentPromptsCopy()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Drain any events so far.
+	drainBroadcasts(ch, 200*time.Millisecond)
+
+	// Send second message — this must supersede goroutine 1.
+	resp2, err := sendMessage(ts, sess.ID, "Status?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+
+	// Wait long enough for the supersede to propagate and the old goroutine
+	// to exit. Do NOT send SignalStop — that would be consumed by the new
+	// goroutine, not the old one (which is the point of the test).
+	msgs := drainBroadcasts(ch, 500*time.Millisecond)
+
+	// The superseded goroutine must NOT emit result or done. Any result/done
+	// in this window would prove the old goroutine leaked events.
+	for _, msg := range msgs {
+		var obj map[string]any
+		json.Unmarshal([]byte(msg), &obj)
+		if obj["type"] == "result" {
+			t.Error("superseded goroutine emitted 'result' — it should have exited silently")
+		}
+		if obj["type"] == "done" {
+			t.Error("superseded goroutine emitted 'done' — it should have exited silently")
+		}
+	}
+}
+
+func drainBroadcasts(ch <-chan string, timeout time.Duration) []string {
+	var msgs []string
+	timer := time.After(timeout)
+	for {
+		select {
+		case msg := <-ch:
+			msgs = append(msgs, msg)
+		case <-timer:
+			return msgs
+		}
+	}
+}

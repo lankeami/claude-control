@@ -74,6 +74,7 @@ const (
 	turnEndQuestion                            // AskUserQuestion detected in transcript
 	turnEndUnknownCommand                      // CLI rejected the prompt as an unknown slash command
 	turnEndLocalCommand                        // Slash command processed locally by the CLI (no model turn)
+	turnEndSuperseded                          // A new message arrived; this goroutine must exit silently
 )
 
 // interactiveTurnState tracks per-turn counters shared between the transcript
@@ -273,6 +274,12 @@ func (s *Server) sendMessageInteractive(sess *db.Session, message string, imageP
 	turn := &interactiveTurnState{questionCh: make(chan struct{}, 1), unknownCmdCh: make(chan struct{}, 1)}
 	s.interactiveTurns.Store(sessionID, turn)
 
+	// Cancel any previous turn goroutine for this session.
+	supersedeCh := make(chan struct{})
+	if old, loaded := s.supersedeChs.Swap(sessionID, supersedeCh); loaded {
+		close(old.(chan struct{}))
+	}
+
 	prompt := message
 	for _, p := range imagePaths {
 		prompt += fmt.Sprintf("\n\n[Attached image: %s] — use the Read tool to view it.", p)
@@ -289,7 +296,7 @@ func (s *Server) sendMessageInteractive(sess *db.Session, message string, imageP
 		modelEvt, _ := json.Marshal(map[string]string{"type": "model_selected", "model": sess.Model, "reason": "session"})
 		broadcaster.Send(string(modelEvt))
 
-		s.runInteractiveTurns(sess, prompt, turn, broadcaster, 0)
+		s.runInteractiveTurns(sess, prompt, turn, broadcaster, 0, supersedeCh)
 	})
 }
 
@@ -303,7 +310,7 @@ func isSessionIDConflict(out string) bool {
 // retryAfterSessionIDConflict recovers a session wedged on an unusable CLI
 // session ID: rotate to a fresh ID and re-run the turn once. Returns true if
 // the retry was started (the caller must return without further handling).
-func (s *Server) retryAfterSessionIDConflict(sess *db.Session, prompt string, turn *interactiveTurnState, broadcaster *managed.Broadcaster, proc *managed.InteractiveProc, attempt int) bool {
+func (s *Server) retryAfterSessionIDConflict(sess *db.Session, prompt string, turn *interactiveTurnState, broadcaster *managed.Broadcaster, proc *managed.InteractiveProc, attempt int, supersedeCh <-chan struct{}) bool {
 	if attempt > 0 {
 		return false
 	}
@@ -324,14 +331,14 @@ func (s *Server) retryAfterSessionIDConflict(sess *db.Session, prompt string, tu
 	sess.Initialized = false
 	log.Printf("session %s: CLI session ID conflict, rotated to %s and retrying", sess.ID, newID)
 	_, _ = s.store.CreateMessage(sess.ID, "system", "Claude session ID conflict detected — retrying with a fresh session.", 0)
-	s.runInteractiveTurns(sess, prompt, turn, broadcaster, 1)
+	s.runInteractiveTurns(sess, prompt, turn, broadcaster, 1, supersedeCh)
 	return true
 }
 
 // runInteractiveTurns spawns (or reuses) the session's interactive process
 // and drives prompt turns until the conversation goes idle. attempt guards
 // the single session-ID-conflict retry.
-func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *interactiveTurnState, broadcaster *managed.Broadcaster, attempt int) {
+func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *interactiveTurnState, broadcaster *managed.Broadcaster, attempt int, supersedeCh <-chan struct{}) {
 	sessionID := sess.ID
 	maxTurns := sess.MaxTurns
 
@@ -487,7 +494,7 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		// "No response requested." instead of a clear error.
 		select {
 		case <-proc.Done:
-			if s.retryAfterSessionIDConflict(sess, prompt, turn, broadcaster, proc, attempt) {
+			if s.retryAfterSessionIDConflict(sess, prompt, turn, broadcaster, proc, attempt, supersedeCh) {
 				return
 			}
 			state := "waiting"
@@ -506,7 +513,7 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		if err := s.manager.SendPrompt(sessionID, currentPrompt); err != nil {
 			// The process may have died with a session-ID conflict before
 			// the prompt could be typed (PTY write fails on a dead pty).
-			if s.retryAfterSessionIDConflict(sess, prompt, turn, broadcaster, proc, attempt) {
+			if s.retryAfterSessionIDConflict(sess, prompt, turn, broadcaster, proc, attempt, supersedeCh) {
 				return
 			}
 			errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to send prompt: %s"}`, err.Error())
@@ -524,7 +531,15 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			s.confirmPromptSubmission(sessionID, turn, proc.Done, turnOver, broadcaster)
 		})
 
-		reason := s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+		reason := s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn, supersedeCh)
+
+		// A new message arrived — this goroutine is stale. Exit without
+		// emitting result/done; the new goroutine owns the session now.
+		if reason == turnEndSuperseded {
+			close(turnOver)
+			log.Printf("session %s: turn superseded by new message, exiting silently", sessionID)
+			return
+		}
 
 		// Slash command processed locally by the CLI — no model turn, no
 		// cost, no result to synthesize. Return to the input prompt.
@@ -563,15 +578,19 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			if s.pendingQuestions.Get(sessionID) == nil {
 				log.Printf("session %s: pending question already cleared, resuming turn", sessionID)
 				_ = s.store.UpdateActivityState(sessionID, "working")
-				reason = s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+				reason = s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn, supersedeCh)
 				continue
 			}
 
 			select {
+			case <-supersedeCh:
+				log.Printf("session %s: superseded during question wait", sessionID)
+				s.pendingQuestions.Delete(sessionID)
+				reason = turnEndSuperseded
 			case <-respondedCh:
 				log.Printf("session %s: question answered, resuming turn", sessionID)
 				_ = s.store.UpdateActivityState(sessionID, "working")
-				reason = s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn)
+				reason = s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn, supersedeCh)
 			case <-stopCh:
 				log.Printf("session %s: stop during question wait, ending turn", sessionID)
 				s.pendingQuestions.Delete(sessionID)
@@ -581,6 +600,12 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 				s.pendingQuestions.Delete(sessionID)
 				reason = turnEndDied
 			}
+		}
+
+		if reason == turnEndSuperseded {
+			close(turnOver)
+			log.Printf("session %s: turn superseded (from question wait), exiting silently", sessionID)
+			return
 		}
 
 		close(turnOver)
@@ -615,7 +640,7 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		}
 
 		if procDied {
-			if proc.ExitCode != 0 && s.retryAfterSessionIDConflict(sess, prompt, turn, broadcaster, proc, attempt) {
+			if proc.ExitCode != 0 && s.retryAfterSessionIDConflict(sess, prompt, turn, broadcaster, proc, attempt, supersedeCh) {
 				return
 			}
 			state := "waiting"
@@ -686,6 +711,9 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 				_, _ = s.store.CreateMessage(sessionID, "system", fmt.Sprintf("Compact failed: %v, continuing without it.", err), 0)
 			} else {
 				select {
+				case <-supersedeCh:
+					log.Printf("session %s: superseded during compact wait, exiting silently", sessionID)
+					return
 				case <-stopCh:
 					_, _ = s.store.CreateMessage(sessionID, "system", "Compact complete.", 0)
 				case <-proc.Done:
@@ -743,13 +771,15 @@ func (s *Server) confirmPromptSubmission(sessionID string, turn *interactiveTurn
 // AskUserQuestion is detected in the transcript, or — if the turn was
 // interrupted via ESC — a fallback timer expires (the Stop hook may not fire
 // on interrupts).
-func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <-chan struct{}, turn *interactiveTurnState) turnEndReason {
+func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <-chan struct{}, turn *interactiveTurnState, supersedeCh <-chan struct{}) turnEndReason {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	turnStart := time.Now()
 	var interruptedAt time.Time
 	for {
 		select {
+		case <-supersedeCh:
+			return turnEndSuperseded
 		case <-stopCh:
 			return turnEndStop
 		case <-done:
