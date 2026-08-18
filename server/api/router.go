@@ -44,6 +44,9 @@ type Server struct {
 	// budgetWarned tracks sessions already warned about exceeding their cost
 	// estimate, so the warning fires once per session per server lifetime.
 	budgetWarned sync.Map
+	// supersedeChs maps sessionID -> chan struct{} — closed when a new message
+	// arrives to cancel the previous turn goroutine.
+	supersedeChs sync.Map
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string, taskTrigger TaskTrigger, instanceName string) http.Handler {
