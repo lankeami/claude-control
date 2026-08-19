@@ -1875,10 +1875,6 @@ body {
     min-height: 0;
   }
 
-  .mobile-detail-body:has(.html-preview-frame) {
-    overflow: hidden;
-  }
-
   /* Modal full-screen on mobile */
   .modal-sm,
   .modal-md,
@@ -2315,14 +2311,19 @@ body {
   border-bottom-color: var(--accent);
 }
 
-.html-preview-frame {
+.html-preview-scroll {
   flex: 1;
-  width: 100%;
+  overflow: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.html-preview-frame {
   border: none;
   background: white;
   min-height: 300px;
-  touch-action: pan-x pan-y pinch-zoom;
-  -webkit-overflow-scrolling: touch;
+  min-width: 100%;
+  display: block;
 }
 
 .html-source {
