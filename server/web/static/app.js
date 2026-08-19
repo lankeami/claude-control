@@ -4244,7 +4244,9 @@ Please review this PR and provide feedback.`;
           '<button class="html-tab active" onclick="this.classList.add(\'active\');this.nextElementSibling.classList.remove(\'active\');this.parentElement.nextElementSibling.style.display=\'block\';this.parentElement.nextElementSibling.nextElementSibling.style.display=\'none\'">Preview</button>' +
           '<button class="html-tab" onclick="this.classList.add(\'active\');this.previousElementSibling.classList.remove(\'active\');this.parentElement.nextElementSibling.style.display=\'none\';this.parentElement.nextElementSibling.nextElementSibling.style.display=\'block\'">Source</button>' +
         '</div>' +
-        '<iframe class="html-preview-frame" srcdoc="' + srcdocContent + '" sandbox="allow-same-origin"></iframe>' +
+        '<div class="html-preview-scroll">' +
+          '<iframe class="html-preview-frame" srcdoc="' + srcdocContent + '" sandbox="allow-same-origin" onload="var d=this.contentDocument;if(d&&d.body){this.style.height=d.body.scrollHeight+\'px\';this.style.width=Math.max(d.body.scrollWidth,this.parentElement.clientWidth)+\'px\'}"></iframe>' +
+        '</div>' +
         '<div class="html-source" style="display:none">' + this.renderCode(content, 'html') + '</div>' +
         '</div>';
     },
