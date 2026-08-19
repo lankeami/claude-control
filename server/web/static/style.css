@@ -1875,6 +1875,10 @@ body {
     min-height: 0;
   }
 
+  .mobile-detail-body:has(.html-preview-frame) {
+    overflow: hidden;
+  }
+
   /* Modal full-screen on mobile */
   .modal-sm,
   .modal-md,
@@ -2317,6 +2321,8 @@ body {
   border: none;
   background: white;
   min-height: 300px;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
 }
 
 .html-source {
