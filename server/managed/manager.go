@@ -18,12 +18,13 @@ type Config struct {
 	BinaryPath         string
 	// KeyFilePath is the api.key location hook-signal subprocesses must read
 	// (follows the --db directory rather than the default home location).
-	KeyFilePath string
+	KeyFilePath        string
 	IdleTimeoutMinutes int
 	// Mode selects the managed-session backend: "interactive" (long-lived
 	// interactive Claude Code under a PTY, billed via subscription) or
 	// "print" (legacy per-message claude -p, billed via API).
-	Mode string
+	Mode    string
+	CodexBin string
 }
 
 type SpawnOpts struct {

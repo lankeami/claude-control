@@ -30,6 +30,7 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 		CompactEveryNContinues int     `json:"compact_every_n_continues"`
 		Worktree               bool    `json:"worktree"`
 		Name                   string  `json:"name"`
+		Agent                  string  `json:"agent"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -61,8 +62,15 @@ func (s *Server) handleCreateManagedSession(w http.ResponseWriter, r *http.Reque
 			req.CompactEveryNContinues = v
 		}
 	}
+	if req.Agent == "" {
+		req.Agent = "claude"
+	}
+	if req.Agent != "claude" && req.Agent != "codex" {
+		http.Error(w, fmt.Sprintf("unknown agent %q (valid: claude, codex)", req.Agent), http.StatusBadRequest)
+		return
+	}
 
-	sess, err := s.store.CreateManagedSession(req.CWD, req.AllowedTools, req.MaxTurns, req.MaxBudgetUSD, req.CompactEveryNContinues)
+	sess, err := s.store.CreateManagedSession(req.CWD, req.AllowedTools, req.MaxTurns, req.MaxBudgetUSD, req.CompactEveryNContinues, req.Agent)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			http.Error(w, "session already exists for this directory", http.StatusConflict)
@@ -257,6 +265,11 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		// No process running — state is stale. Reset and proceed.
 		log.Printf("session %s: activity_state is 'working' but no process running, resetting to allow new message", sessionID)
 		_ = s.store.UpdateActivityState(sessionID, "waiting")
+	}
+
+	if sess.Agent != "" && sess.Agent != "claude" {
+		s.handleSendMessageByAgent(w, sess, req.Message)
+		return
 	}
 
 	if interactive {
@@ -1146,4 +1159,17 @@ func (s *Server) handleRecentDirs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"directories": dirs,
 	})
+}
+
+func (s *Server) handleSendMessageByAgent(w http.ResponseWriter, sess *db.Session, message string) {
+	switch sess.Agent {
+	case "codex":
+		_ = s.store.UpdateActivityState(sess.ID, "idle")
+		broadcaster := s.manager.GetBroadcaster(sess.ID)
+		errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":%s}`, jsonString(managed.ErrCodexNotImplemented.Error()))
+		broadcaster.Send(errMsg)
+		http.Error(w, managed.ErrCodexNotImplemented.Error(), http.StatusNotImplemented)
+	default:
+		http.Error(w, fmt.Sprintf("unknown agent %q", sess.Agent), http.StatusBadRequest)
+	}
 }
