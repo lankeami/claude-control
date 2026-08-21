@@ -991,7 +991,7 @@ func TestCreateSessionAgent_AcceptsCodex(t *testing.T) {
 	}
 }
 
-func TestCreateSessionAgent_CodexMessageReturns501(t *testing.T) {
+func TestCreateSessionAgent_CodexMessageReturns503WhenNotConfigured(t *testing.T) {
 	ts, store := setupTestServer(t)
 	defer ts.Close()
 	defer store.Close()
@@ -1012,8 +1012,8 @@ func TestCreateSessionAgent_CodexMessageReturns501(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 501 {
-		t.Errorf("status=%d, want 501 for codex agent", resp.StatusCode)
+	if resp.StatusCode != 503 {
+		t.Errorf("status=%d, want 503 for codex agent without CodexBin configured", resp.StatusCode)
 	}
 }
 
