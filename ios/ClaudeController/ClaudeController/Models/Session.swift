@@ -9,6 +9,7 @@ struct Session: Codable, Identifiable, Hashable {
     let createdAt: Date
     var lastSeenAt: Date
     var archived: Bool
+    let agent: String
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -19,6 +20,7 @@ struct Session: Codable, Identifiable, Hashable {
         case createdAt = "created_at"
         case lastSeenAt = "last_seen_at"
         case archived
+        case agent
     }
 
     init(from decoder: Decoder) throws {
@@ -31,6 +33,7 @@ struct Session: Codable, Identifiable, Hashable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         lastSeenAt = try container.decode(Date.self, forKey: .lastSeenAt)
         archived = try container.decode(Bool.self, forKey: .archived)
+        agent = try container.decodeIfPresent(String.self, forKey: .agent) ?? "claude"
     }
 
     var displayName: String {

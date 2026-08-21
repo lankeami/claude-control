@@ -1017,6 +1017,61 @@ func TestCreateSessionAgent_CodexMessageReturns503WhenNotConfigured(t *testing.T
 	}
 }
 
+func TestSessionsResponseAgent(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp/agent-resp", `["Bash"]`, 50, 5.0, 0, "codex")
+	store.UpdateSessionModel(sess.ID, "o3")
+
+	// GET /api/sessions — list must include agent and model
+	req, _ := http.NewRequest("GET", ts.URL+"/api/sessions", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var list []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&list)
+	if len(list) == 0 {
+		t.Fatal("expected at least one session in list")
+	}
+	found := false
+	for _, s := range list {
+		if s["id"] == sess.ID {
+			found = true
+			if s["agent"] != "codex" {
+				t.Errorf("list: agent=%v, want codex", s["agent"])
+			}
+			if s["model"] != "o3" {
+				t.Errorf("list: model=%v, want o3", s["model"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("session not found in list response")
+	}
+
+	// GET /api/sessions/:id — detail must include agent and model
+	req2, _ := http.NewRequest("GET", ts.URL+"/api/sessions/"+sess.ID, nil)
+	req2.Header.Set("Authorization", "Bearer test-api-key")
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	var detail map[string]interface{}
+	json.NewDecoder(resp2.Body).Decode(&detail)
+	if detail["agent"] != "codex" {
+		t.Errorf("detail: agent=%v, want codex", detail["agent"])
+	}
+	if detail["model"] != "o3" {
+		t.Errorf("detail: model=%v, want o3", detail["model"])
+	}
+}
+
 func TestCreateSessionAgent_RejectsUnknown(t *testing.T) {
 	ts, store := setupTestServer(t)
 	defer ts.Close()

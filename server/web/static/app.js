@@ -64,6 +64,7 @@ document.addEventListener('alpine:init', () => {
     dirSearchResults: [],
     dirSearchLoading: false,
     dirSearchActive: false,
+    newSessionAgent: 'claude',
 
     // Resume picker state
     showResumePicker: false,
@@ -1519,6 +1520,7 @@ document.addEventListener('alpine:init', () => {
     async openNewSessionModal() {
       this.showNewSessionModal = true;
       this.newSessionCWD = '';
+      this.newSessionAgent = 'claude';
       this.browsePath = '';
       this.browseEntries = [];
       this.browseFilter = '';
@@ -1660,12 +1662,16 @@ document.addEventListener('alpine:init', () => {
 
     async createManagedSession() {
       if (!this.newSessionCWD.trim()) return;
-      await this.postSessionCreate({ cwd: this.newSessionCWD.trim() });
+      const payload = { cwd: this.newSessionCWD.trim() };
+      if (this.newSessionAgent !== 'claude') payload.agent = this.newSessionAgent;
+      await this.postSessionCreate(payload);
     },
 
     async selectRecentDir(path) {
       this.newSessionCWD = path;
-      await this.postSessionCreate({ cwd: path });
+      const payload = { cwd: path };
+      if (this.newSessionAgent !== 'claude') payload.agent = this.newSessionAgent;
+      await this.postSessionCreate(payload);
     },
 
     // Shared create path. On 409 opens the conflict dialog instead of erroring.
