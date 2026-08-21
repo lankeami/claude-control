@@ -258,6 +258,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		if interactive {
 			busy = s.manager.IsInteractiveRunning(sessionID)
 		}
+		if cm, ok := s.manager.(codexManager); ok && !busy {
+			busy = cm.IsCodexRunning(sessionID)
+		}
 		if busy {
 			http.Error(w, "session is currently processing (may be auto-continuing — wait for it to finish or interrupt first)", http.StatusConflict)
 			return
@@ -654,15 +657,16 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleInterrupt(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
-	if s.manager.IsInteractiveRunning(sessionID) {
-		// ESC gracefully aborts the current turn; the process stays alive.
+	if cm, ok := s.manager.(codexManager); ok && cm.IsCodexRunning(sessionID) {
+		if err := cm.InterruptCodex(sessionID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if s.manager.IsInteractiveRunning(sessionID) {
 		if err := s.manager.InterruptInteractive(sessionID); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		// The Stop hook may not fire for interrupted turns — nudge the
-		// orchestrator so it doesn't wait forever. Spurious signals are
-		// drained at the start of the next turn.
 		SafeGo("interrupt-fallback:"+sessionID, func() {
 			time.Sleep(escStopFallback)
 			s.manager.SignalStop(sessionID)
@@ -1161,15 +1165,135 @@ func (s *Server) handleRecentDirs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type codexManager interface {
+	EnsureCodex(sessionID string, opts managed.CodexOpts) (*managed.CodexProc, error)
+	IsCodexRunning(sessionID string) bool
+	InterruptCodex(sessionID string) error
+	ShutdownCodex(sessionID string, timeout time.Duration) error
+}
+
 func (s *Server) handleSendMessageByAgent(w http.ResponseWriter, sess *db.Session, message string) {
 	switch sess.Agent {
 	case "codex":
-		_ = s.store.UpdateActivityState(sess.ID, "idle")
-		broadcaster := s.manager.GetBroadcaster(sess.ID)
-		errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":%s}`, jsonString(managed.ErrCodexNotImplemented.Error()))
-		broadcaster.Send(errMsg)
-		http.Error(w, managed.ErrCodexNotImplemented.Error(), http.StatusNotImplemented)
+		s.handleSendMessageCodex(w, sess, message)
 	default:
 		http.Error(w, fmt.Sprintf("unknown agent %q", sess.Agent), http.StatusBadRequest)
 	}
+}
+
+func (s *Server) handleSendMessageCodex(w http.ResponseWriter, sess *db.Session, message string) {
+	cm, ok := s.manager.(codexManager)
+	if !ok {
+		http.Error(w, "codex backend not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	cfg := s.manager.Config()
+	if cfg.CodexBin == "" {
+		http.Error(w, "codex binary not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	broadcaster := s.manager.GetBroadcaster(sess.ID)
+	_ = s.store.UpdateActivityState(sess.ID, "working")
+
+	var inputTokens, outputTokens int
+
+	proc, err := cm.EnsureCodex(sess.ID, managed.CodexOpts{
+		CWD: sess.CWD,
+		OnNotification: func(method string, params json.RawMessage) {
+			if method == "token_count" {
+				var tc struct {
+					InputTokens  int `json:"input_tokens"`
+					OutputTokens int `json:"output_tokens"`
+				}
+				if json.Unmarshal(params, &tc) == nil {
+					inputTokens += tc.InputTokens
+					outputTokens += tc.OutputTokens
+				}
+				return
+			}
+			line := managed.AdaptCodexNotification(method, params)
+			if line != "" {
+				broadcaster.Send(line)
+				role := parseRole(line)
+				text := extractAssistantText(line)
+				if role != "" && text != "" {
+					_, _ = s.store.CreateMessage(sess.ID, role, text, 0)
+				}
+			}
+		},
+		OnApproval: func(toolName, description string, input json.RawMessage) bool {
+			pending := &PendingPermission{
+				ToolName:    toolName,
+				Description: description,
+				Input:       input,
+				ResponseCh:  make(chan string, 1),
+				CreatedAt:   time.Now(),
+			}
+			s.permissions.Set(sess.ID, pending)
+			_ = s.store.UpdateActivityState(sess.ID, "input_needed")
+			eventJSON, _ := json.Marshal(map[string]interface{}{
+				"type":        "input_request",
+				"tool_name":   toolName,
+				"description": description,
+				"input":       input,
+			})
+			broadcaster.Send(string(eventJSON))
+
+			select {
+			case decision := <-pending.ResponseCh:
+				s.permissions.Delete(sess.ID)
+				_ = s.store.UpdateActivityState(sess.ID, "working")
+				return decision == "allow"
+			case <-time.After(permissionTimeout):
+				s.permissions.Delete(sess.ID)
+				_ = s.store.UpdateActivityState(sess.ID, "working")
+				return false
+			}
+		},
+	})
+	if err != nil {
+		_ = s.store.UpdateActivityState(sess.ID, "idle")
+		errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":%s}`, jsonString(err.Error()))
+		broadcaster.Send(errMsg)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := proc.EnsureThread(sess.CWD); err != nil {
+		_ = s.store.UpdateActivityState(sess.ID, "idle")
+		errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":%s}`, jsonString(err.Error()))
+		broadcaster.Send(errMsg)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, _ = s.store.CreateMessage(sess.ID, "user", message, 0)
+
+	SafeGo("codex-turn:"+sess.ID, func() {
+		result, err := proc.Call("turn/start", map[string]interface{}{
+			"message": message,
+		})
+
+		subtype := "success"
+		if err != nil {
+			subtype = "error_during_execution"
+		}
+
+		resultLine := managed.MakeResultEvent(subtype, inputTokens, outputTokens)
+		broadcaster.Send(resultLine)
+
+		if inputTokens > 0 || outputTokens > 0 {
+			model := "codex"
+			cost := calcCost(model, inputTokens, outputTokens)
+			_, _ = s.store.CreateMessage(sess.ID, "cost", fmt.Sprintf("tokens: %d in / %d out", inputTokens, outputTokens), cost)
+		}
+
+		_ = result
+		_ = s.store.UpdateActivityState(sess.ID, "waiting")
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
 }

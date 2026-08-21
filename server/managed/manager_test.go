@@ -361,15 +361,6 @@ func TestAgentDispatch_ClaudeUsesExistingBackend(t *testing.T) {
 	}
 }
 
-func TestAgentDispatch_CodexStubReturnsError(t *testing.T) {
-	if ErrCodexNotImplemented == nil {
-		t.Fatal("ErrCodexNotImplemented should be non-nil")
-	}
-	if !strings.Contains(ErrCodexNotImplemented.Error(), "not yet implemented") {
-		t.Errorf("error message=%q, want to contain 'not yet implemented'", ErrCodexNotImplemented.Error())
-	}
-}
-
 func TestAgentDispatch_ConfigHasCodexBin(t *testing.T) {
 	cfg := Config{ClaudeBin: "claude", CodexBin: "codex"}
 	m := NewManager(cfg)

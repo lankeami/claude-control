@@ -48,6 +48,7 @@ type Manager struct {
 	mu           sync.Mutex
 	procs        map[string]*Process
 	iprocs       map[string]*InteractiveProc
+	cprocs       map[string]*CodexProc
 	broadcasters map[string]*Broadcaster
 	mutexes      map[string]*sync.Mutex
 }
@@ -57,6 +58,7 @@ func NewManager(cfg Config) *Manager {
 		cfg:          cfg,
 		procs:        make(map[string]*Process),
 		iprocs:       make(map[string]*InteractiveProc),
+		cprocs:       make(map[string]*CodexProc),
 		broadcasters: make(map[string]*Broadcaster),
 		mutexes:      make(map[string]*sync.Mutex),
 	}
@@ -205,6 +207,7 @@ func (m *Manager) ReapIdle(maxIdle time.Duration) {
 	m.mu.Lock()
 	var toReap []string
 	var toReapInteractive []string
+	var toReapCodex []string
 	now := time.Now()
 	for id, proc := range m.procs {
 		if now.Sub(proc.LastActivity) > maxIdle {
@@ -214,6 +217,11 @@ func (m *Manager) ReapIdle(maxIdle time.Duration) {
 	for id, proc := range m.iprocs {
 		if now.Sub(proc.LastActivity) > maxIdle {
 			toReapInteractive = append(toReapInteractive, id)
+		}
+	}
+	for id, proc := range m.cprocs {
+		if now.Sub(proc.LastActivity) > maxIdle {
+			toReapCodex = append(toReapCodex, id)
 		}
 	}
 	m.mu.Unlock()
@@ -231,6 +239,11 @@ func (m *Manager) ReapIdle(maxIdle time.Duration) {
 	for _, id := range toReapInteractive {
 		log.Printf("reaping idle interactive process for session %s", id)
 		m.ShutdownInteractive(id, 10*time.Second)
+	}
+
+	for _, id := range toReapCodex {
+		log.Printf("reaping idle codex process for session %s", id)
+		m.ShutdownCodex(id, 10*time.Second)
 	}
 }
 
@@ -331,6 +344,11 @@ func (m *Manager) Teardown(sessionID string, timeout time.Duration) error {
 			return err
 		}
 	}
+	if m.IsCodexRunning(sessionID) {
+		if err := m.ShutdownCodex(sessionID, timeout); err != nil {
+			return err
+		}
+	}
 	if !m.IsRunning(sessionID) {
 		return nil
 	}
@@ -418,6 +436,10 @@ func (m *Manager) ShutdownAll(timeout time.Duration) {
 	for id := range m.iprocs {
 		iids = append(iids, id)
 	}
+	cids := make([]string, 0, len(m.cprocs))
+	for id := range m.cprocs {
+		cids = append(cids, id)
+	}
 	m.mu.Unlock()
 
 	for _, id := range ids {
@@ -427,6 +449,10 @@ func (m *Manager) ShutdownAll(timeout time.Duration) {
 	for _, id := range iids {
 		log.Printf("shutting down interactive process for session %s", id)
 		m.ShutdownInteractive(id, timeout)
+	}
+	for _, id := range cids {
+		log.Printf("shutting down codex process for session %s", id)
+		m.ShutdownCodex(id, timeout)
 	}
 }
 
