@@ -471,3 +471,56 @@ func TestRotateClaudeSessionID(t *testing.T) {
 		t.Fatal("initialized should be reset by rotation")
 	}
 }
+
+func TestSessionAgent_DefaultsClaude(t *testing.T) {
+	store := newTestStore(t)
+	sess, err := store.CreateManagedSession("/tmp/agent-default", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Agent != "claude" {
+		t.Errorf("agent=%q, want claude", sess.Agent)
+	}
+	got, _ := store.GetSessionByID(sess.ID)
+	if got.Agent != "claude" {
+		t.Errorf("re-read agent=%q, want claude", got.Agent)
+	}
+}
+
+func TestSessionAgent_ExplicitValue(t *testing.T) {
+	store := newTestStore(t)
+	sess, err := store.CreateManagedSession("/tmp/agent-codex", `["Bash"]`, 50, 5.0, 0, "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Agent != "codex" {
+		t.Errorf("agent=%q, want codex", sess.Agent)
+	}
+}
+
+func TestSessionAgent_PreMigrationRowsDefaultClaude(t *testing.T) {
+	store := newTestStore(t)
+	// Simulate a pre-migration row by inserting without the agent column value
+	_, err := store.QueryRows("INSERT INTO sessions (id, computer_name, project_path, mode, cwd, status) VALUES ('legacy-id', '__managed__', '/tmp/legacy', 'managed', '/tmp/legacy', 'idle')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetSessionByID("legacy-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Agent != "claude" {
+		t.Errorf("legacy row agent=%q, want claude", sess.Agent)
+	}
+}
+
+func TestSessionAgent_HookSessionsDefaultClaude(t *testing.T) {
+	store := newTestStore(t)
+	sess, err := store.UpsertSession("mac1", "/project/agent-test", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.Agent != "claude" {
+		t.Errorf("hook session agent=%q, want claude", sess.Agent)
+	}
+}

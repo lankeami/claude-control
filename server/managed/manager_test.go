@@ -345,3 +345,36 @@ func TestUpdateConfig(t *testing.T) {
 		t.Errorf("expected [NEW=1], got %v", mgr.cfg.ClaudeEnv)
 	}
 }
+
+func TestAgentDispatch_ClaudeUsesExistingBackend(t *testing.T) {
+	cfg := Config{ClaudeBin: "echo", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	// Claude agent sessions use the existing Spawn path unchanged
+	proc, err := m.Spawn("claude-dispatch", SpawnOpts{Args: []string{"hello"}, CWD: "/tmp"})
+	if err != nil {
+		t.Fatalf("claude spawn: %v", err)
+	}
+	<-proc.Done
+	if proc.ExitCode != 0 {
+		t.Errorf("exit code=%d, want 0", proc.ExitCode)
+	}
+}
+
+func TestAgentDispatch_CodexStubReturnsError(t *testing.T) {
+	if ErrCodexNotImplemented == nil {
+		t.Fatal("ErrCodexNotImplemented should be non-nil")
+	}
+	if !strings.Contains(ErrCodexNotImplemented.Error(), "not yet implemented") {
+		t.Errorf("error message=%q, want to contain 'not yet implemented'", ErrCodexNotImplemented.Error())
+	}
+}
+
+func TestAgentDispatch_ConfigHasCodexBin(t *testing.T) {
+	cfg := Config{ClaudeBin: "claude", CodexBin: "codex"}
+	m := NewManager(cfg)
+	got := m.Config()
+	if got.CodexBin != "codex" {
+		t.Errorf("CodexBin=%q, want codex", got.CodexBin)
+	}
+}

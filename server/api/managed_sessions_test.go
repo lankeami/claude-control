@@ -938,3 +938,102 @@ func TestCreateManagedSessionWorktree(t *testing.T) {
 		t.Errorf("non-git worktree create status=%d, want 400", resp.StatusCode)
 	}
 }
+
+func TestCreateSessionAgent_DefaultsClaude(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	body := `{"cwd": "/tmp/agent-default-api"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/create", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+	var sess map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&sess)
+	if sess["agent"] != "claude" {
+		t.Errorf("agent=%v, want claude", sess["agent"])
+	}
+}
+
+func TestCreateSessionAgent_AcceptsCodex(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	body := `{"cwd": "/tmp/agent-codex-api", "agent": "codex"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/create", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+	var sess map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&sess)
+	if sess["agent"] != "codex" {
+		t.Errorf("agent=%v, want codex", sess["agent"])
+	}
+}
+
+func TestCreateSessionAgent_CodexMessageReturns501(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, err := store.CreateManagedSession("/tmp/codex-msg", `["Bash"]`, 50, 5.0, 0, "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"message": "hello"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/message", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 501 {
+		t.Errorf("status=%d, want 501 for codex agent", resp.StatusCode)
+	}
+}
+
+func TestCreateSessionAgent_RejectsUnknown(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	body := `{"cwd": "/tmp/agent-bad-api", "agent": "gemini"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/create", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 400 {
+		t.Errorf("status=%d, want 400 for unknown agent", resp.StatusCode)
+	}
+}

@@ -16,7 +16,7 @@ var sessionColumnList = []string{
 	"id", "computer_name", "project_path", "status", "created_at", "last_seen_at", "archived",
 	"transcript_path", "mode", "cwd", "allowed_tools", "max_turns", "max_budget_usd", "initialized",
 	"claude_session_id", "turn_count", "auto_continue_threshold", "max_continuations", "activity_state",
-	"name", "compact_every_n_continues", "model", "deleted_at",
+	"name", "compact_every_n_continues", "model", "deleted_at", "agent",
 }
 
 type Store struct {
@@ -215,6 +215,7 @@ func migrate(db *sql.DB) error {
 	    content_hash TEXT NOT NULL,
 	    confirmed_at DATETIME NOT NULL DEFAULT (datetime('now'))
 	)`,
+		`ALTER TABLE sessions ADD COLUMN agent TEXT NOT NULL DEFAULT 'claude'`,
 	}
 
 	for _, m := range migrations {
@@ -290,7 +291,8 @@ func rebuildSessionsTableIfNeeded(db *sql.DB) error {
 			name TEXT NOT NULL DEFAULT '',
 			compact_every_n_continues INTEGER NOT NULL DEFAULT 0,
 			model TEXT NOT NULL DEFAULT '',
-			deleted_at DATETIME
+			deleted_at DATETIME,
+			agent TEXT NOT NULL DEFAULT 'claude'
 		)`,
 		`INSERT INTO sessions_new (` + cols + `) SELECT ` + cols + ` FROM sessions`,
 		`DROP TABLE sessions`,
