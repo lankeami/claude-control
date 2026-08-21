@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-21
+
+- [2186675](https://github.com/lankeami/claude-control/commit/218667594ff63c76338ef1be8eeb6b39a9dc275a) feat: add agent-selection seam to managed sessions (#260)
+  Add an `agent` field on managed sessions ("claude" default, "codex") threaded from DB through the create-session API into server/managed/, where process spawn dispatches by agent. Claude sessions keep the existing interactive/print backends unchanged; codex routes to a stub that returns a not-implemented error for the follow-up issue to fill in.
+
 ## 2026-08-15
 
 - [8736ab4](https://github.com/lankeami/claude-control/commit/8736ab4df8d9bbfc91d0def436b12bc76072869b) fix: resolve /reload-skills stall by adding local command fallback timeout
