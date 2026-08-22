@@ -191,7 +191,10 @@
                       @dblclick.stop="startRenameSession(session.id)"
                       title="Double-click to rename"></span>
               </template>
-              <span x-show="session.mode === 'managed'"
+              <span x-show="session.agent && session.agent !== 'claude'"
+                    style="font-size:10px; background:#8b5cf6; color:white; padding:1px 4px; border-radius:3px; margin-left:4px; flex-shrink:0;"
+                    x-text="session.agent"></span>
+              <span x-show="session.mode === 'managed' && (!session.agent || session.agent === 'claude')"
                     style="font-size:10px; background:var(--accent); color:white; padding:1px 4px; border-radius:3px; margin-left:4px; flex-shrink:0;">managed</span>
               <span x-show="activeWorkflowRun && activeWorkflowRun.session_id === session.id"
                     style="font-size:10px; color:#f59e0b; margin-left:2px; flex-shrink:0;" title="Workflow running">WF</span>
@@ -283,6 +286,12 @@
                 :title="selectedSessionId ? 'Double-click to rename' : ''"
                 :style="selectedSessionId ? 'cursor:pointer' : ''"></h2>
           </template>
+          <span x-show="currentSession?.agent && currentSession.agent !== 'claude'"
+                style="font-size:11px; background:#8b5cf6; color:white; padding:1px 6px; border-radius:3px; margin-left:8px; flex-shrink:0;"
+                x-text="currentSession?.agent"></span>
+          <span x-show="currentSession?.model"
+                style="font-size:11px; color:var(--text-muted); margin-left:4px; flex-shrink:0;"
+                x-text="currentSession?.model"></span>
           <div :class="currentSession?.mode === 'managed' ? 'turns-monitor' : 'turns-monitor hidden'">
             <span x-show="currentSession?.max_turns > 0" style="opacity:0.7;">Turns</span>
             <span x-show="currentSession?.max_turns > 0"
@@ -1156,7 +1165,10 @@
             <span class="status-dot" :class="sessionStatus(session)"></span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                   x-text="sessionName(session)"></span>
-            <span x-show="session.mode === 'managed'"
+            <span x-show="session.agent && session.agent !== 'claude'"
+                  style="font-size:10px;background:#8b5cf6;color:white;padding:1px 4px;border-radius:3px;margin-left:4px;flex-shrink:0;"
+                  x-text="session.agent"></span>
+            <span x-show="session.mode === 'managed' && (!session.agent || session.agent === 'claude')"
                   style="font-size:10px;background:var(--accent);color:white;padding:1px 4px;border-radius:3px;margin-left:4px;flex-shrink:0;">managed</span>
             <span class="badge" x-show="pendingCountFor(session.id) > 0"
                   x-text="pendingCountFor(session.id)"></span>
@@ -1550,8 +1562,19 @@
         <button class="modal-close-btn" @click="showNewSessionModal = false" aria-label="Close">&times;</button>
       </div>
 
+      <!-- Agent selector -->
+      <div style="padding:8px 24px 4px; display:flex; align-items:center; gap:12px;">
+        <span style="font-size:12px; color:var(--text-muted);">Agent:</span>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px;">
+          <input type="radio" name="newSessionAgent" value="claude" x-model="newSessionAgent"> Claude
+        </label>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer; font-size:13px;">
+          <input type="radio" name="newSessionAgent" value="codex" x-model="newSessionAgent"> Codex
+        </label>
+      </div>
+
       <!-- Agent SDK billing callout -->
-      <div style="padding:8px 24px 0; font-size:11px; color:var(--text-muted); line-height:1.5;">
+      <div style="padding:4px 24px 0; font-size:11px; color:var(--text-muted); line-height:1.5;">
         Managed sessions use your Agent SDK credit pool — separate from the 5hr/7d interactive usage shown in the header. Haiku 4.5 is the default to minimize cost.
       </div>
 

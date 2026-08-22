@@ -31,7 +31,7 @@ type Session struct {
 	TurnCount              int       `json:"turn_count"`
 	Name                   string    `json:"name"`
 	CompactEveryNContinues int       `json:"compact_every_n_continues"`
-	Model                  string    `json:"-"`
+	Model                  string    `json:"model,omitempty"`
 	Agent                  string    `json:"agent"`
 }
 

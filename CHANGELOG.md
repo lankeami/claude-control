@@ -2,6 +2,8 @@
 
 ## 2026-08-21
 
+- [7bd6563](https://github.com/lankeami/claude-control/commit/7bd65632d686ef00b22f79c12ecf9e894f9cf4bc) feat: add agent picker and per-session agent visibility to web UI and iOS app (#262)
+  Expose agent switching to end users: the new-session modal gains a Claude/Codex radio selector, session list cards show a purple badge for non-claude agents, and the session detail header surfaces the agent and model/provider string.
 - [2186675](https://github.com/lankeami/claude-control/commit/218667594ff63c76338ef1be8eeb6b39a9dc275a) feat: add agent-selection seam to managed sessions (#260)
   Add an `agent` field on managed sessions ("claude" default, "codex") threaded from DB through the create-session API into server/managed/, where process spawn dispatches by agent. Claude sessions keep the existing interactive/print backends unchanged; codex routes to a stub that returns a not-implemented error for the follow-up issue to fill in.
 
