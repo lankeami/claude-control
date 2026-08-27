@@ -9,6 +9,7 @@ document.addEventListener('alpine:init', () => {
 
     // Data state
     sessions: [],
+    sessionFilter: '',
     prompts: [],
     selectedSessionId: null,
     chatMessages: [],
@@ -811,6 +812,12 @@ document.addEventListener('alpine:init', () => {
         if (b.status === 'pending' && a.status !== 'pending') return 1;
         return new Date(b.created_at) - new Date(a.created_at);
       });
+    },
+
+    get filteredSessions() {
+      if (!this.sessionFilter) return this.sessions;
+      const q = this.sessionFilter.toLowerCase();
+      return this.sessions.filter(s => this.sessionName(s).toLowerCase().includes(q));
     },
 
     get selectedSession() {
