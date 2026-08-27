@@ -171,7 +171,11 @@
                   style="width:100%; margin-bottom:8px; font-size:13px;">
             + New Session
           </button>
-          <template x-for="session in sessions" :key="session.id">
+          <input x-model="sessionFilter" type="text" placeholder="Filter sessions..."
+                 x-show="sessions.length > 3"
+                 style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:4px 8px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;outline:none;"
+                 @focus="$el.style.borderColor='var(--accent)'" @blur="$el.style.borderColor='var(--border)'">
+          <template x-for="session in filteredSessions" :key="session.id">
             <div class="session-item" :class="{ active: selectedSessionId === session.id, 'recently-active': selectedSessionId !== session.id && isRecentlyActive(session) }"
                  @click="selectSession(session.id)">
               <span class="status-dot" :class="sessionStatus(session)"
@@ -1159,7 +1163,10 @@
             </template>
           </div>
         </div>
-        <template x-for="session in sessions" :key="session.id">
+        <input x-model="sessionFilter" type="text" placeholder="Filter sessions..."
+               x-show="sessions.length > 3"
+               style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:4px 8px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;outline:none;">
+        <template x-for="session in filteredSessions" :key="session.id">
           <div class="session-item" :class="{ active: selectedSessionId === session.id, 'recently-active': selectedSessionId !== session.id && isRecentlyActive(session) }"
                @click="selectSession(session.id)">
             <span class="status-dot" :class="sessionStatus(session)"></span>
