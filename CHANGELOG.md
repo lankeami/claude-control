@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-01
+
+- [5f656d2](https://github.com/lankeami/claude-control/commit/5f656d2250818016f99c0862d689a1870400666a) fix: hide model label from mobile header (already in bottom bar)
+  On mobile web, the model name (e.g. "claude-opus-4-6") was displayed in the top header bar, overlapping the project/session name. The model is already accessible via the selector dropdown in the bottom input toolbar, so hide the header label on mobile viewports.
+
 ## 2026-08-21
 
 - [7bd6563](https://github.com/lankeami/claude-control/commit/7bd65632d686ef00b22f79c12ecf9e894f9cf4bc) feat: add agent picker and per-session agent visibility to web UI and iOS app (#262)
