@@ -293,7 +293,7 @@
           <span x-show="currentSession?.agent && currentSession.agent !== 'claude'"
                 style="font-size:11px; background:#8b5cf6; color:white; padding:1px 6px; border-radius:3px; margin-left:8px; flex-shrink:0;"
                 x-text="currentSession?.agent"></span>
-          <span x-show="currentSession?.model"
+          <span class="header-model-label" x-show="currentSession?.model"
                 style="font-size:11px; color:var(--text-muted); margin-left:4px; flex-shrink:0;"
                 x-text="currentSession?.model"></span>
           <div :class="currentSession?.mode === 'managed' ? 'turns-monitor' : 'turns-monitor hidden'">

@@ -1715,6 +1715,9 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .header-model-label {
+    display: none !important;
+  }
 
   /* Chat area mobile sizing */
   .chat-bubble.user,
