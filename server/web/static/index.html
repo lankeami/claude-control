@@ -171,10 +171,14 @@
                   style="width:100%; margin-bottom:8px; font-size:13px;">
             + New Session
           </button>
-          <input x-model="sessionFilter" type="text" placeholder="Filter sessions..."
-                 x-show="sessions.length > 3"
-                 style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:4px 8px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;outline:none;"
-                 @focus="$el.style.borderColor='var(--accent)'" @blur="$el.style.borderColor='var(--border)'">
+          <div x-show="sessions.length > 3" style="position:relative;margin-bottom:8px;">
+            <input x-model="sessionFilter" type="text" placeholder="Filter sessions..."
+                   style="width:100%;box-sizing:border-box;padding:4px 24px 4px 8px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;outline:none;"
+                   @focus="$el.style.borderColor='var(--accent)'" @blur="$el.style.borderColor='var(--border)'">
+            <button x-show="sessionFilter.length > 0" @click="sessionFilter = ''"
+                    style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;"
+                    title="Clear filter">&times;</button>
+          </div>
           <template x-for="session in filteredSessions" :key="session.id">
             <div class="session-item" :class="{ active: selectedSessionId === session.id, 'recently-active': selectedSessionId !== session.id && isRecentlyActive(session) }"
                  @click="selectSession(session.id)">
@@ -1163,9 +1167,13 @@
             </template>
           </div>
         </div>
-        <input x-model="sessionFilter" type="text" placeholder="Filter sessions..."
-               x-show="sessions.length > 3"
-               style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:4px 8px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;outline:none;">
+        <div x-show="sessions.length > 3" style="position:relative;margin-bottom:8px;">
+          <input x-model="sessionFilter" type="text" placeholder="Filter sessions..."
+                 style="width:100%;box-sizing:border-box;padding:4px 24px 4px 8px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;outline:none;">
+          <button x-show="sessionFilter.length > 0" @click="sessionFilter = ''"
+                  style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;"
+                  title="Clear filter">&times;</button>
+        </div>
         <template x-for="session in filteredSessions" :key="session.id">
           <div class="session-item" :class="{ active: selectedSessionId === session.id, 'recently-active': selectedSessionId !== session.id && isRecentlyActive(session) }"
                @click="selectSession(session.id)">
