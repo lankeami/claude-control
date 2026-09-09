@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-09
+
+- [283dee8](https://github.com/lankeami/claude-control/commit/283dee8d22ec6250eb629cd2d4352f70477bf03d) feat: add clear button to session search filter (#277)
+  Wrap both desktop and mobile session filter inputs in a positioned container with an X button that clears sessionFilter on click. Button only appears when filter text is present.
+
 ## 2026-09-01
 
 - [5f656d2](https://github.com/lankeami/claude-control/commit/5f656d2250818016f99c0862d689a1870400666a) fix: hide model label from mobile header (already in bottom bar)
