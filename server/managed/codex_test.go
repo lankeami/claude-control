@@ -191,18 +191,26 @@ func TestCodexBackend_EnsureThreadStoresID(t *testing.T) {
 		req := fake.readRequest(t)
 		id := int(req["id"].(float64))
 		fake.sendResponse(t, id, map[string]interface{}{
-			"id":            "thread-xyz-123",
-			"cwd":           "/tmp",
-			"ephemeral":     false,
-			"modelProvider": "openai",
-			"cliVersion":    "0.147.0",
-			"createdAt":     1234567890,
-			"updatedAt":     1234567890,
-			"preview":       "",
-			"sessionId":     "sess-1",
-			"source":        "cli",
-			"status":        "running",
-			"turns":         []interface{}{},
+			"thread": map[string]interface{}{
+				"id":            "thread-xyz-123",
+				"cwd":           "/tmp",
+				"ephemeral":     false,
+				"modelProvider": "openai",
+				"cliVersion":    "0.147.0",
+				"createdAt":     1234567890,
+				"updatedAt":     1234567890,
+				"preview":       "",
+				"sessionId":     "sess-1",
+				"source":        "cli",
+				"status":        map[string]string{"type": "idle"},
+				"turns":         []interface{}{},
+			},
+			"model":            "o3",
+			"modelProvider":    "openai",
+			"cwd":              "/tmp",
+			"approvalPolicy":   "on-request",
+			"approvalsReviewer": "user",
+			"sandbox":          map[string]string{"type": "workspaceWrite"},
 		})
 	}()
 

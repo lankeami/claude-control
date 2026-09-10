@@ -257,11 +257,13 @@ func (p *CodexProc) EnsureThread(cwd string) error {
 		if p.threadErr != nil {
 			return
 		}
-		var thread struct {
-			ID string `json:"id"`
+		var resp struct {
+			Thread struct {
+				ID string `json:"id"`
+			} `json:"thread"`
 		}
-		if err := json.Unmarshal(result, &thread); err == nil && thread.ID != "" {
-			p.ThreadID = thread.ID
+		if err := json.Unmarshal(result, &resp); err == nil && resp.Thread.ID != "" {
+			p.ThreadID = resp.Thread.ID
 		}
 	})
 	return p.threadErr
