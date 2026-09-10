@@ -1198,20 +1198,40 @@ func (s *Server) handleSendMessageCodex(w http.ResponseWriter, sess *db.Session,
 	_ = s.store.UpdateActivityState(sess.ID, "working")
 
 	var inputTokens, outputTokens int
+	turnDone := make(chan string, 1) // receives turn status from turn/completed notification
 
 	proc, err := cm.EnsureCodex(sess.ID, managed.CodexOpts{
 		CWD: sess.CWD,
 		OnNotification: func(method string, params json.RawMessage) {
-			if method == "token_count" {
+			if method == "thread/tokenUsage/updated" {
 				var tc struct {
-					InputTokens  int `json:"input_tokens"`
-					OutputTokens int `json:"output_tokens"`
+					TokenUsage struct {
+						Total struct {
+							InputTokens  int `json:"inputTokens"`
+							OutputTokens int `json:"outputTokens"`
+						} `json:"total"`
+					} `json:"tokenUsage"`
 				}
 				if json.Unmarshal(params, &tc) == nil {
-					inputTokens += tc.InputTokens
-					outputTokens += tc.OutputTokens
+					inputTokens = tc.TokenUsage.Total.InputTokens
+					outputTokens = tc.TokenUsage.Total.OutputTokens
 				}
 				return
+			}
+			if method == "turn/completed" {
+				var tc struct {
+					Turn struct {
+						Status string `json:"status"`
+					} `json:"turn"`
+				}
+				status := "completed"
+				if json.Unmarshal(params, &tc) == nil && tc.Turn.Status != "" {
+					status = tc.Turn.Status
+				}
+				select {
+				case turnDone <- status:
+				default:
+				}
 			}
 			line := managed.AdaptCodexNotification(method, params)
 			if line != "" {
@@ -1272,12 +1292,30 @@ func (s *Server) handleSendMessageCodex(w http.ResponseWriter, sess *db.Session,
 	_, _ = s.store.CreateMessage(sess.ID, "user", message, 0)
 
 	SafeGo("codex-turn:"+sess.ID, func() {
-		result, err := proc.Call("turn/start", map[string]interface{}{
-			"message": message,
+		_, err := proc.Call("turn/start", map[string]interface{}{
+			"threadId": proc.ThreadID,
+			"input": []map[string]string{
+				{"type": "text", "text": message},
+			},
 		})
+		if err != nil {
+			resultLine := managed.MakeResultEvent("error_during_execution", inputTokens, outputTokens)
+			broadcaster.Send(resultLine)
+			_ = s.store.UpdateActivityState(sess.ID, "waiting")
+			return
+		}
+
+		// Wait for turn/completed notification (or process exit)
+		status := "completed"
+		select {
+		case s := <-turnDone:
+			status = s
+		case <-proc.Done:
+			status = "failed"
+		}
 
 		subtype := "success"
-		if err != nil {
+		if status == "failed" || status == "interrupted" {
 			subtype = "error_during_execution"
 		}
 
@@ -1290,7 +1328,6 @@ func (s *Server) handleSendMessageCodex(w http.ResponseWriter, sess *db.Session,
 			_, _ = s.store.CreateMessage(sess.ID, "cost", fmt.Sprintf("tokens: %d in / %d out", inputTokens, outputTokens), cost)
 		}
 
-		_ = result
 		_ = s.store.UpdateActivityState(sess.ID, "waiting")
 	})
 

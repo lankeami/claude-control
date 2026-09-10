@@ -103,7 +103,7 @@ func TestCodexBackend_CallAndResponse(t *testing.T) {
 		t.Fatalf("method=%v, want thread/start", req["method"])
 	}
 	id := int(req["id"].(float64))
-	fake.sendResponse(t, id, map[string]string{"status": "ok"})
+	fake.sendResponse(t, id, map[string]string{"id": "thread-abc", "status": "ok"})
 
 	result := <-resultCh
 	err := <-errCh
@@ -112,8 +112,8 @@ func TestCodexBackend_CallAndResponse(t *testing.T) {
 	}
 	var r map[string]string
 	json.Unmarshal(result, &r)
-	if r["status"] != "ok" {
-		t.Errorf("result status=%v, want ok", r["status"])
+	if r["id"] != "thread-abc" {
+		t.Errorf("result id=%v, want thread-abc", r["id"])
 	}
 }
 
@@ -160,8 +160,10 @@ func TestCodexBackend_NotificationCallback(t *testing.T) {
 	})
 	defer func() { proc.Close(); fake.close() }()
 
-	fake.sendNotification(t, "item/agentMessage/delta", map[string]string{"text": "hello"})
-	fake.sendNotification(t, "item/started", map[string]string{"type": "function_call", "name": "Bash"})
+	fake.sendNotification(t, "item/agentMessage/delta", map[string]string{"delta": "hello"})
+	fake.sendNotification(t, "item/started", map[string]interface{}{
+		"item": map[string]string{"type": "function_call", "name": "Bash"},
+	})
 
 	timer := time.NewTimer(2 * time.Second)
 	defer timer.Stop()
@@ -179,7 +181,7 @@ func TestCodexBackend_NotificationCallback(t *testing.T) {
 	}
 }
 
-func TestCodexBackend_EnsureThreadOnce(t *testing.T) {
+func TestCodexBackend_EnsureThreadStoresID(t *testing.T) {
 	fake := newFakeAppServer()
 	done := make(chan struct{})
 	proc := NewCodexProc(fake.clientReader, fake.clientWriter, done, CodexOpts{})
@@ -188,12 +190,29 @@ func TestCodexBackend_EnsureThreadOnce(t *testing.T) {
 	go func() {
 		req := fake.readRequest(t)
 		id := int(req["id"].(float64))
-		fake.sendResponse(t, id, map[string]string{"status": "ok"})
+		fake.sendResponse(t, id, map[string]interface{}{
+			"id":            "thread-xyz-123",
+			"cwd":           "/tmp",
+			"ephemeral":     false,
+			"modelProvider": "openai",
+			"cliVersion":    "0.147.0",
+			"createdAt":     1234567890,
+			"updatedAt":     1234567890,
+			"preview":       "",
+			"sessionId":     "sess-1",
+			"source":        "cli",
+			"status":        "running",
+			"turns":         []interface{}{},
+		})
 	}()
 
 	if err := proc.EnsureThread("/tmp"); err != nil {
 		t.Fatal(err)
 	}
+	if proc.ThreadID != "thread-xyz-123" {
+		t.Errorf("ThreadID=%q, want thread-xyz-123", proc.ThreadID)
+	}
+	// Second call is a no-op
 	if err := proc.EnsureThread("/tmp"); err != nil {
 		t.Fatal(err)
 	}
@@ -224,22 +243,26 @@ func TestCodexBackend_ProcessCloseCleansUpPending(t *testing.T) {
 	}
 }
 
-// --- TestCodexApproval: server-initiated approval request ---
+// --- TestCodexApproval: server-initiated approval requests ---
 
-func TestCodexApproval_Approved(t *testing.T) {
+func TestCodexApproval_CommandExecution_Approved(t *testing.T) {
 	fake := newFakeAppServer()
 	done := make(chan struct{})
 	proc := NewCodexProc(fake.clientReader, fake.clientWriter, done, CodexOpts{
 		OnApproval: func(toolName, description string, input json.RawMessage) bool {
-			return toolName == "Bash"
+			return toolName == "command_execution"
 		},
 	})
 	defer func() { proc.Close(); fake.close() }()
 
-	fake.sendRequest(t, 99, "approvals/request", map[string]interface{}{
-		"tool_name":   "Bash",
-		"description": "run ls",
-		"input":       map[string]string{"command": "ls"},
+	cmd := "ls -la"
+	fake.sendRequest(t, 99, "item/commandExecution/requestApproval", map[string]interface{}{
+		"command":      cmd,
+		"cwd":          "/tmp",
+		"itemId":       "item-1",
+		"threadId":     "thread-1",
+		"turnId":       "turn-1",
+		"startedAtMs":  1234567890000,
 	})
 
 	resp := fake.readResponse(t)
@@ -248,12 +271,12 @@ func TestCodexApproval_Approved(t *testing.T) {
 		t.Errorf("response id=%d, want 99", id)
 	}
 	result := resp["result"].(map[string]interface{})
-	if result["approved"] != true {
-		t.Errorf("approved=%v, want true", result["approved"])
+	if result["decision"] != "accept" {
+		t.Errorf("decision=%v, want accept", result["decision"])
 	}
 }
 
-func TestCodexApproval_Denied(t *testing.T) {
+func TestCodexApproval_CommandExecution_Denied(t *testing.T) {
 	fake := newFakeAppServer()
 	done := make(chan struct{})
 	proc := NewCodexProc(fake.clientReader, fake.clientWriter, done, CodexOpts{
@@ -263,23 +286,55 @@ func TestCodexApproval_Denied(t *testing.T) {
 	})
 	defer func() { proc.Close(); fake.close() }()
 
-	fake.sendRequest(t, 100, "approvals/request", map[string]interface{}{
-		"tool_name":   "Write",
-		"description": "write file",
-		"input":       map[string]string{"path": "/etc/passwd"},
+	fake.sendRequest(t, 100, "item/commandExecution/requestApproval", map[string]interface{}{
+		"command":     "rm -rf /",
+		"itemId":      "item-2",
+		"threadId":    "thread-1",
+		"turnId":      "turn-1",
+		"startedAtMs": 1234567890000,
 	})
 
 	resp := fake.readResponse(t)
 	result := resp["result"].(map[string]interface{})
-	if result["approved"] != false {
-		t.Errorf("approved=%v, want false", result["approved"])
+	if result["decision"] != "decline" {
+		t.Errorf("decision=%v, want decline", result["decision"])
+	}
+}
+
+func TestCodexApproval_FileChange_Approved(t *testing.T) {
+	fake := newFakeAppServer()
+	done := make(chan struct{})
+	proc := NewCodexProc(fake.clientReader, fake.clientWriter, done, CodexOpts{
+		OnApproval: func(toolName, description string, input json.RawMessage) bool {
+			return toolName == "file_change"
+		},
+	})
+	defer func() { proc.Close(); fake.close() }()
+
+	fake.sendRequest(t, 101, "item/fileChange/requestApproval", map[string]interface{}{
+		"itemId":      "item-3",
+		"threadId":    "thread-1",
+		"turnId":      "turn-1",
+		"startedAtMs": 1234567890000,
+		"reason":      "write to /tmp/test.txt",
+	})
+
+	resp := fake.readResponse(t)
+	result := resp["result"].(map[string]interface{})
+	if result["decision"] != "accept" {
+		t.Errorf("decision=%v, want accept", result["decision"])
 	}
 }
 
 // --- TestCodexAdapter: notification → stream-json translation ---
 
 func TestCodexAdapter_AgentMessageDelta(t *testing.T) {
-	params, _ := json.Marshal(map[string]string{"text": "hello world"})
+	params, _ := json.Marshal(map[string]string{
+		"delta":    "hello world",
+		"itemId":   "item-1",
+		"threadId": "thread-1",
+		"turnId":   "turn-1",
+	})
 	out := AdaptCodexNotification("item/agentMessage/delta", params)
 	if out == "" {
 		t.Fatal("expected non-empty output")
@@ -299,9 +354,13 @@ func TestCodexAdapter_AgentMessageDelta(t *testing.T) {
 
 func TestCodexAdapter_ItemStartedFunctionCall(t *testing.T) {
 	params, _ := json.Marshal(map[string]interface{}{
-		"type":    "function_call",
-		"name":    "Read",
-		"call_id": "call_123",
+		"item": map[string]interface{}{
+			"type": "function_call",
+			"name": "Read",
+			"id":   "call_123",
+		},
+		"threadId": "thread-1",
+		"turnId":   "turn-1",
 	})
 	out := AdaptCodexNotification("item/started", params)
 	if out == "" {
@@ -320,6 +379,118 @@ func TestCodexAdapter_ItemStartedFunctionCall(t *testing.T) {
 	}
 }
 
+func TestCodexAdapter_ItemStartedCommandExecution(t *testing.T) {
+	params, _ := json.Marshal(map[string]interface{}{
+		"item": map[string]interface{}{
+			"type":    "commandExecution",
+			"command": "git status",
+			"id":      "cmd_456",
+		},
+		"threadId": "thread-1",
+		"turnId":   "turn-1",
+	})
+	out := AdaptCodexNotification("item/started", params)
+	if out == "" {
+		t.Fatal("expected non-empty output")
+	}
+	var parsed map[string]interface{}
+	json.Unmarshal([]byte(out), &parsed)
+	msg := parsed["message"].(map[string]interface{})
+	content := msg["content"].([]interface{})
+	block := content[0].(map[string]interface{})
+	if block["name"] != "git status" {
+		t.Errorf("name=%v, want 'git status'", block["name"])
+	}
+}
+
+func TestCodexAdapter_ItemStartedMcpToolCall(t *testing.T) {
+	params, _ := json.Marshal(map[string]interface{}{
+		"item": map[string]interface{}{
+			"type":   "mcpToolCall",
+			"server": "sqlite",
+			"tool":   "query",
+			"id":     "mcp_789",
+		},
+		"threadId": "thread-1",
+		"turnId":   "turn-1",
+	})
+	out := AdaptCodexNotification("item/started", params)
+	if out == "" {
+		t.Fatal("expected non-empty output")
+	}
+	var parsed map[string]interface{}
+	json.Unmarshal([]byte(out), &parsed)
+	msg := parsed["message"].(map[string]interface{})
+	content := msg["content"].([]interface{})
+	block := content[0].(map[string]interface{})
+	if block["name"] != "sqlite/query" {
+		t.Errorf("name=%v, want 'sqlite/query'", block["name"])
+	}
+}
+
+func TestCodexAdapter_ItemCompleted(t *testing.T) {
+	params, _ := json.Marshal(map[string]interface{}{
+		"item": map[string]interface{}{
+			"type":   "commandExecution",
+			"id":     "cmd_456",
+			"status": "completed",
+		},
+		"threadId": "thread-1",
+		"turnId":   "turn-1",
+	})
+	out := AdaptCodexNotification("item/completed", params)
+	if out == "" {
+		t.Fatal("expected non-empty output")
+	}
+	var parsed map[string]interface{}
+	json.Unmarshal([]byte(out), &parsed)
+	if parsed["type"] != "tool_result" {
+		t.Errorf("type=%v, want tool_result", parsed["type"])
+	}
+	msg := parsed["message"].(map[string]interface{})
+	if msg["tool_use_id"] != "cmd_456" {
+		t.Errorf("tool_use_id=%v, want cmd_456", msg["tool_use_id"])
+	}
+}
+
+func TestCodexAdapter_TurnCompleted_Success(t *testing.T) {
+	params, _ := json.Marshal(map[string]interface{}{
+		"threadId": "thread-1",
+		"turn": map[string]interface{}{
+			"status": "completed",
+			"id":     "turn-1",
+		},
+	})
+	out := AdaptCodexNotification("turn/completed", params)
+	if out == "" {
+		t.Fatal("expected non-empty output")
+	}
+	var parsed map[string]interface{}
+	json.Unmarshal([]byte(out), &parsed)
+	if parsed["type"] != "result" {
+		t.Errorf("type=%v, want result", parsed["type"])
+	}
+	if parsed["subtype"] != "success" {
+		t.Errorf("subtype=%v, want success", parsed["subtype"])
+	}
+}
+
+func TestCodexAdapter_TurnCompleted_Failed(t *testing.T) {
+	params, _ := json.Marshal(map[string]interface{}{
+		"threadId": "thread-1",
+		"turn": map[string]interface{}{
+			"status": "failed",
+			"id":     "turn-1",
+		},
+	})
+	out := AdaptCodexNotification("turn/completed", params)
+	var parsed map[string]interface{}
+	json.Unmarshal([]byte(out), &parsed)
+	if parsed["subtype"] != "error_during_execution" {
+		t.Errorf("subtype=%v, want error_during_execution", parsed["subtype"])
+	}
+}
+
 func TestCodexAdapter_IgnoresUnknownMethods(t *testing.T) {
 	params, _ := json.Marshal(map[string]string{"foo": "bar"})
 	out := AdaptCodexNotification("unknown/method", params)
@@ -328,11 +499,11 @@ func TestCodexAdapter_IgnoresUnknownMethods(t *testing.T) {
 	}
 }
 
-func TestCodexAdapter_EmptyTextReturnsEmpty(t *testing.T) {
-	params, _ := json.Marshal(map[string]string{"text": ""})
+func TestCodexAdapter_EmptyDeltaReturnsEmpty(t *testing.T) {
+	params, _ := json.Marshal(map[string]string{"delta": ""})
 	out := AdaptCodexNotification("item/agentMessage/delta", params)
 	if out != "" {
-		t.Errorf("expected empty for empty text, got %q", out)
+		t.Errorf("expected empty for empty delta, got %q", out)
 	}
 }
 

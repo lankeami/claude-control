@@ -142,6 +142,7 @@ func main() {
 		ClaudeBin:   envOrDefault("CLAUDE_BIN", "claude"),
 		ClaudeArgs:  strings.Fields(os.Getenv("CLAUDE_ARGS")),
 		ClaudeEnv:   splitEnv(os.Getenv("CLAUDE_ENV")),
+		CodexBin:    envOrDefault("CODEX_BIN", "codex"),
 		ServerPort:  *port,
 		BinaryPath:  binaryPath,
 		KeyFilePath: filepath.Join(filepath.Dir(*dbPath), "api.key"),
