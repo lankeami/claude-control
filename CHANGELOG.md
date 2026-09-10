@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-10
+
+- [d0952ae](https://github.com/lankeami/claude-control/commit/d0952aec8897a2498867e6107a16b0b693e65048) fix: align Codex app-server integration with current protocol (#279)
+  - Wire CODEX_BIN env var in main.go (was defined on Config but never set) - Send initialize handshake before any other JSON-RPC method - Store thread ID from thread/start response, pass it to turn/start - Fix turn/start params: threadId + input array instead of bare message - Wait for turn/completed notification instead of treating RPC response as completion - Fix item/agentMessage/delta: read delta field, not text - Fix item/started: parse nested item object with type-specific fields (commandExecution, mcpToolCall, dynamicToolCall, fileChange) - Add item/completed and turn/completed notification adapters - Replace token_count listener with thread/tokenUsage/updated - Handle item/commandExecution/requestApproval and item/fileChange/requestApproval with accept/decline responses - Update all tests for new protocol shapes
+
 ## 2026-09-09
 
 - [283dee8](https://github.com/lankeami/claude-control/commit/283dee8d22ec6250eb629cd2d4352f70477bf03d) feat: add clear button to session search filter (#277)
