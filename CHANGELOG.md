@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-10
+
+- [8e71193](https://github.com/lankeami/claude-control/commit/8e711939b2f09016f0f60a250125e6ac4ce68ce2) fix: wire CodexBin env var and send initialize handshake
+  CodexBin was defined on the Config struct but never populated in main.go, causing all Codex sessions to 503. Additionally, the app-server requires an initialize JSON-RPC handshake before any other method — without it, thread/start fails with "Not initialized" (-32600).
+
 ## 2026-09-09
 
 - [283dee8](https://github.com/lankeami/claude-control/commit/283dee8d22ec6250eb629cd2d4352f70477bf03d) feat: add clear button to session search filter (#277)
