@@ -258,6 +258,18 @@ func (m *Manager) EnsureCodex(sessionID string, opts CodexOpts) (*CodexProc, err
 	proc := NewCodexProc(stdout, stdin, done, opts)
 	proc.Cmd = cmd
 
+	if _, err := proc.Call("initialize", map[string]interface{}{
+		"clientInfo": map[string]string{
+			"name":    "claude-controller",
+			"version": "1.0.0",
+		},
+	}); err != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
+		close(done)
+		return nil, fmt.Errorf("codex initialize: %w", err)
+	}
+
 	m.mu.Lock()
 	m.cprocs[sessionID] = proc
 	m.mu.Unlock()
