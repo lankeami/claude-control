@@ -55,6 +55,7 @@ type CodexProc struct {
 
 	threadOnce sync.Once
 	threadErr  error
+	ThreadID   string
 }
 
 // NewCodexProc creates a CodexProc from raw reader/writer. Testable with io.Pipe.
@@ -116,24 +117,85 @@ func (p *CodexProc) dispatch(msg *jsonrpcMessage) {
 }
 
 func (p *CodexProc) handleServerRequest(msg *jsonrpcMessage) {
-	if msg.Method == "approvals/request" {
+	switch msg.Method {
+	case "item/commandExecution/requestApproval":
 		var params struct {
-			ToolName    string          `json:"tool_name"`
-			Description string          `json:"description"`
-			Input       json.RawMessage `json:"input"`
+			Command  *string         `json:"command"`
+			CWD      *string         `json:"cwd"`
+			ItemID   string          `json:"itemId"`
+			ThreadID string          `json:"threadId"`
+			TurnID   string          `json:"turnId"`
+			Reason   *string         `json:"reason"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
-			p.sendResponse(*msg.ID, map[string]interface{}{"approved": false})
+			p.sendResponse(*msg.ID, map[string]interface{}{"decision": "decline"})
 			return
+		}
+		desc := "execute command"
+		if params.Command != nil {
+			desc = *params.Command
 		}
 		approved := false
 		if p.opts.OnApproval != nil {
-			approved = p.opts.OnApproval(params.ToolName, params.Description, params.Input)
+			input, _ := json.Marshal(map[string]interface{}{"command": params.Command, "cwd": params.CWD})
+			approved = p.opts.OnApproval("command_execution", desc, input)
 		}
-		p.sendResponse(*msg.ID, map[string]interface{}{"approved": approved})
-		return
+		if approved {
+			p.sendResponse(*msg.ID, map[string]interface{}{"decision": "accept"})
+		} else {
+			p.sendResponse(*msg.ID, map[string]interface{}{"decision": "decline"})
+		}
+
+	case "item/fileChange/requestApproval":
+		var params struct {
+			ItemID   string  `json:"itemId"`
+			ThreadID string  `json:"threadId"`
+			TurnID   string  `json:"turnId"`
+			Reason   *string `json:"reason"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			p.sendResponse(*msg.ID, map[string]interface{}{"decision": "decline"})
+			return
+		}
+		desc := "file change"
+		if params.Reason != nil {
+			desc = *params.Reason
+		}
+		approved := false
+		if p.opts.OnApproval != nil {
+			approved = p.opts.OnApproval("file_change", desc, msg.Params)
+		}
+		if approved {
+			p.sendResponse(*msg.ID, map[string]interface{}{"decision": "accept"})
+		} else {
+			p.sendResponse(*msg.ID, map[string]interface{}{"decision": "decline"})
+		}
+
+	case "item/permissions/requestApproval":
+		var params struct {
+			ItemID   string  `json:"itemId"`
+			ThreadID string  `json:"threadId"`
+			TurnID   string  `json:"turnId"`
+			Reason   *string `json:"reason"`
+		}
+		json.Unmarshal(msg.Params, &params)
+		desc := "permission request"
+		if params.Reason != nil {
+			desc = *params.Reason
+		}
+		approved := false
+		if p.opts.OnApproval != nil {
+			approved = p.opts.OnApproval("permissions", desc, msg.Params)
+		}
+		if approved {
+			p.sendResponse(*msg.ID, map[string]interface{}{"decision": "accept"})
+		} else {
+			p.sendResponse(*msg.ID, map[string]interface{}{"decision": "decline"})
+		}
+
+	default:
+		p.sendResponse(*msg.ID, nil)
 	}
-	p.sendResponse(*msg.ID, nil)
 }
 
 func (p *CodexProc) sendResponse(id int, result interface{}) error {
@@ -187,10 +249,22 @@ func (p *CodexProc) Call(method string, params interface{}) (json.RawMessage, er
 	}
 }
 
-// EnsureThread calls thread/start once per process lifetime.
+// EnsureThread calls thread/start once per process lifetime and stores the thread ID.
 func (p *CodexProc) EnsureThread(cwd string) error {
 	p.threadOnce.Do(func() {
-		_, p.threadErr = p.Call("thread/start", map[string]interface{}{"cwd": cwd})
+		var result json.RawMessage
+		result, p.threadErr = p.Call("thread/start", map[string]interface{}{"cwd": cwd})
+		if p.threadErr != nil {
+			return
+		}
+		var resp struct {
+			Thread struct {
+				ID string `json:"id"`
+			} `json:"thread"`
+		}
+		if err := json.Unmarshal(result, &resp); err == nil && resp.Thread.ID != "" {
+			p.ThreadID = resp.Thread.ID
+		}
 	})
 	return p.threadErr
 }
@@ -257,6 +331,18 @@ func (m *Manager) EnsureCodex(sessionID string, opts CodexOpts) (*CodexProc, err
 	done := make(chan struct{})
 	proc := NewCodexProc(stdout, stdin, done, opts)
 	proc.Cmd = cmd
+
+	if _, err := proc.Call("initialize", map[string]interface{}{
+		"clientInfo": map[string]string{
+			"name":    "claude-controller",
+			"version": "1.0.0",
+		},
+	}); err != nil {
+		cmd.Process.Kill()
+		cmd.Wait()
+		close(done)
+		return nil, fmt.Errorf("codex initialize: %w", err)
+	}
 
 	m.mu.Lock()
 	m.cprocs[sessionID] = proc
@@ -325,35 +411,109 @@ func AdaptCodexNotification(method string, params json.RawMessage) string {
 	switch method {
 	case "item/agentMessage/delta":
 		var p struct {
-			Text string `json:"text"`
+			Delta string `json:"delta"`
 		}
-		if json.Unmarshal(params, &p) != nil || p.Text == "" {
+		if json.Unmarshal(params, &p) != nil || p.Delta == "" {
 			return ""
 		}
 		out, _ := json.Marshal(map[string]interface{}{
 			"type": "assistant",
 			"message": map[string]interface{}{
 				"role":    "assistant",
-				"content": []map[string]string{{"type": "text", "text": p.Text}},
+				"content": []map[string]string{{"type": "text", "text": p.Delta}},
 			},
 		})
 		return string(out)
 
 	case "item/started":
 		var p struct {
-			Type string `json:"type"`
-			Name string `json:"name"`
-			ID   string `json:"call_id"`
+			Item struct {
+				Type    string `json:"type"`
+				Name    string `json:"name"`
+				ID      string `json:"id"`
+				Command string `json:"command"`
+				Tool    string `json:"tool"`
+				Server  string `json:"server"`
+			} `json:"item"`
 		}
-		if json.Unmarshal(params, &p) != nil || p.Type != "function_call" || p.Name == "" {
+		if json.Unmarshal(params, &p) != nil {
+			return ""
+		}
+		name := ""
+		switch p.Item.Type {
+		case "function_call":
+			name = p.Item.Name
+		case "commandExecution":
+			name = "command"
+			if p.Item.Command != "" {
+				name = p.Item.Command
+			}
+		case "mcpToolCall":
+			name = p.Item.Tool
+			if p.Item.Server != "" && p.Item.Tool != "" {
+				name = p.Item.Server + "/" + p.Item.Tool
+			}
+		case "dynamicToolCall":
+			name = p.Item.Tool
+			if name == "" {
+				name = "tool"
+			}
+		case "fileChange":
+			name = "file_change"
+		default:
+			return ""
+		}
+		if name == "" {
 			return ""
 		}
 		out, _ := json.Marshal(map[string]interface{}{
 			"type": "assistant",
 			"message": map[string]interface{}{
 				"role":    "assistant",
-				"content": []map[string]interface{}{{"type": "tool_use", "name": p.Name, "id": p.ID}},
+				"content": []map[string]interface{}{{"type": "tool_use", "name": name, "id": p.Item.ID}},
 			},
+		})
+		return string(out)
+
+	case "item/completed":
+		var p struct {
+			Item struct {
+				Type   string `json:"type"`
+				ID     string `json:"id"`
+				Status string `json:"status"`
+			} `json:"item"`
+		}
+		if json.Unmarshal(params, &p) != nil {
+			return ""
+		}
+		if p.Item.Type == "" {
+			return ""
+		}
+		out, _ := json.Marshal(map[string]interface{}{
+			"type": "tool_result",
+			"message": map[string]interface{}{
+				"tool_use_id": p.Item.ID,
+				"status":      p.Item.Status,
+			},
+		})
+		return string(out)
+
+	case "turn/completed":
+		var p struct {
+			Turn struct {
+				Status string `json:"status"`
+			} `json:"turn"`
+		}
+		if json.Unmarshal(params, &p) != nil {
+			return ""
+		}
+		subtype := "success"
+		if p.Turn.Status == "failed" {
+			subtype = "error_during_execution"
+		}
+		out, _ := json.Marshal(map[string]interface{}{
+			"type":    "result",
+			"subtype": subtype,
 		})
 		return string(out)
 
