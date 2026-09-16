@@ -75,6 +75,7 @@ const (
 	turnEndUnknownCommand                      // CLI rejected the prompt as an unknown slash command
 	turnEndLocalCommand                        // Slash command processed locally by the CLI (no model turn)
 	turnEndSuperseded                          // A new message arrived; this goroutine must exit silently
+	turnEndPromptFailed                        // Prompt was never confirmed after retries
 )
 
 // interactiveTurnState tracks per-turn counters shared between the transcript
@@ -86,9 +87,10 @@ type interactiveTurnState struct {
 	outputTokens   int
 	interruptedFor string // "" | "max_turns" | "budget"
 	promptEchoed   bool   // the typed prompt appeared in the transcript
-	questionCh     chan struct{}
-	unknownCmd     string // slash command the CLI rejected ("Unknown command: ...")
-	unknownCmdCh   chan struct{}
+	questionCh      chan struct{}
+	unknownCmd      string // slash command the CLI rejected ("Unknown command: ...")
+	unknownCmdCh    chan struct{}
+	promptFailedCh  chan struct{}
 	slashCmd       bool   // prompt starts with "/" — enables local command fallback
 	// seenMsgIDs tracks assistant message IDs already counted this turn.
 	// Native transcripts split one API response into multiple JSONL entries
@@ -114,6 +116,10 @@ func (t *interactiveTurnState) reset() {
 	}
 	select {
 	case <-t.unknownCmdCh:
+	default:
+	}
+	select {
+	case <-t.promptFailedCh:
 	default:
 	}
 }
@@ -271,7 +277,7 @@ func (s *Server) sendMessageInteractive(sess *db.Session, message string, imageP
 	// Register this message's turn state so the long-lived transcript
 	// callback (registered at spawn, possibly by an earlier message's
 	// goroutine) feeds counters into the current turn.
-	turn := &interactiveTurnState{questionCh: make(chan struct{}, 1), unknownCmdCh: make(chan struct{}, 1)}
+	turn := &interactiveTurnState{questionCh: make(chan struct{}, 1), unknownCmdCh: make(chan struct{}, 1), promptFailedCh: make(chan struct{}, 1)}
 	s.interactiveTurns.Store(sessionID, turn)
 
 	// Cancel any previous turn goroutine for this session.
@@ -564,6 +570,13 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			return
 		}
 
+		if reason == turnEndPromptFailed {
+			close(turnOver)
+			log.Printf("session %s: prompt never confirmed, ending turn", sessionID)
+			s.finishInteractiveTurn(sessionID, broadcaster)
+			return
+		}
+
 		// AskUserQuestion detected — transition to waiting, then resume when
 		// the user responds (or abort if Stop/death occurs while waiting).
 		for reason == turnEndQuestion {
@@ -765,6 +778,10 @@ func (s *Server) confirmPromptSubmission(sessionID string, turn *interactiveTurn
 	_, _ = s.store.CreateMessage(sessionID, "system", warn, 0)
 	evt, _ := json.Marshal(map[string]any{"type": "system", "error": true, "message": warn})
 	broadcaster.Send(string(evt))
+	select {
+	case turn.promptFailedCh <- struct{}{}:
+	default:
+	}
 }
 
 // waitForTurnEnd blocks until the Stop hook fires, the process dies, an
@@ -788,6 +805,8 @@ func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <
 			return turnEndQuestion
 		case <-turn.unknownCmdCh:
 			return turnEndUnknownCommand
+		case <-turn.promptFailedCh:
+			return turnEndPromptFailed
 		case <-ticker.C:
 			s.manager.TouchInteractive(sessionID)
 			_, _, _, interrupted := turn.snapshot()

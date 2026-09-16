@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-16
+
+- [7767338](https://github.com/lankeami/claude-control/commit/7767338b18bc6baad6eed7e66be53a7274fe071a) fix: dismiss welcome splash screen and clean up prompt-failed turn end
+  Two fixes for interactive managed sessions:
+
 ## 2026-09-10
 
 - [42ccd11](https://github.com/lankeami/claude-control/commit/42ccd11c070d80abf0b7284b5cf330ebb08dffad) fix: parse thread ID from nested response.thread.id

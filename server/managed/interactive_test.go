@@ -138,6 +138,40 @@ exec cat`)
 	})
 }
 
+func TestSendPromptDismissesWelcomeSplash(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 150 * time.Millisecond
+	interactiveReadyTimeout = 5 * time.Second
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+
+	// Fake welcome splash with ANSI styling, dismissed by any keystroke.
+	script := writeScript(t, `printf '\x1b[1mWelcome back\x1b[0m Jay!\nWhat'"'"'s new\n'
+read -n1 _
+echo "DISMISSED"
+exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("splash1", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("splash1", time.Second)
+
+	if err := m.SendPrompt("splash1", "hello"); err != nil {
+		t.Fatal(err)
+	}
+	out := proc.LastOutput()
+	if !strings.Contains(out, "DISMISSED") {
+		t.Fatalf("welcome splash was not dismissed; output: %q", out)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		out := proc.LastOutput()
+		return strings.Index(out, "DISMISSED") < strings.Index(out, "\x1b[200~hello\x1b[201~")
+	})
+}
+
 func TestSendPromptProceedsAfterReadyTimeout(t *testing.T) {
 	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
 	interactiveReadyQuiescence = 100 * time.Millisecond
