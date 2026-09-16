@@ -44,8 +44,9 @@ type InteractiveProc struct {
 	lastOutput    []byte
 	outTotal      int64
 	lastOutputAt  time.Time
-	readyDone     bool
-	trustAnswered bool
+	readyDone        bool
+	trustAnswered    bool
+	splashDismissed  bool
 }
 
 const ptyRingSize = 8 * 1024
@@ -98,9 +99,14 @@ func containsTrustDialog(out string) bool {
 	return strings.Contains(c, "trustthisfolder") || strings.Contains(c, "Doyoutrustthefiles")
 }
 
+func containsWelcomeSplash(out string) bool {
+	c := compactTerminalText(out)
+	return strings.Contains(c, "Welcomeback") || strings.Contains(c, "What'snew")
+}
+
 // waitReady blocks until the TUI looks ready for input: the process has
 // produced output and then gone quiet. Auto-accepts the folder trust dialog
-// (option 1 is preselected, Enter confirms). Gives up at
+// and dismisses the post-update "Welcome back" splash screen. Gives up at
 // interactiveReadyTimeout and proceeds best-effort. Sticky per process —
 // only the first prompt after spawn pays this wait.
 func (p *InteractiveProc) waitReady(sessionID string) {
@@ -134,6 +140,20 @@ func (p *InteractiveProc) waitReady(sessionID string) {
 			time.Sleep(interactiveReadyPoll)
 			continue
 		}
+
+		p.mu.Lock()
+		splashed := p.splashDismissed
+		p.mu.Unlock()
+		if !splashed && containsWelcomeSplash(ring) {
+			log.Printf("session %s: welcome splash detected, dismissing", sessionID)
+			p.PTY.Write([]byte("\x1b"))
+			p.mu.Lock()
+			p.splashDismissed = true
+			p.mu.Unlock()
+			time.Sleep(interactiveReadyPoll)
+			continue
+		}
+
 		if total > 0 && time.Since(last) >= interactiveReadyQuiescence {
 			break
 		}
