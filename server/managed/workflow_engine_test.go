@@ -94,6 +94,93 @@ func TestWorkflowEngine_LinearRun(t *testing.T) {
 	mu.Unlock()
 }
 
+func TestWorkflowEngine_ParallelRun(t *testing.T) {
+	store, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	// Create 3 sessions for parallel execution
+	sess1, _ := store.CreateManagedSession("/tmp/wf-par-1", "[]", 50, 5.0, 0)
+	sess2, _ := store.CreateManagedSession("/tmp/wf-par-2", "[]", 50, 5.0, 0)
+	sess3, _ := store.CreateManagedSession("/tmp/wf-par-3", "[]", 50, 5.0, 0)
+
+	var mu sync.Mutex
+	activityStates := map[string]string{
+		sess1.ID: "idle",
+		sess2.ID: "idle",
+		sess3.ID: "idle",
+	}
+	var concurrentMax int
+	var concurrentNow int
+
+	sendMessage := func(sessionID, prompt string) error {
+		mu.Lock()
+		activityStates[sessionID] = "working"
+		concurrentNow++
+		if concurrentNow > concurrentMax {
+			concurrentMax = concurrentNow
+		}
+		mu.Unlock()
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			mu.Lock()
+			activityStates[sessionID] = "idle"
+			concurrentNow--
+			mu.Unlock()
+		}()
+		return nil
+	}
+
+	getActivity := func(sessionID string) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return activityStates[sessionID], nil
+	}
+
+	interrupt := func(sessionID string) error { return nil }
+	engine := NewWorkflowEngine(store, sendMessage, getActivity, interrupt)
+
+	// Create a pipeline run to track this
+	pipelineRun, _ := store.CreatePipelineRun("parallel-test", "parallel")
+
+	items := []ParallelItem{
+		{SessionID: sess1.ID, Prompt: "Build feature 1", Label: "feat-1"},
+		{SessionID: sess2.ID, Prompt: "Build feature 2", Label: "feat-2"},
+		{SessionID: sess3.ID, Prompt: "Build feature 3", Label: "feat-3"},
+	}
+
+	results, err := engine.RunParallel(pipelineRun.ID, items)
+	if err != nil {
+		t.Fatalf("RunParallel: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+
+	for i, r := range results {
+		if !r.Success {
+			t.Errorf("item %d failed: %v", i, r.Error)
+		}
+	}
+
+	// Verify concurrent execution actually happened
+	mu.Lock()
+	maxConcurrent := concurrentMax
+	mu.Unlock()
+	if maxConcurrent < 2 {
+		t.Errorf("expected concurrent execution (max concurrent >= 2), got %d", maxConcurrent)
+	}
+
+	// Verify pipeline run status updated
+	run, _ := store.GetPipelineRun(pipelineRun.ID)
+	if run.Status != "completed" {
+		t.Errorf("expected pipeline run 'completed', got %q", run.Status)
+	}
+}
+
 func TestWorkflowEngine_CancelRun(t *testing.T) {
 	store, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

@@ -190,6 +190,13 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("GET /api/workflow-runs", s.handleListWorkflowRuns)
 	apiMux.HandleFunc("GET /api/workflow-runs/{id}", s.handleGetWorkflowRun)
 
+	// Pipeline runs (autoship parallel orchestration visibility)
+	apiMux.HandleFunc("POST /api/pipeline-runs", s.handleCreatePipelineRun)
+	apiMux.HandleFunc("GET /api/pipeline-runs", s.handleListPipelineRuns)
+	apiMux.HandleFunc("GET /api/pipeline-runs/{id}", s.handleGetPipelineRun)
+	apiMux.HandleFunc("PATCH /api/pipeline-runs/{id}", s.handleUpdatePipelineRun)
+	apiMux.HandleFunc("PATCH /api/pipeline-run-items/{id}", s.handleUpdatePipelineRunItem)
+
 	rl := NewRateLimiter(180, 10)
 	authedAPI := rl.Middleware(AuthMiddleware(apiKey, rl, apiMux))
 

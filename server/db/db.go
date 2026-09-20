@@ -216,6 +216,26 @@ func migrate(db *sql.DB) error {
 	    confirmed_at DATETIME NOT NULL DEFAULT (datetime('now'))
 	)`,
 		`ALTER TABLE sessions ADD COLUMN agent TEXT NOT NULL DEFAULT 'claude'`,
+		`CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'parallel',
+    status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running','completed','failed','cancelled')),
+    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    finished_at DATETIME,
+    error TEXT
+)`,
+		`CREATE TABLE IF NOT EXISTS pipeline_run_items (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+    feature_label TEXT NOT NULL,
+    session_id TEXT REFERENCES sessions(id),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','running','completed','failed','skipped')),
+    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    finished_at DATETIME,
+    error TEXT
+)`,
+		`CREATE INDEX IF NOT EXISTS idx_pipeline_run_items_run ON pipeline_run_items(run_id)`,
 	}
 
 	for _, m := range migrations {
