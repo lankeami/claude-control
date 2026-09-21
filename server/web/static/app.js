@@ -1492,14 +1492,11 @@ document.addEventListener('alpine:init', () => {
       }
       const sess = this.currentSession;
 
-      if (sess && sess.mode === 'managed' && this.inputText.trim().startsWith('/')) {
-        await this.executeSlashCommand(this.inputText.trim());
-        return;
-      }
-
       if (sess && sess.mode === 'managed') {
         if (this.shellMode) {
           await this.executeShell();
+        } else if (this.inputText.trim().startsWith('/')) {
+          await this.executeSlashCommand(this.inputText.trim());
         } else {
           await this.sendManagedMessage();
         }
