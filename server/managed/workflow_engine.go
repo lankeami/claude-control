@@ -280,6 +280,80 @@ func (e *WorkflowEngine) executeStep(runID, sessionID string, step db.WorkflowSt
 	}
 }
 
+// ParallelItem describes one unit of work in a parallel run.
+type ParallelItem struct {
+	SessionID string
+	Prompt    string
+	Label     string
+}
+
+// ParallelResult captures the outcome of one parallel item.
+type ParallelResult struct {
+	Label   string
+	Success bool
+	Error   string
+}
+
+// RunParallel executes items concurrently, one per session. Updates the
+// pipeline run status in the DB when all items finish.
+func (e *WorkflowEngine) RunParallel(pipelineRunID string, items []ParallelItem) ([]ParallelResult, error) {
+	results := make([]ParallelResult, len(items))
+	var wg sync.WaitGroup
+
+	for i, item := range items {
+		wg.Add(1)
+		go func(idx int, it ParallelItem) {
+			defer wg.Done()
+			results[idx] = e.executeParallelItem(pipelineRunID, it)
+		}(i, item)
+	}
+
+	wg.Wait()
+
+	allOK := true
+	for _, r := range results {
+		if !r.Success {
+			allOK = false
+			break
+		}
+	}
+
+	if allOK {
+		e.store.UpdatePipelineRunStatus(pipelineRunID, "completed", nil)
+	} else {
+		errMsg := "one or more items failed"
+		e.store.UpdatePipelineRunStatus(pipelineRunID, "failed", &errMsg)
+	}
+
+	return results, nil
+}
+
+func (e *WorkflowEngine) executeParallelItem(pipelineRunID string, item ParallelItem) ParallelResult {
+	if err := e.sendMessage(item.SessionID, item.Prompt); err != nil {
+		return ParallelResult{Label: item.Label, Success: false, Error: err.Error()}
+	}
+
+	timeout := 30 * time.Minute
+	deadline := time.After(timeout)
+
+	for {
+		state, err := e.getActivityState(item.SessionID)
+		if err != nil {
+			return ParallelResult{Label: item.Label, Success: false, Error: err.Error()}
+		}
+		if state == "idle" || state == "waiting" {
+			return ParallelResult{Label: item.Label, Success: true}
+		}
+
+		select {
+		case <-deadline:
+			e.interruptSession(item.SessionID) //nolint:errcheck
+			return ParallelResult{Label: item.Label, Success: false, Error: "timeout"}
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
 // PauseRun flags the run to pause after the current step finishes.
 func (e *WorkflowEngine) PauseRun(runID string) error {
 	e.mu.Lock()

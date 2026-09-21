@@ -156,6 +156,13 @@ document.addEventListener('alpine:init', () => {
     workflowRunSteps: [],
     workflowsExpanded: false,
 
+    // Pipeline runs state
+    pipelineRuns: [],
+    pipelineRunsExpanded: true,
+    selectedPipelineRun: null,
+    pipelineRunItems: [],
+    pipelineRunPollTimer: null,
+
     // Toast
     showToast: false,
     toastMessage: '',
@@ -309,6 +316,7 @@ document.addEventListener('alpine:init', () => {
         await this.tryConnect(this.apiKey);
         await this.loadScheduledTasks();
         await this.loadWorkflows();
+        await this.loadPipelineRuns();
         await this.checkSettingsFirstRun();
         this.loadShortcuts();
         // Cost data is now pushed via SSE — no polling needed.
@@ -4236,6 +4244,43 @@ Please review this PR and provide feedback.`;
         await fetch('/api/workflow-runs/' + this.activeWorkflowRun.id + '/cancel', {
             method: 'POST', headers: { 'Authorization': 'Bearer ' + this.apiKey }
         });
+    },
+
+    // Pipeline run methods
+    async loadPipelineRuns() {
+        try {
+            const res = await fetch('/api/pipeline-runs', {
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (res.ok) this.pipelineRuns = await res.json() || [];
+            // Auto-poll if any are running
+            this.schedulePipelineRunPoll();
+        } catch (err) {
+            console.error('Failed to load pipeline runs:', err);
+        }
+    },
+
+    schedulePipelineRunPoll() {
+        if (this.pipelineRunPollTimer) clearTimeout(this.pipelineRunPollTimer);
+        const hasActive = this.pipelineRuns.some(r => r.status === 'running');
+        if (hasActive) {
+            this.pipelineRunPollTimer = setTimeout(() => this.loadPipelineRuns(), 3000);
+        }
+    },
+
+    async loadPipelineRunDetail(runId) {
+        try {
+            const res = await fetch('/api/pipeline-runs/' + runId, {
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                this.selectedPipelineRun = data.run;
+                this.pipelineRunItems = data.items || [];
+            }
+        } catch (err) {
+            console.error('Failed to load pipeline run detail:', err);
+        }
     },
 
     linkifyFilePaths(html) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-20
+
+- [26b230c](https://github.com/lankeami/claude-control/commit/26b230cb5157f87d38f32d702d955110bf72f3c3) feat: add pipeline runs UI and parallel workflow execution (#283)
+  Bridge autoship parallel orchestration to the web UI via a new pipeline_runs system. The Workflows sidebar was always empty during autoship runs because autoship uses Claude Code's Workflow tool (JS orchestration) which never writes to the workflows SQLite table.
+
 ## 2026-09-16
 
 - [7767338](https://github.com/lankeami/claude-control/commit/7767338b18bc6baad6eed7e66be53a7274fe071a) fix: dismiss welcome splash screen and clean up prompt-failed turn end
