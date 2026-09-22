@@ -16,6 +16,7 @@ import (
 )
 
 var ErrInteractiveUnsupported = errors.New("interactive managed mode is not supported on this platform; set MANAGED_MODE=print")
+var ErrPromptNotConfirmed = errors.New("prompt delivery not confirmed")
 
 // InteractiveOpts configures a long-lived interactive Claude Code process.
 type InteractiveOpts struct {
@@ -47,6 +48,9 @@ type InteractiveProc struct {
 	readyDone        bool
 	trustAnswered    bool
 	splashDismissed  bool
+
+	sendMu           sync.Mutex
+	lastSendOutTotal int64
 }
 
 const ptyRingSize = 8 * 1024
@@ -58,6 +62,9 @@ var (
 	interactiveReadyQuiescence = 600 * time.Millisecond
 	interactiveReadyTimeout    = 15 * time.Second
 	interactiveReadyPoll       = 25 * time.Millisecond
+
+	sendPromptConfirmTimeout = 3 * time.Second
+	sendPromptConfirmPoll    = 25 * time.Millisecond
 )
 
 // LastOutput returns the most recent raw PTY output (up to 8KB), useful for
@@ -268,7 +275,9 @@ func (m *Manager) IsInteractiveRunning(sessionID string) bool {
 
 // SendPrompt types a prompt into the interactive session using bracketed
 // paste (so multi-line text isn't interpreted as separate submissions),
-// followed by Enter.
+// followed by Enter. Serialized per-process to prevent PTY buffer
+// concatenation. Returns ErrPromptNotConfirmed if the CLI does not
+// produce any output within sendPromptConfirmTimeout.
 func (m *Manager) SendPrompt(sessionID, text string) error {
 	proc := m.getInteractive(sessionID)
 	if proc == nil {
@@ -276,20 +285,69 @@ func (m *Manager) SendPrompt(sessionID, text string) error {
 	}
 	proc.LastActivity = time.Now()
 	proc.waitReady(sessionID)
-	// ESC first: closes any leftover TUI overlay (e.g. the slash-command
-	// suggestion dropdown left open by an unknown command) that would
-	// otherwise swallow the paste. No-op on an idle input box.
+
+	proc.sendMu.Lock()
+	defer proc.sendMu.Unlock()
+
+	// Detect unconsumed input from a previous send: if outTotal hasn't
+	// changed since the last write, the CLI never read the previous prompt.
+	proc.mu.Lock()
+	stale := proc.lastSendOutTotal > 0 && proc.outTotal == proc.lastSendOutTotal
+	proc.mu.Unlock()
+	if stale {
+		log.Printf("session %s: stale input detected, clearing input line", sessionID)
+		proc.PTY.Write([]byte("\x1b"))
+		time.Sleep(30 * time.Millisecond)
+		proc.PTY.Write([]byte("\x15")) // Ctrl-U kill-line
+		time.Sleep(30 * time.Millisecond)
+	}
+
+	// ESC: closes any leftover TUI overlay.
 	if _, err := proc.PTY.Write([]byte("\x1b")); err != nil {
 		return err
 	}
 	time.Sleep(50 * time.Millisecond)
+
+	// Snapshot output counter before writing the prompt.
+	proc.mu.Lock()
+	beforeTotal := proc.outTotal
+	proc.mu.Unlock()
+
 	if _, err := proc.PTY.Write([]byte("\x1b[200~" + text + "\x1b[201~")); err != nil {
 		return err
 	}
-	// Small delay so the TUI registers the paste before the submit keypress.
 	time.Sleep(50 * time.Millisecond)
-	_, err := proc.PTY.Write([]byte("\r"))
-	return err
+	if _, err := proc.PTY.Write([]byte("\r")); err != nil {
+		return err
+	}
+
+	// Wait for delivery confirmation: any new PTY output means the
+	// terminal processed the input (echo in cooked mode, TUI redraw
+	// in raw mode). The real CLI runs raw/no-echo, so output only
+	// appears when it actually reads and acts on the input.
+	deadline := time.Now().Add(sendPromptConfirmTimeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-proc.Done:
+			return fmt.Errorf("process exited during prompt delivery: %w", ErrPromptNotConfirmed)
+		default:
+		}
+		proc.mu.Lock()
+		now := proc.outTotal
+		proc.mu.Unlock()
+		if now > beforeTotal {
+			proc.mu.Lock()
+			proc.lastSendOutTotal = now
+			proc.mu.Unlock()
+			return nil
+		}
+		time.Sleep(sendPromptConfirmPoll)
+	}
+
+	proc.mu.Lock()
+	proc.lastSendOutTotal = proc.outTotal
+	proc.mu.Unlock()
+	return fmt.Errorf("no output within %s: %w", sendPromptConfirmTimeout, ErrPromptNotConfirmed)
 }
 
 // SendKeys writes a raw key sequence to the session's PTY.

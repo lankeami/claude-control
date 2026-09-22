@@ -1492,17 +1492,15 @@ document.addEventListener('alpine:init', () => {
       }
       const sess = this.currentSession;
 
-      if (sess && sess.mode === 'managed' && this.inputText.trim().startsWith('/')) {
+      const action = window._ccResolveInputAction
+        ? window._ccResolveInputAction(this.shellMode, sess?.mode, this.inputText)
+        : (sess?.mode === 'managed' ? (this.shellMode ? 'shell' : this.inputText.trim().startsWith('/') ? 'slash' : 'managed') : 'instruct');
+      if (action === 'shell') {
+        await this.executeShell();
+      } else if (action === 'slash') {
         await this.executeSlashCommand(this.inputText.trim());
-        return;
-      }
-
-      if (sess && sess.mode === 'managed') {
-        if (this.shellMode) {
-          await this.executeShell();
-        } else {
-          await this.sendManagedMessage();
-        }
+      } else if (action === 'managed') {
+        await this.sendManagedMessage();
       } else {
         await this.sendInstruction();
       }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-21
+
+- [a9eb875](https://github.com/lankeami/claude-control/commit/a9eb8757ed8f0837b4e873bfb80689f4d81feb94) fix: shell mode input starting with / bypasses executeShell
+  The slash command check in handleInput() ran before the shellMode check, so any shell command starting with / (like absolute paths) was intercepted as a slash command and sent as a prompt instead of being executed as a shell command. Moved the slash command check inside the else branch so shellMode takes priority.
+- [96f53af](https://github.com/lankeami/claude-control/commit/96f53aff6a22721e0bcd190110a02533f777ffe5) fix: add delivery confirmation and send mutex to SendPrompt
+  SendPrompt was fire-and-forget — writing to the PTY without confirming the CLI consumed the input. Unconsumed bytes accumulated in the kernel buffer and concatenated with the next prompt. Now SendPrompt serializes via a per-process mutex, detects stale unconsumed input (clearing with ESC + Ctrl-U before the new prompt), and waits for PTY output change as delivery confirmation.
+
 ## 2026-09-20
 
 - [26b230c](https://github.com/lankeami/claude-control/commit/26b230cb5157f87d38f32d702d955110bf72f3c3) feat: add pipeline runs UI and parallel workflow execution (#283)

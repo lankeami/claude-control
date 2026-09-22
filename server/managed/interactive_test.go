@@ -4,6 +4,7 @@ package managed
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,6 +59,17 @@ func fastReady(t *testing.T) {
 	t.Cleanup(func() {
 		interactiveReadyQuiescence = oldQ
 		interactiveReadyTimeout = oldT
+	})
+}
+
+func fastConfirm(t *testing.T) {
+	t.Helper()
+	oldCT, oldCP := sendPromptConfirmTimeout, sendPromptConfirmPoll
+	sendPromptConfirmTimeout = 200 * time.Millisecond
+	sendPromptConfirmPoll = 10 * time.Millisecond
+	t.Cleanup(func() {
+		sendPromptConfirmTimeout = oldCT
+		sendPromptConfirmPoll = oldCP
 	})
 }
 
@@ -421,5 +433,120 @@ func TestSendPromptSendsEscBeforePaste(t *testing.T) {
 	// after an unknown command) that would otherwise swallow the paste.
 	waitFor(t, 2*time.Second, func() bool {
 		return strings.Contains(proc.LastOutput(), "\x1b\x1b[200~hello\x1b[201~")
+	})
+}
+
+func TestSendPromptDeliveryConfirmation(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 100 * time.Millisecond
+	interactiveReadyTimeout = 500 * time.Millisecond
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+	fastConfirm(t)
+
+	// Process that produces boot output then disables echo and sleeps.
+	// With echo off, writing to the PTY produces no output change.
+	script := writeScript(t, `echo "ready"
+stty -echo raw 2>/dev/null
+exec sleep 60`)
+	m := newTestManager("/bin/bash", script)
+	_, err := m.EnsureInteractive("dc1", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("dc1", time.Second)
+
+	err = m.SendPrompt("dc1", "hello")
+	if err == nil {
+		t.Fatal("expected error when CLI does not consume prompt")
+	}
+	if !errors.Is(err, ErrPromptNotConfirmed) {
+		t.Fatalf("expected ErrPromptNotConfirmed, got: %v", err)
+	}
+}
+
+func TestSendPromptStaleBuffer(t *testing.T) {
+	fastReady(t)
+	fastConfirm(t)
+
+	// Raw mode so Ctrl-U passes through as a literal byte.
+	script := writeScript(t, `stty raw; exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("sb1", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("sb1", time.Second)
+
+	// First send succeeds (cat echoes in raw mode).
+	if err := m.SendPrompt("sb1", "first"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate stale: set lastSendOutTotal = current outTotal so the
+	// next send thinks no output occurred since the previous write.
+	time.Sleep(100 * time.Millisecond)
+	proc.mu.Lock()
+	proc.lastSendOutTotal = proc.outTotal
+	proc.mu.Unlock()
+
+	// Second send should detect stale and clear before writing.
+	if err := m.SendPrompt("sb1", "second"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Ctrl-U (\x15) from the clearing must appear before the second paste.
+	waitFor(t, 2*time.Second, func() bool {
+		out := proc.LastOutput()
+		clearIdx := strings.Index(out, "\x15")
+		pasteIdx := strings.LastIndex(out, "\x1b[200~second\x1b[201~")
+		return clearIdx >= 0 && pasteIdx >= 0 && clearIdx < pasteIdx
+	})
+}
+
+func TestSendPromptSerialization(t *testing.T) {
+	fastReady(t)
+	fastConfirm(t)
+
+	script := writeScript(t, `exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("ser1", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("ser1", time.Second)
+
+	// Get past the ready gate.
+	if err := m.SendPrompt("ser1", "init"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Concurrent sends must serialize, not interleave.
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		errs[0] = m.SendPrompt("ser1", "AAAA")
+	}()
+	go func() {
+		defer wg.Done()
+		errs[1] = m.SendPrompt("ser1", "BBBB")
+	}()
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent send %d failed: %v", i, err)
+		}
+	}
+
+	// Both pastes must appear intact (no byte interleaving).
+	waitFor(t, 2*time.Second, func() bool {
+		out := proc.LastOutput()
+		return strings.Contains(out, "\x1b[200~AAAA\x1b[201~") &&
+			strings.Contains(out, "\x1b[200~BBBB\x1b[201~")
 	})
 }
