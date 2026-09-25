@@ -236,6 +236,7 @@ func migrate(db *sql.DB) error {
     error TEXT
 )`,
 		`CREATE INDEX IF NOT EXISTS idx_pipeline_run_items_run ON pipeline_run_items(run_id)`,
+		`ALTER TABLE pipeline_runs ADD COLUMN working_dir TEXT NOT NULL DEFAULT ''`,
 	}
 
 	for _, m := range migrations {

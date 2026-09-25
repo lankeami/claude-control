@@ -256,13 +256,19 @@
               <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 4px;">No pipeline runs</div>
             </template>
             <template x-for="pr in pipelineRuns" :key="pr.id">
-              <div class="session-item" @click="selectedPipelineRun = pr; loadPipelineRunDetail(pr.id)">
+              <div class="session-item" @click="selectedPipelineRun = pr; loadPipelineRunDetail(pr.id)"
+                   style="display:flex;align-items:center;gap:6px;">
                 <span class="status-dot"
                       :class="pr.status === 'running' ? 'working' : pr.status === 'completed' ? 'waiting' : 'idle'"></span>
-                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="pr.name"></span>
-                <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px;"
+                <div style="flex:1;min-width:0;">
+                  <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="pr.name"></div>
+                  <div x-show="pr.working_dir" style="font-size:0.6rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                       x-text="pr.working_dir ? pr.working_dir.split('/').pop() : ''"></div>
+                </div>
+                <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px;flex-shrink:0;"
                       :style="pr.status === 'running' ? 'background:#854d0e;color:#fde68a;' : pr.status === 'completed' ? 'background:#14532d;color:#86efac;' : pr.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : 'background:#374151;color:#d1d5db;'"
                       x-text="pr.status"></span>
+                <span style="font-size:0.6rem;color:var(--text-muted);flex-shrink:0;">›</span>
               </div>
             </template>
           </div>
@@ -578,11 +584,13 @@
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="display:flex;align-items:center;gap:8px;">
                   <span style="font-size:12px;font-weight:600;color:var(--text);" x-text="selectedPipelineRun?.name || 'Pipeline Run'"></span>
+                  <span x-show="selectedPipelineRun?.working_dir" style="font-size:10px;color:var(--text-muted);"
+                        x-text="selectedPipelineRun?.working_dir ? selectedPipelineRun.working_dir.split('/').pop() : ''"></span>
                   <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
                         :style="selectedPipelineRun?.status === 'running' ? 'background:#854d0e;color:#fde68a;' : selectedPipelineRun?.status === 'completed' ? 'background:#14532d;color:#86efac;' : selectedPipelineRun?.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : 'background:#374151;color:#d1d5db;'"
                         x-text="selectedPipelineRun?.status"></span>
                 </div>
-                <button @click="selectedPipelineRun = null; pipelineRunItems = []"
+                <button @click="selectedPipelineRun = null; pipelineRunItems = []; clearPipelineRunDetailPoll()"
                         class="btn btn-sm" style="font-size:11px;padding:3px 8px;">Close</button>
               </div>
               <div style="display:flex;flex-direction:column;gap:3px;">

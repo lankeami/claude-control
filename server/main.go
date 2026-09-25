@@ -125,6 +125,7 @@ func main() {
 	if err := store.ResetStaleActivityStates(); err != nil {
 		log.Printf("Warning: failed to reset stale activity states: %v", err)
 	}
+	store.ReconcileStalePipelineRuns()
 
 	apiKey := loadOrCreateAPIKey(*dbPath)
 

@@ -47,8 +47,8 @@ func TestCreatePipelineRun_API(t *testing.T) {
 
 func TestListPipelineRuns_API(t *testing.T) {
 	ts, store := newTestServer(t)
-	store.CreatePipelineRun("run1", "parallel")
-	store.CreatePipelineRun("run2", "parallel")
+	store.CreatePipelineRun("run1", "parallel", "")
+	store.CreatePipelineRun("run2", "parallel", "")
 
 	req := authReq("GET", ts.URL+"/api/pipeline-runs", nil)
 	resp, err := http.DefaultClient.Do(req)
@@ -70,7 +70,7 @@ func TestListPipelineRuns_API(t *testing.T) {
 
 func TestGetPipelineRun_API(t *testing.T) {
 	ts, store := newTestServer(t)
-	run, _ := store.CreatePipelineRun("detail-test", "parallel")
+	run, _ := store.CreatePipelineRun("detail-test", "parallel", "")
 	store.CreatePipelineRunItem(run.ID, "feat-1", "")
 	store.CreatePipelineRunItem(run.ID, "feat-2", "")
 
@@ -100,7 +100,7 @@ func TestGetPipelineRun_API(t *testing.T) {
 
 func TestUpdatePipelineRunItem_API(t *testing.T) {
 	ts, store := newTestServer(t)
-	run, _ := store.CreatePipelineRun("update-test", "parallel")
+	run, _ := store.CreatePipelineRun("update-test", "parallel", "")
 	item, _ := store.CreatePipelineRunItem(run.ID, "feat-1", "")
 
 	body := map[string]string{"status": "completed"}
@@ -121,7 +121,7 @@ func TestWorkflowVisibility(t *testing.T) {
 
 	// When autoship creates a pipeline run, it should be visible via both
 	// the pipeline-runs endpoint AND listed alongside workflows
-	run, _ := store.CreatePipelineRun("autoship: 3 features", "parallel")
+	run, _ := store.CreatePipelineRun("autoship: 3 features", "parallel", "/tmp/test-repo")
 	store.CreatePipelineRunItem(run.ID, "Add dark mode", "")
 	store.CreatePipelineRunItem(run.ID, "Add search", "")
 	store.CreatePipelineRunItem(run.ID, "Add export", "")

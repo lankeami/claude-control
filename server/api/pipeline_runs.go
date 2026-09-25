@@ -8,9 +8,10 @@ import (
 )
 
 type createPipelineRunRequest struct {
-	Name  string                     `json:"name"`
-	Mode  string                     `json:"mode"`
-	Items []createPipelineRunItemReq `json:"items"`
+	Name       string                     `json:"name"`
+	Mode       string                     `json:"mode"`
+	WorkingDir string                     `json:"working_dir"`
+	Items      []createPipelineRunItemReq `json:"items"`
 }
 
 type createPipelineRunItemReq struct {
@@ -32,7 +33,7 @@ func (s *Server) handleCreatePipelineRun(w http.ResponseWriter, r *http.Request)
 		req.Mode = "parallel"
 	}
 
-	run, err := s.store.CreatePipelineRun(req.Name, req.Mode)
+	run, err := s.store.CreatePipelineRun(req.Name, req.Mode, req.WorkingDir)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
