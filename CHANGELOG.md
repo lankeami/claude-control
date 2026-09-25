@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-25
+
+- [8fc06c7](https://github.com/lankeami/claude-control/commit/8fc06c739ce7f89c00c1e1bc40e9a49a25937330) fix: auto-complete pipeline runs, add project context, improve discoverability
+  Pipeline runs previously stayed in running forever because nothing marked the parent run complete when all items finished. This was due to autoship using Claude Code JS Workflow tool (client-side) rather than the server-side RunParallel method that had completion logic.
+
 ## 2026-09-21
 
 - [a9eb875](https://github.com/lankeami/claude-control/commit/a9eb8757ed8f0837b4e873bfb80689f4d81feb94) fix: shell mode input starting with / bypasses executeShell
