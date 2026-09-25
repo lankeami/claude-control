@@ -2,6 +2,8 @@
 
 ## 2026-09-25
 
+- [9d7fb49](https://github.com/lankeami/claude-control/commit/9d7fb49bbdc566dbf4e88c6d24903dc10dc11950) fix: add clear finished runs, link items to sessions, show session names
+  Addresses remaining pipeline run UX gaps: - Clear finished button in sidebar header deletes completed/failed/cancelled runs - DELETE endpoint for individual runs and POST clear-finished for bulk - Pipeline run items are clickable when they have a session_id, navigating to that session so you can see what the model is doing - Items show the session name next to the feature label - Items show a chevron affordance when linked to a session
 - [8fc06c7](https://github.com/lankeami/claude-control/commit/8fc06c739ce7f89c00c1e1bc40e9a49a25937330) fix: auto-complete pipeline runs, add project context, improve discoverability
   Pipeline runs previously stayed in running forever because nothing marked the parent run complete when all items finished. This was due to autoship using Claude Code JS Workflow tool (client-side) rather than the server-side RunParallel method that had completion logic.
 
