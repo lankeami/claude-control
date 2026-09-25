@@ -242,14 +242,19 @@
 
         <!-- Pipeline Runs Section -->
         <div x-show="authenticated && !leftCollapsed" style="border-top:1px solid var(--border); padding:8px;" x-cloak>
-          <div style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; padding:4px 0;" @click="pipelineRunsExpanded = !pipelineRunsExpanded">
-            <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 0;">
+            <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted); cursor:pointer;" @click="pipelineRunsExpanded = !pipelineRunsExpanded">
               <span x-text="pipelineRunsExpanded ? '▼' : '▶'" style="font-size:0.65rem;"></span>
               Pipeline Runs
               <span x-show="pipelineRuns.filter(r => r.status === 'running').length > 0"
                     style="font-size:0.65rem; color:#f59e0b; margin-left:4px;"
                     x-text="'(' + pipelineRuns.filter(r => r.status === 'running').length + ' active)'"></span>
             </span>
+            <span x-show="pipelineRunsExpanded && pipelineRuns.some(r => r.status !== 'running')"
+                  @click.stop="clearFinishedPipelineRuns()"
+                  style="font-size:0.6rem; color:var(--text-muted); cursor:pointer; padding:2px 4px; border-radius:3px;"
+                  @mouseenter="$el.style.color='var(--text)'" @mouseleave="$el.style.color='var(--text-muted)'"
+                  >Clear finished</span>
           </div>
           <div x-show="pipelineRunsExpanded" style="max-height:300px; overflow-y:auto;">
             <template x-if="pipelineRuns.length === 0">
@@ -596,12 +601,18 @@
               <div style="display:flex;flex-direction:column;gap:3px;">
                 <template x-for="item in pipelineRunItems" :key="item.id">
                   <div style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;font-size:12px;"
-                       :style="item.status === 'running' ? 'background:rgba(245,158,11,0.1);' : ''">
+                       :style="(item.status === 'running' ? 'background:rgba(245,158,11,0.1);' : '') + (item.session_id ? 'cursor:pointer;' : '')"
+                       @click="item.session_id && selectSession(item.session_id)">
                     <span style="width:14px;text-align:center;font-size:11px;"
                           :style="item.status === 'completed' ? 'color:#22c55e;' : item.status === 'running' ? 'color:#f59e0b;' : item.status === 'failed' ? 'color:#ef4444;' : 'color:#6b7280;'"
                           x-text="item.status === 'completed' ? '✓' : item.status === 'running' ? '▶' : item.status === 'failed' ? '✕' : '●'"></span>
-                    <span style="flex:1;color:var(--text);" x-text="item.feature_label"></span>
-                    <span x-show="item.error" style="color:#ef4444;font-size:10px;" x-text="item.error"></span>
+                    <div style="flex:1;min-width:0;">
+                      <span style="color:var(--text);" x-text="item.feature_label"></span>
+                      <span x-show="item.session_id" style="font-size:10px;color:var(--text-muted);margin-left:4px;"
+                            x-text="item.session_id ? getSessionName(item.session_id) : ''"></span>
+                    </div>
+                    <span x-show="item.error" style="color:#ef4444;font-size:10px;flex-shrink:0;" x-text="item.error"></span>
+                    <span x-show="item.session_id" style="font-size:0.6rem;color:var(--text-muted);flex-shrink:0;">›</span>
                   </div>
                 </template>
               </div>

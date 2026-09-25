@@ -112,6 +112,19 @@ func (s *Store) ListPipelineRuns() ([]PipelineRun, error) {
 	return runs, rows.Err()
 }
 
+func (s *Store) DeletePipelineRun(id string) error {
+	_, err := s.db.Exec(`DELETE FROM pipeline_runs WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) DeleteFinishedPipelineRuns() (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM pipeline_runs WHERE status IN ('completed','failed','cancelled')`)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (s *Store) UpdatePipelineRunStatus(id, status string, runErr *string) error {
 	if status == "completed" || status == "failed" || status == "cancelled" {
 		_, err := s.db.Exec(

@@ -4297,6 +4297,28 @@ Please review this PR and provide feedback.`;
         }
     },
 
+    async clearFinishedPipelineRuns() {
+        try {
+            await fetch('/api/pipeline-runs/clear-finished', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (this.selectedPipelineRun && this.selectedPipelineRun.status !== 'running') {
+                this.selectedPipelineRun = null;
+                this.pipelineRunItems = [];
+                this.clearPipelineRunDetailPoll();
+            }
+            await this.loadPipelineRuns();
+        } catch (err) {
+            console.error('Failed to clear finished pipeline runs:', err);
+        }
+    },
+
+    getSessionName(sessionId) {
+        const sess = this.sessions.find(s => s.id === sessionId);
+        return sess ? sess.name : '';
+    },
+
     linkifyFilePaths(html) {
       const re = /(<a\s[^>]*>[\s\S]*?<\/a>|<[^>]+>)|(\/(?:tmp|var|Users|home)\/[^\s<"'`,;)}\]]+\.html)\b/g;
       return html.replace(re, (match, tag, path) => {

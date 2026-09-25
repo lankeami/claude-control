@@ -113,3 +113,23 @@ func (s *Server) handleUpdatePipelineRun(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"ok":true}`))
 }
+
+func (s *Server) handleDeletePipelineRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.store.DeletePipelineRun(id); err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"ok":true}`))
+}
+
+func (s *Server) handleClearFinishedPipelineRuns(w http.ResponseWriter, r *http.Request) {
+	deleted, err := s.store.DeleteFinishedPipelineRuns()
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int64{"deleted": deleted})
+}
