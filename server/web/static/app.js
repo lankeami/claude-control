@@ -4318,7 +4318,6 @@ Please review this PR and provide feedback.`;
         const sess = this.sessions.find(s => s.id === sessionId);
         return sess ? sess.name : '';
     },
-
     linkifyFilePaths(html) {
       const re = /(<a\s[^>]*>[\s\S]*?<\/a>|<[^>]+>)|(\/(?:tmp|var|Users|home)\/[^\s<"'`,;)}\]]+\.html)\b/g;
       return html.replace(re, (match, tag, path) => {
