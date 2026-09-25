@@ -13,6 +13,7 @@ type PipelineRun struct {
 	Name       string     `json:"name"`
 	Mode       string     `json:"mode"`
 	Status     string     `json:"status"`
+	WorkingDir string     `json:"working_dir"`
 	CreatedAt  time.Time  `json:"created_at"`
 	FinishedAt *time.Time `json:"finished_at"`
 	Error      *string    `json:"error"`
@@ -29,9 +30,50 @@ type PipelineRunItem struct {
 	Error        *string    `json:"error"`
 }
 
-func (s *Store) CreatePipelineRun(name, mode string) (*PipelineRun, error) {
+// ReconcileStalePipelineRuns marks running pipeline runs as completed/failed
+// if all their items are in terminal states, or as failed if older than 24h.
+func (s *Store) ReconcileStalePipelineRuns() {
+	rows, err := s.db.Query(`SELECT id FROM pipeline_runs WHERE status = 'running'`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	for _, id := range ids {
+		var total, terminal int
+		s.db.QueryRow(`SELECT COUNT(*) FROM pipeline_run_items WHERE run_id = ?`, id).Scan(&total)
+		s.db.QueryRow(
+			`SELECT COUNT(*) FROM pipeline_run_items WHERE run_id = ? AND status IN ('completed','failed','skipped')`, id,
+		).Scan(&terminal)
+		if total > 0 && terminal == total {
+			var anyFailed int
+			s.db.QueryRow(`SELECT COUNT(*) FROM pipeline_run_items WHERE run_id = ? AND status = 'failed'`, id).Scan(&anyFailed)
+			if anyFailed > 0 {
+				errMsg := "one or more items failed"
+				s.UpdatePipelineRunStatus(id, "failed", &errMsg)
+			} else {
+				s.UpdatePipelineRunStatus(id, "completed", nil)
+			}
+		} else {
+			var createdAt time.Time
+			s.db.QueryRow(`SELECT created_at FROM pipeline_runs WHERE id = ?`, id).Scan(&createdAt)
+			if time.Since(createdAt) > 24*time.Hour {
+				errMsg := "stale: timed out after 24h"
+				s.UpdatePipelineRunStatus(id, "failed", &errMsg)
+			}
+		}
+	}
+}
+
+func (s *Store) CreatePipelineRun(name, mode, workingDir string) (*PipelineRun, error) {
 	id := uuid.New().String()
-	_, err := s.db.Exec(`INSERT INTO pipeline_runs (id, name, mode) VALUES (?, ?, ?)`, id, name, mode)
+	_, err := s.db.Exec(`INSERT INTO pipeline_runs (id, name, mode, working_dir) VALUES (?, ?, ?, ?)`, id, name, mode, workingDir)
 	if err != nil {
 		return nil, fmt.Errorf("create pipeline run: %w", err)
 	}
@@ -41,8 +83,8 @@ func (s *Store) CreatePipelineRun(name, mode string) (*PipelineRun, error) {
 func (s *Store) GetPipelineRun(id string) (*PipelineRun, error) {
 	var r PipelineRun
 	err := s.db.QueryRow(
-		`SELECT id, name, mode, status, created_at, finished_at, error FROM pipeline_runs WHERE id = ?`, id,
-	).Scan(&r.ID, &r.Name, &r.Mode, &r.Status, &r.CreatedAt, &r.FinishedAt, &r.Error)
+		`SELECT id, name, mode, status, working_dir, created_at, finished_at, error FROM pipeline_runs WHERE id = ?`, id,
+	).Scan(&r.ID, &r.Name, &r.Mode, &r.Status, &r.WorkingDir, &r.CreatedAt, &r.FinishedAt, &r.Error)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -53,7 +95,7 @@ func (s *Store) GetPipelineRun(id string) (*PipelineRun, error) {
 }
 
 func (s *Store) ListPipelineRuns() ([]PipelineRun, error) {
-	rows, err := s.db.Query(`SELECT id, name, mode, status, created_at, finished_at, error FROM pipeline_runs ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id, name, mode, status, working_dir, created_at, finished_at, error FROM pipeline_runs ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list pipeline runs: %w", err)
 	}
@@ -62,7 +104,7 @@ func (s *Store) ListPipelineRuns() ([]PipelineRun, error) {
 	var runs []PipelineRun
 	for rows.Next() {
 		var r PipelineRun
-		if err := rows.Scan(&r.ID, &r.Name, &r.Mode, &r.Status, &r.CreatedAt, &r.FinishedAt, &r.Error); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.Mode, &r.Status, &r.WorkingDir, &r.CreatedAt, &r.FinishedAt, &r.Error); err != nil {
 			return nil, fmt.Errorf("scan pipeline run: %w", err)
 		}
 		runs = append(runs, r)
@@ -139,8 +181,36 @@ func (s *Store) UpdatePipelineRunItemStatus(id, status string, itemErr *string) 
 			`UPDATE pipeline_run_items SET status = ?, error = ?, finished_at = datetime('now') WHERE id = ?`,
 			status, itemErr, id,
 		)
-		return err
+		if err != nil {
+			return err
+		}
+		s.maybeCompletePipelineRun(id)
+		return nil
 	}
 	_, err := s.db.Exec(`UPDATE pipeline_run_items SET status = ?, error = ? WHERE id = ?`, status, itemErr, id)
 	return err
+}
+
+// maybeCompletePipelineRun checks if all items for the parent run are terminal
+// and auto-completes the run if so.
+func (s *Store) maybeCompletePipelineRun(itemID string) {
+	var runID string
+	if err := s.db.QueryRow(`SELECT run_id FROM pipeline_run_items WHERE id = ?`, itemID).Scan(&runID); err != nil {
+		return
+	}
+	var pending int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM pipeline_run_items WHERE run_id = ? AND status NOT IN ('completed','failed','skipped')`,
+		runID,
+	).Scan(&pending); err != nil || pending > 0 {
+		return
+	}
+	var anyFailed int
+	s.db.QueryRow(`SELECT COUNT(*) FROM pipeline_run_items WHERE run_id = ? AND status = 'failed'`, runID).Scan(&anyFailed)
+	if anyFailed > 0 {
+		errMsg := "one or more items failed"
+		s.UpdatePipelineRunStatus(runID, "failed", &errMsg)
+	} else {
+		s.UpdatePipelineRunStatus(runID, "completed", nil)
+	}
 }
