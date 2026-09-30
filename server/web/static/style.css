@@ -754,11 +754,14 @@ body {
 /* File Tree Sidebar */
 .file-tree-sidebar {
   width: 280px; min-width: 280px; border-left: 1px solid var(--border);
-  background: var(--bg); display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg-secondary); display: flex; flex-direction: column; overflow: hidden;
+  position: relative;
 }
+.file-tree-sidebar > * { position: relative; z-index: 1; }
 .file-tree-header {
   padding: 12px 16px; font-weight: 600; font-size: 14px;
   border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;
+  background: var(--bg-secondary);
 }
 .file-count-badge {
   background: var(--bg-secondary); color: var(--text-muted); font-size: 11px;
@@ -891,17 +894,25 @@ body {
 .issue-state-toggles {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .issue-state-toggle {
-  font-size: 10px;
-  padding: 2px 7px;
+  font-size: 11px;
+  height: 28px;
+  line-height: 26px;
+  padding: 0 10px;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.issue-state-toggle:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
 }
 
 .issue-state-toggle.active-open {
@@ -1002,6 +1013,41 @@ body {
   font-size: 10px;
   color: var(--text-muted);
   margin-top: 1px;
+}
+
+/* Skill row action buttons */
+.skill-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 10px;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.skill-action-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--accent);
+}
+.skill-action-btn.skill-play { font-size: 9px; }
+.skill-action-btn.skill-inspect { font-size: 11px; }
+
+/* Mobile: larger touch targets for skill actions */
+@media (max-width: 768px) {
+  .skill-action-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+  .skill-action-btn.skill-play { font-size: 12px; }
+  .skill-action-btn.skill-inspect { font-size: 14px; }
 }
 
 .issues-show-more {

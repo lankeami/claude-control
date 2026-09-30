@@ -2786,6 +2786,20 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    insertSkill(skillName) {
+      if (!skillName) return;
+      const cmd = '/' + skillName;
+      this.inputText = this.inputText ? this.inputText + ' ' + cmd : cmd;
+      this.$nextTick(() => {
+        const el = this.$refs.promptInput;
+        if (el) {
+          el.focus();
+          el.style.height = 'auto';
+          el.style.height = el.scrollHeight + 'px';
+        }
+      });
+    },
+
     // GitHub Issues methods
     async fetchGithubIssues(sessionId) {
       if (!sessionId) return;
@@ -4318,7 +4332,6 @@ Please review this PR and provide feedback.`;
         const sess = this.sessions.find(s => s.id === sessionId);
         return sess ? sess.name : '';
     },
-
     linkifyFilePaths(html) {
       const re = /(<a\s[^>]*>[\s\S]*?<\/a>|<[^>]+>)|(\/(?:tmp|var|Users|home)\/[^\s<"'`,;)}\]]+\.html)\b/g;
       return html.replace(re, (match, tag, path) => {
