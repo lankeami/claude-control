@@ -11,7 +11,8 @@ import (
 type skillResponse struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Dir         string `json:"dir"` // which directory it came from: "project", "user", or "bb"
+	Dir         string `json:"dir"`  // which directory it came from: "project", "user", or "bb"
+	Path        string `json:"path"` // absolute path to the SKILL.md file
 }
 
 // handleListSkills scans known skill directories and returns parsed skill metadata.
@@ -72,7 +73,7 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			seen[name] = true
-			skills = append(skills, skillResponse{Name: name, Description: desc, Dir: d.label})
+			skills = append(skills, skillResponse{Name: name, Description: desc, Dir: d.label, Path: skillFile})
 		}
 	}
 

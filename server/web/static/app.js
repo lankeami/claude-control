@@ -2786,6 +2786,20 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    insertSkill(skillName) {
+      if (!skillName) return;
+      const cmd = '/' + skillName;
+      this.inputText = this.inputText ? this.inputText + ' ' + cmd : cmd;
+      this.$nextTick(() => {
+        const el = this.$refs.promptInput;
+        if (el) {
+          el.focus();
+          el.style.height = 'auto';
+          el.style.height = el.scrollHeight + 'px';
+        }
+      });
+    },
+
     // GitHub Issues methods
     async fetchGithubIssues(sessionId) {
       if (!sessionId) return;
