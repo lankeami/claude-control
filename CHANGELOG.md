@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-30
+
+- [734f3b4](https://github.com/lankeami/claude-control/commit/734f3b496c65960241be0c74b0201c842010a338) fix: swap skill row icons to command symbol and window icon
+  Use ⌘ for run and ⧉ for inspect per user preference.
+
 ## 2026-09-25
 
 - [9d7fb49](https://github.com/lankeami/claude-control/commit/9d7fb49bbdc566dbf4e88c6d24903dc10dc11950) fix: add clear finished runs, link items to sessions, show session names
