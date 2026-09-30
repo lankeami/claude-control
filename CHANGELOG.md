@@ -2,6 +2,8 @@
 
 ## 2026-09-30
 
+- [7a6d0fa](https://github.com/lankeami/claude-control/commit/7a6d0fad22decb232618ddef0a75071ba6aa7128) fix: add hover styles to pipeline run items and clear-finished button
+  Pipeline detail items and the Clear finished link had no hover feedback. Added .pipeline-item and .section-action CSS classes with proper :hover rules instead of relying on inline @mouseenter/@mouseleave handlers.
 - [734f3b4](https://github.com/lankeami/claude-control/commit/734f3b496c65960241be0c74b0201c842010a338) fix: swap skill row icons to command symbol and window icon
   Use ⌘ for run and ⧉ for inspect per user preference.
 

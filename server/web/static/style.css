@@ -157,6 +157,13 @@ body {
 .session-item:hover { background: var(--border); }
 .session-item.active { background: var(--accent); color: #fff; border-left: none; }
 
+.pipeline-item { border-radius: 4px; transition: background 0.1s; }
+.pipeline-item.clickable { cursor: pointer; }
+.pipeline-item.clickable:hover { background: var(--border); }
+
+.section-action { font-size: 0.6rem; color: var(--text-muted); cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+.section-action:hover { color: var(--text); background: var(--border); }
+
 .session-delete {
   display: none;
   background: none;
