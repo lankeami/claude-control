@@ -162,6 +162,7 @@ document.addEventListener('alpine:init', () => {
     selectedPipelineRun: null,
     pipelineRunItems: [],
     pipelineRunPollTimer: null,
+    pipelineRunDetailPollTimer: null,
 
     // Toast
     showToast: false,
@@ -4250,8 +4251,12 @@ Please review this PR and provide feedback.`;
             const res = await fetch('/api/pipeline-runs', {
                 headers: { 'Authorization': 'Bearer ' + this.apiKey }
             });
-            if (res.ok) this.pipelineRuns = await res.json() || [];
-            // Auto-poll if any are running
+            if (res.ok) {
+                const runs = await res.json() || [];
+                const order = { running: 0, failed: 1, completed: 2, cancelled: 3 };
+                runs.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+                this.pipelineRuns = runs;
+            }
             this.schedulePipelineRunPoll();
         } catch (err) {
             console.error('Failed to load pipeline runs:', err);
@@ -4267,6 +4272,7 @@ Please review this PR and provide feedback.`;
     },
 
     async loadPipelineRunDetail(runId) {
+        this.clearPipelineRunDetailPoll();
         try {
             const res = await fetch('/api/pipeline-runs/' + runId, {
                 headers: { 'Authorization': 'Bearer ' + this.apiKey }
@@ -4275,10 +4281,42 @@ Please review this PR and provide feedback.`;
                 const data = await res.json();
                 this.selectedPipelineRun = data.run;
                 this.pipelineRunItems = data.items || [];
+                if (data.run?.status === 'running') {
+                    this.pipelineRunDetailPollTimer = setTimeout(() => this.loadPipelineRunDetail(runId), 2000);
+                }
             }
         } catch (err) {
             console.error('Failed to load pipeline run detail:', err);
         }
+    },
+
+    clearPipelineRunDetailPoll() {
+        if (this.pipelineRunDetailPollTimer) {
+            clearTimeout(this.pipelineRunDetailPollTimer);
+            this.pipelineRunDetailPollTimer = null;
+        }
+    },
+
+    async clearFinishedPipelineRuns() {
+        try {
+            await fetch('/api/pipeline-runs/clear-finished', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (this.selectedPipelineRun && this.selectedPipelineRun.status !== 'running') {
+                this.selectedPipelineRun = null;
+                this.pipelineRunItems = [];
+                this.clearPipelineRunDetailPoll();
+            }
+            await this.loadPipelineRuns();
+        } catch (err) {
+            console.error('Failed to clear finished pipeline runs:', err);
+        }
+    },
+
+    getSessionName(sessionId) {
+        const sess = this.sessions.find(s => s.id === sessionId);
+        return sess ? sess.name : '';
     },
 
     linkifyFilePaths(html) {

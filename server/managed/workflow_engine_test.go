@@ -143,7 +143,7 @@ func TestWorkflowEngine_ParallelRun(t *testing.T) {
 	engine := NewWorkflowEngine(store, sendMessage, getActivity, interrupt)
 
 	// Create a pipeline run to track this
-	pipelineRun, _ := store.CreatePipelineRun("parallel-test", "parallel")
+	pipelineRun, _ := store.CreatePipelineRun("parallel-test", "parallel", "")
 
 	items := []ParallelItem{
 		{SessionID: sess1.ID, Prompt: "Build feature 1", Label: "feat-1"},

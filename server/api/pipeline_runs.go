@@ -8,9 +8,10 @@ import (
 )
 
 type createPipelineRunRequest struct {
-	Name  string                     `json:"name"`
-	Mode  string                     `json:"mode"`
-	Items []createPipelineRunItemReq `json:"items"`
+	Name       string                     `json:"name"`
+	Mode       string                     `json:"mode"`
+	WorkingDir string                     `json:"working_dir"`
+	Items      []createPipelineRunItemReq `json:"items"`
 }
 
 type createPipelineRunItemReq struct {
@@ -32,7 +33,7 @@ func (s *Server) handleCreatePipelineRun(w http.ResponseWriter, r *http.Request)
 		req.Mode = "parallel"
 	}
 
-	run, err := s.store.CreatePipelineRun(req.Name, req.Mode)
+	run, err := s.store.CreatePipelineRun(req.Name, req.Mode, req.WorkingDir)
 	if err != nil {
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
@@ -111,4 +112,24 @@ func (s *Server) handleUpdatePipelineRun(w http.ResponseWriter, r *http.Request)
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"ok":true}`))
+}
+
+func (s *Server) handleDeletePipelineRun(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.store.DeletePipelineRun(id); err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"ok":true}`))
+}
+
+func (s *Server) handleClearFinishedPipelineRuns(w http.ResponseWriter, r *http.Request) {
+	deleted, err := s.store.DeleteFinishedPipelineRuns()
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int64{"deleted": deleted})
 }

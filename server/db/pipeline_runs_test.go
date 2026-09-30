@@ -12,7 +12,7 @@ func TestCreatePipelineRun(t *testing.T) {
 	}
 	defer store.Close()
 
-	run, err := store.CreatePipelineRun("autoship-batch", "parallel")
+	run, err := store.CreatePipelineRun("autoship-batch", "parallel", "/tmp/test-repo")
 	if err != nil {
 		t.Fatalf("CreatePipelineRun: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestPipelineRunItems(t *testing.T) {
 	}
 	defer store.Close()
 
-	run, _ := store.CreatePipelineRun("test-pipeline", "parallel")
+	run, _ := store.CreatePipelineRun("test-pipeline", "parallel", "")
 
 	sess1, _ := store.CreateManagedSession("/tmp/pr-1", "[]", 50, 5.0, 0)
 	sess2, _ := store.CreateManagedSession("/tmp/pr-2", "[]", 50, 5.0, 0)
@@ -86,8 +86,8 @@ func TestListPipelineRuns(t *testing.T) {
 	}
 	defer store.Close()
 
-	store.CreatePipelineRun("run1", "parallel")
-	store.CreatePipelineRun("run2", "parallel")
+	store.CreatePipelineRun("run1", "parallel", "")
+	store.CreatePipelineRun("run2", "parallel", "")
 
 	runs, err := store.ListPipelineRuns()
 	if err != nil {
@@ -105,7 +105,7 @@ func TestUpdatePipelineRunStatus(t *testing.T) {
 	}
 	defer store.Close()
 
-	run, _ := store.CreatePipelineRun("done-test", "parallel")
+	run, _ := store.CreatePipelineRun("done-test", "parallel", "")
 	if err := store.UpdatePipelineRunStatus(run.ID, "completed", nil); err != nil {
 		t.Fatalf("UpdatePipelineRunStatus: %v", err)
 	}
@@ -116,5 +116,50 @@ func TestUpdatePipelineRunStatus(t *testing.T) {
 	}
 	if got.FinishedAt == nil {
 		t.Error("expected finished_at to be set")
+	}
+}
+
+func TestAutoCompletePipelineRun(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	run, _ := store.CreatePipelineRun("auto-complete-test", "parallel", "")
+	item1, _ := store.CreatePipelineRunItem(run.ID, "feat-1", "")
+	item2, _ := store.CreatePipelineRunItem(run.ID, "feat-2", "")
+
+	store.UpdatePipelineRunItemStatus(item1.ID, "completed", nil)
+	got, _ := store.GetPipelineRun(run.ID)
+	if got.Status != "running" {
+		t.Errorf("expected still 'running' after 1/2 done, got %q", got.Status)
+	}
+
+	store.UpdatePipelineRunItemStatus(item2.ID, "completed", nil)
+	got, _ = store.GetPipelineRun(run.ID)
+	if got.Status != "completed" {
+		t.Errorf("expected auto-completed, got %q", got.Status)
+	}
+}
+
+func TestAutoCompletePipelineRun_WithFailure(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	run, _ := store.CreatePipelineRun("fail-test", "parallel", "")
+	item1, _ := store.CreatePipelineRunItem(run.ID, "feat-1", "")
+	item2, _ := store.CreatePipelineRunItem(run.ID, "feat-2", "")
+
+	store.UpdatePipelineRunItemStatus(item1.ID, "completed", nil)
+	errMsg := "build failed"
+	store.UpdatePipelineRunItemStatus(item2.ID, "failed", &errMsg)
+
+	got, _ := store.GetPipelineRun(run.ID)
+	if got.Status != "failed" {
+		t.Errorf("expected auto-failed, got %q", got.Status)
 	}
 }
