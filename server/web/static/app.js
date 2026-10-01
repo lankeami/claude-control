@@ -159,6 +159,11 @@ document.addEventListener('alpine:init', () => {
     workflowRunSteps: [],
     workflowsExpanded: false,
 
+    // Claude Workflow tool runs (autoship pipelines etc.) — live snapshots
+    // pushed on the per-session SSE stream, keyed by run_id. Distinct from
+    // the prompt-workflow engine state above.
+    toolWorkflowRuns: [],
+
     // Pipeline runs state
     pipelineRuns: [],
     pipelineRunsExpanded: true,
@@ -1027,6 +1032,7 @@ document.addEventListener('alpine:init', () => {
       this.showSlashMenu = false;
       this.sessionCost = null;
       this.sessionModel = null;
+      this.toolWorkflowRuns = [];
       this.continuationCount = 0;
       this.isCompacting = false;
       this.sessionFiles = [];
@@ -2148,6 +2154,13 @@ document.addEventListener('alpine:init', () => {
           // Reset both timers on any real event
           this.resetStalenessTimer();
           this.resetHeartbeatTimer();
+
+          // Claude Workflow tool run snapshot (autoship pipelines etc.) —
+          // upsert into the live run card state.
+          if (data.type === 'workflow_run') {
+            this.toolWorkflowRuns = window._ccUpsertWorkflowRun(this.toolWorkflowRuns, data);
+            return;
+          }
 
           // Shell events
           if (data.type === 'shell_start') {

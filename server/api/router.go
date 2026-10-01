@@ -47,6 +47,9 @@ type Server struct {
 	// supersedeChs maps sessionID -> chan struct{} — closed when a new message
 	// arrives to cancel the previous turn goroutine.
 	supersedeChs sync.Map
+	// workflowRuns maps sessionID -> *sessionWorkflowRuns — latest Workflow
+	// tool run snapshots, replayed to late-connecting session streams.
+	workflowRuns sync.Map
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string, taskTrigger TaskTrigger, instanceName string) http.Handler {

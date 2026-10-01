@@ -735,6 +735,13 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 		}
 	}
 
+	// Send the latest Workflow tool run snapshots so late-connecting clients
+	// see in-flight pipeline progress (e.g. autoship) immediately.
+	for _, snap := range s.workflowRunSnapshots(sessionID) {
+		fmt.Fprintf(w, "data: %s\n\n", snap)
+		flusher.Flush()
+	}
+
 	// Per-connection heartbeat: the interactive backend can go silent for
 	// minutes mid-turn (long thinking, long tool runs), and the web UI treats
 	// >30s of SSE silence as a dead connection.

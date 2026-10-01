@@ -25,6 +25,9 @@ type InteractiveOpts struct {
 	// OnTranscriptLine is called for each raw transcript JSONL line appended
 	// after the process spawned (older entries are filtered by timestamp).
 	OnTranscriptLine func(line string)
+	// OnWorkflowEvent is called with a marshaled WorkflowRunSnapshot whenever
+	// a Workflow tool run under this session changes state.
+	OnWorkflowEvent func(line string)
 }
 
 // InteractiveProc is a persistent interactive Claude Code process driven via PTY.
@@ -426,6 +429,14 @@ func (m *Manager) SetTranscript(sessionID, path string) {
 		}
 	}
 	go TailTranscript(ctx, path, offset, emit)
+	if proc.opts.OnWorkflowEvent != nil {
+		wfDir := WorkflowsDirForTranscript(path)
+		go WatchWorkflowRuns(ctx, wfDir, func(snap WorkflowRunSnapshot) {
+			if data, err := json.Marshal(snap); err == nil {
+				proc.opts.OnWorkflowEvent(string(data))
+			}
+		})
+	}
 	log.Printf("session %s: tailing transcript %s from offset %d", sessionID, path, offset)
 }
 

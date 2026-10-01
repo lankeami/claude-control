@@ -213,11 +213,12 @@ func managedSessionSettings(cfg managed.Config, sess *db.Session) (string, error
 	return managed.WriteSessionSettings(managed.SessionDir(sess.ID), cfg.BinaryPath, sess.ID, cfg.ServerPort, sess.AllowedTools, cfg.KeyFilePath)
 }
 
-func interactiveOpts(sess *db.Session, settingsPath, trustPrompt string, onLine func(string)) managed.InteractiveOpts {
+func interactiveOpts(sess *db.Session, settingsPath, trustPrompt string, onLine, onWorkflowEvent func(string)) managed.InteractiveOpts {
 	return managed.InteractiveOpts{
 		Args:             buildInteractiveArgs(sess, settingsPath, trustPrompt),
 		CWD:              sess.CWD,
 		OnTranscriptLine: onLine,
+		OnWorkflowEvent:  onWorkflowEvent,
 	}
 }
 
@@ -447,8 +448,14 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		log.Printf("session %s: settings generation failed: %v", sessionID, err)
 	}
 
+	// Workflow tool run snapshots (autoship pipelines etc.) — recorded for
+	// late-connecting clients and broadcast on the session stream.
+	onWorkflowEvent := func(line string) {
+		s.emitWorkflowRun(sessionID, line)
+	}
+
 	spawned := !s.manager.IsInteractiveRunning(sessionID)
-	proc, err := s.manager.EnsureInteractive(sessionID, interactiveOpts(sess, settingsPath, s.trustedSkillsPrompt(), onTranscriptLine))
+	proc, err := s.manager.EnsureInteractive(sessionID, interactiveOpts(sess, settingsPath, s.trustedSkillsPrompt(), onTranscriptLine, onWorkflowEvent))
 	if err != nil {
 		errMsg := fmt.Sprintf(`{"type":"system","error":true,"message":"Failed to start interactive session: %s"}`, err.Error())
 		broadcaster.Send(errMsg)
