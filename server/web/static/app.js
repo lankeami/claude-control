@@ -163,6 +163,7 @@ document.addEventListener('alpine:init', () => {
     // pushed on the per-session SSE stream, keyed by run_id. Distinct from
     // the prompt-workflow engine state above.
     toolWorkflowRuns: [],
+    selectedToolWorkflowRunId: null,
 
     // Pipeline runs state
     pipelineRuns: [],
@@ -1033,6 +1034,7 @@ document.addEventListener('alpine:init', () => {
       this.sessionCost = null;
       this.sessionModel = null;
       this.toolWorkflowRuns = [];
+      this.selectedToolWorkflowRunId = null;
       this.continuationCount = 0;
       this.isCompacting = false;
       this.sessionFiles = [];
@@ -2156,9 +2158,10 @@ document.addEventListener('alpine:init', () => {
           this.resetHeartbeatTimer();
 
           // Claude Workflow tool run snapshot (autoship pipelines etc.) —
-          // upsert into the live run card state.
+          // upsert into the live run card state and sync to sidebar.
           if (data.type === 'workflow_run') {
             this.toolWorkflowRuns = window._ccUpsertWorkflowRun(this.toolWorkflowRuns, data);
+            this.syncToolWorkflowToSidebar(data);
             return;
           }
 
@@ -4295,15 +4298,71 @@ Please review this PR and provide feedback.`;
                 headers: { 'Authorization': 'Bearer ' + this.apiKey }
             });
             if (res.ok) {
-                const runs = await res.json() || [];
+                const dbRuns = await res.json() || [];
+                const toolRuns = this.toolWorkflowRuns.map(r => ({
+                    id: 'twf_' + r.run_id,
+                    _tool_run_id: r.run_id,
+                    name: 'Agent Pipeline',
+                    status: r.status || 'running',
+                    _isToolWorkflow: true,
+                }));
+                const merged = [...toolRuns, ...dbRuns];
                 const order = { running: 0, failed: 1, completed: 2, cancelled: 3 };
-                runs.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
-                this.pipelineRuns = runs;
+                merged.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+                this.pipelineRuns = merged;
             }
             this.schedulePipelineRunPoll();
         } catch (err) {
             console.error('Failed to load pipeline runs:', err);
         }
+    },
+
+    syncToolWorkflowToSidebar(snapshot) {
+        const syntheticId = 'twf_' + snapshot.run_id;
+        const isNew = !this.pipelineRuns.some(r => r.id === syntheticId);
+        const existing = this.pipelineRuns.findIndex(r => r.id === syntheticId);
+        const entry = {
+            id: syntheticId,
+            _tool_run_id: snapshot.run_id,
+            name: 'Agent Pipeline',
+            status: snapshot.status || 'running',
+            _isToolWorkflow: true,
+        };
+        const next = this.pipelineRuns.slice();
+        if (existing >= 0) {
+            next[existing] = entry;
+        } else {
+            next.unshift(entry);
+        }
+        const order = { running: 0, failed: 1, completed: 2, cancelled: 3 };
+        next.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+        this.pipelineRuns = next;
+        this.pipelineRunsExpanded = true;
+        if (isNew && !this.selectedToolWorkflowRunId) {
+            this.selectToolWorkflowRun(snapshot.run_id);
+        }
+        if (this.selectedToolWorkflowRunId === snapshot.run_id) {
+            this.$nextTick(() => {
+                const el = document.getElementById('tool-workflow-detail-scroll');
+                if (el) el.scrollTop = el.scrollHeight;
+            });
+        }
+    },
+
+    selectToolWorkflowRun(runId) {
+        this.selectedPipelineRun = null;
+        this.pipelineRunItems = [];
+        this.clearPipelineRunDetailPoll();
+        this.selectedToolWorkflowRunId = runId;
+        this.$nextTick(() => {
+            const el = document.getElementById('tool-workflow-detail-scroll');
+            if (el) el.scrollTop = el.scrollHeight;
+        });
+    },
+
+    getSelectedToolWorkflowRun() {
+        if (!this.selectedToolWorkflowRunId) return null;
+        return this.toolWorkflowRuns.find(r => r.run_id === this.selectedToolWorkflowRunId) || null;
     },
 
     schedulePipelineRunPoll() {
@@ -4350,6 +4409,10 @@ Please review this PR and provide feedback.`;
                 this.selectedPipelineRun = null;
                 this.pipelineRunItems = [];
                 this.clearPipelineRunDetailPoll();
+            }
+            this.toolWorkflowRuns = this.toolWorkflowRuns.filter(r => r.status === 'running');
+            if (this.selectedToolWorkflowRunId && !this.toolWorkflowRuns.find(r => r.run_id === this.selectedToolWorkflowRunId)) {
+                this.selectedToolWorkflowRunId = null;
             }
             await this.loadPipelineRuns();
         } catch (err) {

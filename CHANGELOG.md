@@ -2,6 +2,8 @@
 
 ## 2026-10-01
 
+- [554783e](https://github.com/lankeami/claude-control/commit/554783e2aa17fab87dcc6cd5f9ee1880b802b34e) feat: show workflow tool runs in left sidebar Pipeline Runs section
+  Bridge SSE-based toolWorkflowRuns into the pipelineRuns sidebar as synthetic entries so running/completed autoship pipelines are visible and clickable. Selecting one opens a detail panel with agent progress, status badges, and result links. Auto-selects on first appearance and auto-scrolls as agents complete.
 - [e3f1728](https://github.com/lankeami/claude-control/commit/e3f172802ec9953ed374e3ee69aa016ce46e67c4) Add live visibility for Claude Code Workflow tool runs in web UI (#294)
   Managed sessions that invoke the built-in Workflow tool (autoship etc.) do their work in subagents whose transcripts land in a sidecar directory the controller never read. This adds:
 - [2f95a23](https://github.com/lankeami/claude-control/commit/2f95a23c2068f27b39f7b4cdacc50cb88b697b9b) fix: align right sidebar styling with left sidebar for visual consistency

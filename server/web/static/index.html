@@ -261,13 +261,17 @@
               <div style="font-size:0.75rem; color:var(--text-muted); padding:8px 4px;">No pipeline runs</div>
             </template>
             <template x-for="pr in pipelineRuns" :key="pr.id">
-              <div class="session-item" @click="selectedPipelineRun = pr; loadPipelineRunDetail(pr.id)"
+              <div class="session-item"
+                   @click="pr._isToolWorkflow ? selectToolWorkflowRun(pr._tool_run_id) : (selectedToolWorkflowRunId = null, selectedPipelineRun = pr, loadPipelineRunDetail(pr.id))"
+                   :class="{ active: pr._isToolWorkflow ? selectedToolWorkflowRunId === pr._tool_run_id : selectedPipelineRun?.id === pr.id }"
                    style="display:flex;align-items:center;gap:6px;">
                 <span class="status-dot"
                       :class="pr.status === 'running' ? 'working' : pr.status === 'completed' ? 'waiting' : 'idle'"></span>
                 <div style="flex:1;min-width:0;">
                   <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="pr.name"></div>
-                  <div x-show="pr.working_dir" style="font-size:0.6rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                  <div x-show="pr._isToolWorkflow" style="font-size:0.6rem;color:var(--text-muted);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                       x-text="pr._tool_run_id"></div>
+                  <div x-show="pr.working_dir && !pr._isToolWorkflow" style="font-size:0.6rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                        x-text="pr.working_dir ? pr.working_dir.split('/').pop() : ''"></div>
                 </div>
                 <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px;flex-shrink:0;"
@@ -584,48 +588,64 @@
               </div>
             </div>
 
-            <!-- Claude Workflow Tool Runs (autoship etc.) — live subagent progress
-                 streamed from the run's sidecar journal via per-session SSE -->
-            <div x-show="toolWorkflowRuns.length > 0" x-cloak style="border-top:1px solid var(--border);padding:10px 14px;background:var(--card);max-height:260px;overflow-y:auto;">
-              <template x-for="run in toolWorkflowRuns" :key="run.run_id">
-                <div style="margin-bottom:8px;">
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                    <span style="font-size:12px;font-weight:600;color:var(--text);">Agent Pipeline</span>
-                    <span style="font-size:10px;color:var(--text-muted);font-family:monospace;" x-text="run.run_id"></span>
-                    <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
-                          :style="run.status === 'running' ? 'background:#854d0e;color:#fde68a;' : 'background:#14532d;color:#86efac;'"
-                          x-text="run.status"></span>
-                  </div>
-                  <div style="display:flex;flex-direction:column;gap:3px;">
-                    <template x-if="!run.agents || run.agents.length === 0">
-                      <div style="font-size:11px;color:var(--text-muted);padding:2px 6px;">Starting agents...</div>
-                    </template>
-                    <template x-for="agent in (run.agents || [])" :key="agent.id">
-                      <div :style="'display:flex;align-items:flex-start;gap:8px;padding:4px 6px;border-radius:4px;font-size:12px;' + (agent.status === 'running' ? 'background:rgba(245,158,11,0.1);' : '')">
-                        <span style="width:14px;text-align:center;font-size:11px;flex-shrink:0;"
-                              :style="agent.status === 'complete' ? 'color:#22c55e;' : agent.status === 'running' ? 'color:#f59e0b;' : 'color:#6b7280;'"
-                              x-text="agent.status === 'complete' ? '✓' : agent.status === 'running' ? '▶' : '●'"></span>
-                        <div style="flex:1;min-width:0;">
-                          <span style="color:var(--text);word-break:break-word;" x-text="agent.label || agent.id"></span>
-                          <div x-show="agent.result" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px;">
-                            <template x-for="entry in window._ccWorkflowRunResultLinks(agent.result)" :key="entry.key">
-                              <span style="font-size:10px;">
-                                <span style="color:var(--text-muted);" x-text="entry.key + ': '"></span>
-                                <template x-if="entry.isUrl">
-                                  <a :href="entry.value" target="_blank" rel="noopener" style="color:var(--accent);" x-text="entry.value"></a>
-                                </template>
-                                <template x-if="!entry.isUrl">
-                                  <span style="color:var(--text);" x-text="entry.value"></span>
-                                </template>
-                              </span>
-                            </template>
-                          </div>
-                        </div>
-                      </div>
-                    </template>
-                  </div>
+            <!-- Claude Workflow Tool Runs — compact bar linking to sidebar detail -->
+            <template x-for="run in toolWorkflowRuns" :key="run.run_id">
+              <div x-show="!selectedToolWorkflowRunId" x-cloak
+                   @click="selectToolWorkflowRun(run.run_id)"
+                   style="border-top:1px solid var(--border);padding:8px 14px;background:var(--card);cursor:pointer;display:flex;align-items:center;gap:8px;">
+                <span style="font-size:12px;font-weight:600;color:var(--text);">Agent Pipeline</span>
+                <span style="font-size:10px;color:var(--text-muted);font-family:monospace;" x-text="run.run_id"></span>
+                <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
+                      :style="run.status === 'running' ? 'background:#854d0e;color:#fde68a;' : 'background:#14532d;color:#86efac;'"
+                      x-text="run.status"></span>
+                <span style="font-size:11px;color:var(--text-muted);margin-left:auto;"
+                      x-text="(run.agents || []).filter(a => a.status === 'complete').length + '/' + (run.agents || []).length + ' agents'"></span>
+                <span style="font-size:0.7rem;color:var(--text-muted);">Click to expand ›</span>
+              </div>
+            </template>
+
+            <!-- Tool Workflow Run Detail Panel (opened from sidebar or compact bar) -->
+            <div x-show="getSelectedToolWorkflowRun()" x-cloak style="border-top:1px solid var(--border);padding:10px 14px;background:var(--card);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:12px;font-weight:600;color:var(--text);">Agent Pipeline</span>
+                  <span style="font-size:10px;color:var(--text-muted);font-family:monospace;" x-text="getSelectedToolWorkflowRun()?.run_id"></span>
+                  <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
+                        :style="getSelectedToolWorkflowRun()?.status === 'running' ? 'background:#854d0e;color:#fde68a;' : 'background:#14532d;color:#86efac;'"
+                        x-text="getSelectedToolWorkflowRun()?.status"></span>
+                  <span style="font-size:10px;color:var(--text-muted);"
+                        x-text="(getSelectedToolWorkflowRun()?.agents || []).filter(a => a.status === 'complete').length + '/' + (getSelectedToolWorkflowRun()?.agents || []).length + ' agents'"></span>
                 </div>
-              </template>
+                <button @click="selectedToolWorkflowRunId = null" class="btn btn-sm" style="font-size:11px;padding:3px 8px;">Close</button>
+              </div>
+              <div id="tool-workflow-detail-scroll" style="display:flex;flex-direction:column;gap:3px;max-height:400px;overflow-y:auto;">
+                <template x-if="!getSelectedToolWorkflowRun()?.agents || getSelectedToolWorkflowRun()?.agents.length === 0">
+                  <div style="font-size:11px;color:var(--text-muted);padding:2px 6px;">Starting agents...</div>
+                </template>
+                <template x-for="agent in (getSelectedToolWorkflowRun()?.agents || [])" :key="agent.id">
+                  <div :style="'display:flex;align-items:flex-start;gap:8px;padding:4px 6px;border-radius:4px;font-size:12px;' + (agent.status === 'running' ? 'background:rgba(245,158,11,0.1);' : '')">
+                    <span style="width:14px;text-align:center;font-size:11px;flex-shrink:0;"
+                          :style="agent.status === 'complete' ? 'color:#22c55e;' : agent.status === 'running' ? 'color:#f59e0b;' : 'color:#6b7280;'"
+                          x-text="agent.status === 'complete' ? '✓' : agent.status === 'running' ? '▶' : '●'"></span>
+                    <div style="flex:1;min-width:0;">
+                      <span style="color:var(--text);word-break:break-word;" x-text="agent.label || agent.id"></span>
+                      <div x-show="agent.result" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px;">
+                        <template x-for="entry in window._ccWorkflowRunResultLinks(agent.result)" :key="entry.key">
+                          <span style="font-size:10px;">
+                            <span style="color:var(--text-muted);" x-text="entry.key + ': '"></span>
+                            <template x-if="entry.isUrl">
+                              <a :href="entry.value" target="_blank" rel="noopener" style="color:var(--accent);" x-text="entry.value"></a>
+                            </template>
+                            <template x-if="!entry.isUrl">
+                              <span style="color:var(--text);" x-text="entry.value"></span>
+                            </template>
+                          </span>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
 
             <!-- Pipeline Run Detail Panel -->
