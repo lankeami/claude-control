@@ -941,6 +941,29 @@ body {
   border-color: #238636;
 }
 
+.pipeline-status-pill {
+  font-size: 11px;
+  height: 22px;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pipeline-status-pill.sm {
+  font-size: 9px;
+  height: 18px;
+  line-height: 16px;
+  padding: 0 6px;
+}
+.pipeline-status-pill.running  { background: rgba(245,158,11,0.15); color: #f59e0b; border-color: #f59e0b; }
+.pipeline-status-pill.completed { background: #14532d; color: #86efac; border-color: #14532d; }
+.pipeline-status-pill.failed   { background: #7f1d1d; color: #fca5a5; border-color: #7f1d1d; }
+.pipeline-status-pill.cancelled { background: #374151; color: #d1d5db; border-color: #374151; }
+.pipeline-status-pill.paused   { background: #374151; color: #d1d5db; border-color: #374151; }
+
 .issues-search {
   width: 100%;
   padding: 5px 8px;
