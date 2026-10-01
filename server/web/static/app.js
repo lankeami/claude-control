@@ -4365,6 +4365,11 @@ Please review this PR and provide feedback.`;
         return this.toolWorkflowRuns.find(r => r.run_id === this.selectedToolWorkflowRunId) || null;
     },
 
+    pipelineStatusIcon(status) {
+        const icons = { running: '⟳', completed: '✓', failed: '✕', cancelled: '⊘', paused: '⏸' };
+        return icons[status] || '●';
+    },
+
     schedulePipelineRunPoll() {
         if (this.pipelineRunPollTimer) clearTimeout(this.pipelineRunPollTimer);
         const hasActive = this.pipelineRuns.some(r => r.status === 'running');

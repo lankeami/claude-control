@@ -274,9 +274,9 @@
                   <div x-show="pr.working_dir && !pr._isToolWorkflow" style="font-size:0.6rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                        x-text="pr.working_dir ? pr.working_dir.split('/').pop() : ''"></div>
                 </div>
-                <span style="font-size:0.65rem; padding:1px 4px; border-radius:3px;flex-shrink:0;"
+                <span style="font-size:0.65rem; padding:1px 5px; border-radius:3px;flex-shrink:0;line-height:1;"
                       :style="pr.status === 'running' ? 'background:#854d0e;color:#fde68a;' : pr.status === 'completed' ? 'background:#14532d;color:#86efac;' : pr.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : 'background:#374151;color:#d1d5db;'"
-                      x-text="pr.status"></span>
+                      x-text="pipelineStatusIcon(pr.status)"></span>
                 <span style="font-size:0.6rem;color:var(--text-muted);flex-shrink:0;">›</span>
               </div>
             </template>
@@ -561,8 +561,8 @@
                 <div style="display:flex;align-items:center;gap:8px;">
                   <span style="font-size:12px;font-weight:600;color:var(--text);">Workflow Run</span>
                   <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
-                        :style="activeWorkflowRun?.status === 'running' ? 'background:#854d0e;color:#fde68a;' : activeWorkflowRun?.status === 'completed' ? 'background:#14532d;color:#86efac;' : activeWorkflowRun?.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : activeWorkflowRun?.status === 'paused' ? 'background:#374151;color:#d1d5db;' : 'background:#374151;color:#d1d5db;'"
-                        x-text="activeWorkflowRun?.status"></span>
+                        :style="activeWorkflowRun?.status === 'running' ? 'background:#854d0e;color:#fde68a;' : activeWorkflowRun?.status === 'completed' ? 'background:#14532d;color:#86efac;' : activeWorkflowRun?.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : 'background:#374151;color:#d1d5db;'"
+                        x-text="pipelineStatusIcon(activeWorkflowRun?.status)"></span>
                 </div>
                 <div style="display:flex;gap:6px;">
                   <button x-show="activeWorkflowRun?.status === 'running'" @click="pauseWorkflowRun()"
@@ -596,8 +596,8 @@
                 <span style="font-size:12px;font-weight:600;color:var(--text);">Agent Pipeline</span>
                 <span style="font-size:10px;color:var(--text-muted);font-family:monospace;" x-text="run.run_id"></span>
                 <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
-                      :style="run.status === 'running' ? 'background:#854d0e;color:#fde68a;' : 'background:#14532d;color:#86efac;'"
-                      x-text="run.status"></span>
+                      :style="run.status === 'running' ? 'background:#854d0e;color:#fde68a;' : run.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : 'background:#14532d;color:#86efac;'"
+                      x-text="pipelineStatusIcon(run.status)"></span>
                 <span style="font-size:11px;color:var(--text-muted);margin-left:auto;"
                       x-text="(run.agents || []).filter(a => a.status === 'complete').length + '/' + (run.agents || []).length + ' agents'"></span>
                 <span style="font-size:0.7rem;color:var(--text-muted);">Click to expand ›</span>
@@ -611,8 +611,8 @@
                   <span style="font-size:12px;font-weight:600;color:var(--text);">Agent Pipeline</span>
                   <span style="font-size:10px;color:var(--text-muted);font-family:monospace;" x-text="getSelectedToolWorkflowRun()?.run_id"></span>
                   <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
-                        :style="getSelectedToolWorkflowRun()?.status === 'running' ? 'background:#854d0e;color:#fde68a;' : 'background:#14532d;color:#86efac;'"
-                        x-text="getSelectedToolWorkflowRun()?.status"></span>
+                        :style="getSelectedToolWorkflowRun()?.status === 'running' ? 'background:#854d0e;color:#fde68a;' : getSelectedToolWorkflowRun()?.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : 'background:#14532d;color:#86efac;'"
+                        x-text="pipelineStatusIcon(getSelectedToolWorkflowRun()?.status)"></span>
                   <span style="font-size:10px;color:var(--text-muted);"
                         x-text="(getSelectedToolWorkflowRun()?.agents || []).filter(a => a.status === 'complete').length + '/' + (getSelectedToolWorkflowRun()?.agents || []).length + ' agents'"></span>
                 </div>
@@ -657,7 +657,7 @@
                         x-text="selectedPipelineRun?.working_dir ? selectedPipelineRun.working_dir.split('/').pop() : ''"></span>
                   <span style="font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;"
                         :style="selectedPipelineRun?.status === 'running' ? 'background:#854d0e;color:#fde68a;' : selectedPipelineRun?.status === 'completed' ? 'background:#14532d;color:#86efac;' : selectedPipelineRun?.status === 'failed' ? 'background:#7f1d1d;color:#fca5a5;' : 'background:#374151;color:#d1d5db;'"
-                        x-text="selectedPipelineRun?.status"></span>
+                        x-text="pipelineStatusIcon(selectedPipelineRun?.status)"></span>
                 </div>
                 <button @click="selectedPipelineRun = null; pipelineRunItems = []; clearPipelineRunDetailPoll()"
                         class="btn btn-sm" style="font-size:11px;padding:3px 8px;">Close</button>
