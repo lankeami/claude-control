@@ -2,6 +2,8 @@
 
 ## 2026-10-01
 
+- [42c5b58](https://github.com/lankeami/claude-control/commit/42c5b58a929fceed4568e29dab75d44b83a757d6) fix: replace pipeline status text badges with icon-only pills
+  Use ⟳ (running), ✓ (completed), ✕ (failed), ⊘ (cancelled), ⏸ (paused) icons in colored pills instead of text labels. Centralized via pipelineStatusIcon() helper. Updated all 5 badge locations: sidebar list, workflow progress panel, compact bar, detail panel, and pipeline run detail panel.
 - [554783e](https://github.com/lankeami/claude-control/commit/554783e2aa17fab87dcc6cd5f9ee1880b802b34e) feat: show workflow tool runs in left sidebar Pipeline Runs section
   Bridge SSE-based toolWorkflowRuns into the pipelineRuns sidebar as synthetic entries so running/completed autoship pipelines are visible and clickable. Selecting one opens a detail panel with agent progress, status badges, and result links. Auto-selects on first appearance and auto-scrolls as agents complete.
 - [e3f1728](https://github.com/lankeami/claude-control/commit/e3f172802ec9953ed374e3ee69aa016ce46e67c4) Add live visibility for Claude Code Workflow tool runs in web UI (#294)
