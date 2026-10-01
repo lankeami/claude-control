@@ -117,6 +117,9 @@ document.addEventListener('alpine:init', () => {
     skillsLoading: false,
     skillsError: null,
     skillsFilter: 'all',
+    // Per-section right-sidebar text filters (independent of each other)
+    filesTextFilter: '',
+    skillsTextFilter: '',
 
     viewerFile: null,
     viewerMode: 'diff',
@@ -918,6 +921,10 @@ document.addEventListener('alpine:init', () => {
     },
 
     get visibleFileNodes() {
+      // Logic lives in sidebar-section-filter.js (loaded as <script type="module">) for testability.
+      if (this.filesTextFilter && typeof window._ccFilterFileTree === 'function') {
+        return window._ccFilterFileTree(this.fileTreeData, this.filesTextFilter);
+      }
       const nodes = [];
       const walk = (items) => {
         for (const node of items) {
@@ -2770,9 +2777,18 @@ document.addEventListener('alpine:init', () => {
     },
 
     get filteredSkills() {
-      if (this.skillsFilter === 'global') return this.skills.filter(s => s.dir !== 'project');
-      if (this.skillsFilter === 'project') return this.skills.filter(s => s.dir === 'project');
-      return this.skills;
+      let list = this.skills;
+      if (this.skillsFilter === 'global') list = list.filter(s => s.dir !== 'project');
+      else if (this.skillsFilter === 'project') list = list.filter(s => s.dir === 'project');
+      if (this.skillsTextFilter) {
+        if (typeof window._ccFilterByText === 'function') {
+          list = window._ccFilterByText(list, this.skillsTextFilter, s => s.name);
+        } else {
+          const q = this.skillsTextFilter.toLowerCase();
+          list = list.filter(s => (s.name || '').toLowerCase().includes(q));
+        }
+      }
+      return list;
     },
 
     sendSkill(skillName) {
