@@ -779,13 +779,14 @@ body {
   cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; line-height: 1;
 }
 .file-tree-refresh:hover { color: var(--text-primary); background: var(--bg-secondary); }
-.file-tree-list { overflow-y: auto; flex: 1; padding: 4px 0; }
+.file-tree-list { overflow-y: auto; flex: 1; padding: 0.5rem; }
 .file-tree-empty { color: var(--text-muted); font-size: 13px; padding: 16px; text-align: center; }
 .file-tree-item {
-  display: flex; align-items: center; gap: 4px; padding: 4px 8px;
-  cursor: pointer; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.625rem 0.75rem;
+  cursor: pointer; font-size: 0.8125rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-radius: 8px; transition: background 0.1s; background: var(--item-bg);
 }
-.file-tree-item:hover { background: var(--bg-secondary); }
+.file-tree-item:hover { background: var(--border); }
 .file-tree-item.is-selected { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 .file-tree-icon { width: 12px; font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
 .file-tree-name { overflow: hidden; text-overflow: ellipsis; }
@@ -878,10 +879,8 @@ body {
 }
 
 .issues-title {
-  font-size: 11px;
+  font-size: 0.8rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -889,12 +888,12 @@ body {
 }
 
 .issues-toggle {
-  font-size: 8px;
+  font-size: 0.65rem;
   color: var(--text-muted);
 }
 
 .issue-row.is-selected {
-  background: var(--bg-secondary);
+  background: var(--border);
   border-left: 2px solid var(--accent);
 }
 
@@ -962,7 +961,7 @@ body {
 .issue-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   max-height: 30vh;
   overflow-y: auto;
 }
@@ -975,16 +974,18 @@ body {
 
 .issue-row {
   display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 4px 2px;
-  border-radius: 4px;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background 0.1s;
+  background: var(--item-bg);
+  font-size: 0.8125rem;
 }
 
 .issue-row:hover {
-  background: var(--bg-secondary);
+  background: var(--border);
 }
 
 .issue-dot {
@@ -992,7 +993,6 @@ body {
   height: 14px;
   border-radius: 50%;
   flex-shrink: 0;
-  margin-top: 1px;
 }
 
 .issue-dot.open {
@@ -1009,7 +1009,7 @@ body {
 }
 
 .issue-row-title {
-  font-size: 11px;
+  font-size: 0.8125rem;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;

@@ -946,7 +946,7 @@
           <template x-for="node in visibleFileNodes" :key="node.path + (node.action || '')">
             <div class="file-tree-item"
                  :class="{ 'is-dir': node.isDir, 'is-selected': viewerFile === node.path, 'has-changes': !node.isDir && (node.gitStatus || node.action) }"
-                 :style="'padding-left: ' + (node.depth * 16 + 8) + 'px'"
+                 :style="'padding-left: ' + (node.depth * 16 + 12) + 'px'"
                  @click="node.isDir ? toggleDir(node) : openFileViewer(node.path)">
               <span class="file-tree-icon" x-text="node.isDir ? (node.open ? '▾' : '▸') : ''"></span>
               <span class="file-tree-name" :class="{ 'name-modified': !node.isDir && node.gitStatus }" x-text="node.name" :title="node.path"></span>
@@ -1006,7 +1006,7 @@
             <div x-show="!skillsLoading && !skillsError && skills.length === 0" class="issues-empty">No skills found</div>
             <div class="issue-list" x-show="!skillsLoading && !skillsError && skills.length > 0">
               <template x-for="skill in filteredSkills" :key="skill.name">
-                <div class="issue-row" :title="skill.description || skill.name" style="align-items:center">
+                <div class="issue-row" :title="skill.description || skill.name">
                   <button class="skill-action-btn skill-play" @click.stop="sendSkill(skill.name)" title="Run skill">&#8984;</button>
                   <div class="issue-row-content" @click.stop="insertSkill(skill.name)" style="cursor:pointer">
                     <div class="issue-row-title" x-text="skill.name" :style="skill.dir === 'project' ? 'color: #3b82f6' : ''"></div>
@@ -1288,7 +1288,7 @@
             <template x-for="node in visibleFileNodes" :key="node.path + (node.action || '')">
               <div class="file-tree-item"
                    :class="{ 'is-dir': node.isDir, 'is-selected': viewerFile === node.path }"
-                   :style="'padding-left: ' + (node.depth * 16 + 8) + 'px'"
+                   :style="'padding-left: ' + (node.depth * 16 + 12) + 'px'"
                    @click="node.isDir ? toggleDir(node) : openFileViewer(node.path)">
                 <span class="file-tree-icon" x-text="node.isDir ? (node.open ? '&#9662;' : '&#9656;') : ''"></span>
                 <span class="file-tree-name" :class="{ 'name-modified': !node.isDir && node.gitStatus }" x-text="node.name"></span>
@@ -1432,7 +1432,7 @@
             <div x-show="!skillsLoading && !skillsError && skills.length === 0" class="issues-empty">No skills found</div>
             <div class="issue-list full" x-show="!skillsLoading && !skillsError && skills.length > 0">
               <template x-for="skill in filteredSkills" :key="skill.name">
-                <div class="issue-row" :title="skill.description || skill.name" style="align-items:center">
+                <div class="issue-row" :title="skill.description || skill.name">
                   <button class="skill-action-btn skill-play" @click.stop="mobileMenuOpen=false; sendSkill(skill.name)" title="Run skill">&#8984;</button>
                   <div class="issue-row-content" @click.stop="mobileMenuOpen=false; insertSkill(skill.name)" style="cursor:pointer">
                     <div class="issue-row-title" x-text="skill.name" :style="skill.dir === 'project' ? 'color: #3b82f6' : ''"></div>

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-01
+
+- [2f95a23](https://github.com/lankeami/claude-control/commit/2f95a23c2068f27b39f7b4cdacc50cb88b697b9b) fix: align right sidebar styling with left sidebar for visual consistency
+  Match .issue-row, .file-tree-item, and section headers to .session-item styling: padding, border-radius, gap, background, hover, font-size, and transition values now use the same tokens across both sidebars.
+
 ## 2026-09-30
 
 - [7a6d0fa](https://github.com/lankeami/claude-control/commit/7a6d0fad22decb232618ddef0a75071ba6aa7128) fix: add hover styles to pipeline run items and clear-finished button
