@@ -243,3 +243,41 @@ func TestListGithubIssues_DefaultParamsAccepted(t *testing.T) {
 		}
 	}
 }
+
+func TestReshapeAPIPullHeadBranch(t *testing.T) {
+	input := ghAPIIssue{
+		Number: 7,
+		Title:  "Branchy PR",
+		State:  "open",
+		User:   ghAPIUser{Login: "jay"},
+		Head:   &ghAPIBranchRef{Ref: "feat/option-selector"},
+	}
+
+	result := reshapeAPIPull(input)
+
+	if result.HeadBranch != "feat/option-selector" {
+		t.Fatalf("pullResponse.HeadBranch = %q; want %q", result.HeadBranch, "feat/option-selector")
+	}
+}
+
+func TestPullResponseHeadBranchJSONTag(t *testing.T) {
+	b, err := json.Marshal(pullResponse{HeadBranch: "feat/x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["head_branch"] != "feat/x" {
+		t.Fatalf("pullResponse JSON head_branch = %v; want %q", m["head_branch"], "feat/x")
+	}
+}
+
+func TestReshapeAPIPullNoHeadBranch(t *testing.T) {
+	// Search API results have no head field; HeadBranch should stay empty, not panic.
+	result := reshapeAPIPull(ghAPIIssue{Number: 8, Title: "From search", User: ghAPIUser{Login: "jay"}})
+	if result.HeadBranch != "" {
+		t.Fatalf("pullResponse.HeadBranch = %q; want empty", result.HeadBranch)
+	}
+}

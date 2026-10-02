@@ -3062,6 +3062,18 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       }
     },
 
+    switchToPullBranch(pull) {
+      if (!this.selectedSessionId || !pull || !pull.head_branch) return;
+      const branch = pull.head_branch;
+      this.inputText = 'Switch to the branch for PR #' + pull.number + ': fetch from origin if needed, then check out the `' + branch + '` branch.';
+      const sess = this.currentSession;
+      if (sess && sess.mode === 'managed') {
+        this.$nextTick(() => this.sendManagedMessage());
+      } else {
+        this.$nextTick(() => this.sendInstruction());
+      }
+    },
+
     async fetchPullDetail(sessionId, number) {
       if (!sessionId) return;
       this.selectedPullLoading = true;
