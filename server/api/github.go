@@ -68,6 +68,10 @@ type ghAPILabel struct {
 	Color string `json:"color"`
 }
 
+type ghAPIBranchRef struct {
+	Ref string `json:"ref"`
+}
+
 type ghAPIIssue struct {
 	Number      int              `json:"number"`
 	Title       string           `json:"title"`
@@ -79,6 +83,8 @@ type ghAPIIssue struct {
 	Body        string           `json:"body"`
 	Comments    int              `json:"comments"`
 	PullRequest *json.RawMessage `json:"pull_request,omitempty"`
+	// Head is only present on /pulls API responses (not issues or search results).
+	Head *ghAPIBranchRef `json:"head,omitempty"`
 }
 
 func reshapeAPIIssue(g ghAPIIssue) issueResponse {
@@ -353,6 +359,9 @@ type pullResponse struct {
 	Author    string       `json:"author"`
 	Labels    []issueLabel `json:"labels"`
 	Body      string       `json:"body"`
+	// HeadBranch is the PR's head branch name; empty when the source API
+	// response carries no head ref (e.g. search results).
+	HeadBranch string `json:"head_branch,omitempty"`
 }
 
 type pullListResponse struct {
@@ -366,15 +375,20 @@ func reshapeAPIPull(g ghAPIIssue) pullResponse {
 	for _, l := range g.Labels {
 		labels = append(labels, issueLabel{Name: l.Name, Color: l.Color})
 	}
+	headBranch := ""
+	if g.Head != nil {
+		headBranch = g.Head.Ref
+	}
 	return pullResponse{
-		Number:    g.Number,
-		Title:     g.Title,
-		State:     g.State,
-		CreatedAt: g.CreatedAt,
-		UpdatedAt: g.UpdatedAt,
-		Author:    g.User.Login,
-		Labels:    labels,
-		Body:      g.Body,
+		Number:     g.Number,
+		Title:      g.Title,
+		State:      g.State,
+		CreatedAt:  g.CreatedAt,
+		UpdatedAt:  g.UpdatedAt,
+		Author:     g.User.Login,
+		Labels:     labels,
+		Body:       g.Body,
+		HeadBranch: headBranch,
 	}
 }
 
