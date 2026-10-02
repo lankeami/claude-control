@@ -3522,7 +3522,7 @@ Please review this PR and provide feedback.`;
 
     bubbleHTML(msg) {
       const esc = (s) => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
-      const time = `<span class="bubble-time">${esc(this.timeAgo(msg.timestamp))}</span>`;
+      const time = `<span class="bubble-time">${esc(this.formatAbsoluteTime(msg.timestamp))}</span>`;
 
       if (msg.msg_type === 'text') {
         let imgHtml = '';
@@ -3582,6 +3582,13 @@ Please review this PR and provide feedback.`;
     extractOptions(content) {
       if (typeof window._ccExtractOptions === 'function') return window._ccExtractOptions(content);
       return [];
+    },
+
+    // Absolute time for chat bubbles (e.g. "12:06:32 PM").
+    // Logic lives in bubble-time.js (loaded as <script type="module">) for testability.
+    formatAbsoluteTime(dateStr) {
+      if (typeof window._ccFormatAbsoluteTime === 'function') return window._ccFormatAbsoluteTime(dateStr);
+      return '';
     },
 
     // Time formatting
