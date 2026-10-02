@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-02
+
+- [bbc8ee4](https://github.com/lankeami/claude-control/commit/bbc8ee4c500845920c5c2719b1d34b149dab6078) fix: validate PR head branch name before building checkout prompt
+  The branch name comes from the PR head ref, which any PR author controls. Reject names with shell/prompt metacharacters, leading dashes, or path traversal before interpolating into the session prompt. Flagged by automated security review of #303.
+
 ## 2026-10-01
 
 - [1e99489](https://github.com/lankeami/claude-control/commit/1e99489d9c493398c75b7639e5e7034da6e48432) fix: proper pill badges for pipeline status with icon + text labels
