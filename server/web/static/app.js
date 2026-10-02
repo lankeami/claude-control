@@ -3065,6 +3065,9 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
     switchToPullBranch(pull) {
       if (!this.selectedSessionId || !pull || !pull.head_branch) return;
       const branch = pull.head_branch;
+      // The branch name comes from the PR head ref, which any PR author controls;
+      // reject anything that could smuggle instructions or flags into the prompt.
+      if (!/^[A-Za-z0-9._\/-]{1,200}$/.test(branch) || branch.startsWith('-') || branch.includes('..')) return;
       this.inputText = 'Switch to the branch for PR #' + pull.number + ': fetch from origin if needed, then check out the `' + branch + '` branch.';
       const sess = this.currentSession;
       if (sess && sess.mode === 'managed') {
