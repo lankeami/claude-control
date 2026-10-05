@@ -14,6 +14,12 @@ import (
 // for new run directories and journal appends. Overridden in tests.
 var WorkflowRunPollInterval = 500 * time.Millisecond
 
+// WorkflowRunStaleAfter is how long a run's journal (or, for a run dir with
+// no journal yet, the dir itself) may go unmodified before an incomplete run
+// is reported as "stale" instead of "running". Abandoned or killed workflows
+// never write a final result, so without this they'd show as running forever.
+var WorkflowRunStaleAfter = 10 * time.Minute
+
 // WorkflowAgentStatus is the derived state of one subagent in a Workflow
 // tool run.
 type WorkflowAgentStatus struct {
@@ -30,7 +36,7 @@ type WorkflowAgentStatus struct {
 type WorkflowRunSnapshot struct {
 	Type   string                `json:"type"` // always "workflow_run"
 	RunID  string                `json:"run_id"`
-	Status string                `json:"status"` // "running" | "completed"
+	Status string                `json:"status"` // "running" | "completed" | "stale"
 	Agents []WorkflowAgentStatus `json:"agents"`
 }
 
@@ -91,6 +97,9 @@ func readWorkflowRun(runDir, runID string) WorkflowRunSnapshot {
 			}
 		}
 	}
+	if status == "running" && workflowRunStale(runDir) {
+		status = "stale"
+	}
 	if agents == nil {
 		agents = []WorkflowAgentStatus{}
 	}
@@ -100,6 +109,22 @@ func readWorkflowRun(runDir, runID string) WorkflowRunSnapshot {
 		Status: status,
 		Agents: agents,
 	}
+}
+
+// workflowRunStale reports whether an incomplete run has gone quiet for
+// longer than WorkflowRunStaleAfter. The journal's mtime is the liveness
+// signal (every agent start/result appends to it); a run dir without a
+// journal yet falls back to the dir's own mtime so zero-agent runs can't
+// report running indefinitely.
+func workflowRunStale(runDir string) bool {
+	fi, err := os.Stat(filepath.Join(runDir, "journal.jsonl"))
+	if err != nil {
+		fi, err = os.Stat(runDir)
+		if err != nil {
+			return false
+		}
+	}
+	return time.Since(fi.ModTime()) > WorkflowRunStaleAfter
 }
 
 // workflowJournalEntry is a tolerant parse of one journal.jsonl line.

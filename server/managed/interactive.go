@@ -43,6 +43,7 @@ type InteractiveProc struct {
 
 	mu            sync.Mutex
 	tailStarted   bool
+	tailPath      string
 	tailCancel    context.CancelFunc
 	stopCh        chan struct{}
 	lastOutput    []byte
@@ -391,9 +392,13 @@ func (m *Manager) StopEvents(sessionID string) <-chan struct{} {
 	return proc.stopCh
 }
 
-// SetTranscript starts tailing the given transcript JSONL (idempotent —
-// subsequent calls are no-ops). Called when the SessionStart hook reports the
-// real transcript path. Entries timestamped before the process spawned are
+// SetTranscript starts tailing the given transcript JSONL. Idempotent for the
+// same path — repeated calls are no-ops. When the path CHANGES (the CLI
+// session id rotated, e.g. after /clear or compaction), the old tailer and
+// workflow-run watcher are cancelled and restarted against the new path, so
+// the workflows sidecar dir is re-derived and runs under the new session dir
+// keep surfacing. Called when the SessionStart hook reports the real
+// transcript path. Entries timestamped before the process spawned are
 // filtered so resumed sessions don't replay history.
 func (m *Manager) SetTranscript(sessionID, path string) {
 	proc := m.getInteractive(sessionID)
@@ -401,11 +406,15 @@ func (m *Manager) SetTranscript(sessionID, path string) {
 		return
 	}
 	proc.mu.Lock()
-	if proc.tailStarted {
+	if proc.tailStarted && proc.tailPath == path {
 		proc.mu.Unlock()
 		return
 	}
+	if proc.tailCancel != nil {
+		proc.tailCancel() // transcript path rotated — stop the old tail + workflow watcher
+	}
 	proc.tailStarted = true
+	proc.tailPath = path
 	ctx, cancel := context.WithCancel(context.Background())
 	proc.tailCancel = cancel
 	proc.mu.Unlock()
