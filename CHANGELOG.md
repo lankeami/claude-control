@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-05
+
+- [6a6d975](https://github.com/lankeami/claude-control/commit/6a6d9757c2e594907a3d7572566558ff53baa024) feat: open pipeline run detail as chat-pane takeover (#305)
+  Clicking a run in the Pipeline Runs sidebar now takes over the main chat pane with a detail view (same pattern as session selection), replacing the old bottom-of-chat panels. The view shows a running activity log — live-polled while the pipeline is running, final log once finished — for both DB-backed pipeline runs and Claude Workflow tool runs. New pipeline-run-view.js module carries the testable takeover/log/poll state helpers (node:test coverage), with embedded-FS and markup assertions in web_test.go.
+
 ## 2026-10-02
 
 - [bbc8ee4](https://github.com/lankeami/claude-control/commit/bbc8ee4c500845920c5c2719b1d34b149dab6078) fix: validate PR head branch name before building checkout prompt

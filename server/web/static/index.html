@@ -32,6 +32,7 @@
   <script type="module" src="/agent-tracker.js"></script>
   <script type="module" src="/question-dedup.js"></script>
   <script type="module" src="/workflow-run-card.js"></script>
+  <script type="module" src="/pipeline-run-view.js"></script>
   <script type="module" src="/sidebar-section-filter.js"></script>
   <script defer src="/app.js"></script>
   <script defer src="/alpine.min.js"></script>
@@ -407,7 +408,80 @@
           <div class="chat-column" :class="{ 'has-viewer': viewerFile || selectedIssue || selectedPull }">
             <!-- Chat area -->
             <div class="chat-area" id="chat-area">
-              <template x-if="!selectedSessionId">
+              <!-- Pipeline run detail takeover (chat-pane takeover, like session selection) -->
+              <template x-if="pipelineRunViewActive()">
+                <div id="pipeline-run-takeover" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;">
+                      <span style="font-size:14px;font-weight:600;color:var(--text);"
+                            x-text="selectedToolWorkflowRunId ? 'Agent Pipeline' : (selectedPipelineRun?.name || 'Pipeline Run')"></span>
+                      <span x-show="selectedToolWorkflowRunId" style="font-size:10px;color:var(--text-muted);font-family:monospace;"
+                            x-text="selectedToolWorkflowRunId"></span>
+                      <span x-show="!selectedToolWorkflowRunId && selectedPipelineRun?.working_dir" style="font-size:10px;color:var(--text-muted);"
+                            x-text="selectedPipelineRun?.working_dir ? selectedPipelineRun.working_dir.split('/').pop() : ''"></span>
+                      <span class="pipeline-status-pill"
+                            :class="selectedToolWorkflowRunId ? getSelectedToolWorkflowRun()?.status : selectedPipelineRun?.status"
+                            x-text="pipelineStatusLabel(selectedToolWorkflowRunId ? getSelectedToolWorkflowRun()?.status : selectedPipelineRun?.status)"></span>
+                      <span x-show="selectedToolWorkflowRunId" style="font-size:10px;color:var(--text-muted);"
+                            x-text="(getSelectedToolWorkflowRun()?.agents || []).filter(a => a.status === 'complete').length + '/' + (getSelectedToolWorkflowRun()?.agents || []).length + ' agents'"></span>
+                    </div>
+                    <button @click="closePipelineRunView()" class="btn btn-sm" style="font-size:11px;padding:3px 8px;flex-shrink:0;">Close</button>
+                  </div>
+                  <!-- DB-backed pipeline run: activity log of run items -->
+                  <div x-show="!selectedToolWorkflowRunId" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:3px;">
+                    <template x-if="pipelineRunItems.length === 0">
+                      <div style="font-size:11px;color:var(--text-muted);padding:2px 6px;">No activity yet...</div>
+                    </template>
+                    <template x-for="entry in window._ccPipelineRunLogEntries(pipelineRunItems)" :key="entry.id">
+                      <div class="pipeline-item" :class="{ clickable: entry.sessionId }"
+                           style="display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:12px;"
+                           :style="entry.running ? 'background:rgba(245,158,11,0.1);' : ''"
+                           @click="entry.sessionId && selectSession(entry.sessionId)">
+                        <span style="width:14px;text-align:center;font-size:11px;" :style="'color:' + entry.tone + ';'"
+                              x-text="entry.icon"></span>
+                        <div style="flex:1;min-width:0;">
+                          <span style="color:var(--text);" x-text="entry.label"></span>
+                          <span x-show="entry.sessionId" style="font-size:10px;color:var(--text-muted);margin-left:4px;"
+                                x-text="entry.sessionId ? getSessionName(entry.sessionId) : ''"></span>
+                        </div>
+                        <span x-show="entry.error" style="color:#ef4444;font-size:10px;flex-shrink:0;" x-text="entry.error"></span>
+                        <span x-show="entry.sessionId" style="font-size:0.6rem;color:var(--text-muted);flex-shrink:0;">›</span>
+                      </div>
+                    </template>
+                  </div>
+                  <!-- Claude Workflow tool run: live agent activity log -->
+                  <div x-show="selectedToolWorkflowRunId" id="tool-workflow-detail-scroll"
+                       style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:3px;">
+                    <template x-if="!getSelectedToolWorkflowRun()?.agents || getSelectedToolWorkflowRun()?.agents.length === 0">
+                      <div style="font-size:11px;color:var(--text-muted);padding:2px 6px;">Starting agents...</div>
+                    </template>
+                    <template x-for="agent in (getSelectedToolWorkflowRun()?.agents || [])" :key="agent.id">
+                      <div :style="'display:flex;align-items:flex-start;gap:8px;padding:4px 6px;border-radius:4px;font-size:12px;' + (agent.status === 'running' ? 'background:rgba(245,158,11,0.1);' : '')">
+                        <span style="width:14px;text-align:center;font-size:11px;flex-shrink:0;"
+                              :style="agent.status === 'complete' ? 'color:#22c55e;' : agent.status === 'running' ? 'color:#f59e0b;' : 'color:#6b7280;'"
+                              x-text="agent.status === 'complete' ? '✓' : agent.status === 'running' ? '▶' : '●'"></span>
+                        <div style="flex:1;min-width:0;">
+                          <span style="color:var(--text);word-break:break-word;" x-text="agent.label || agent.id"></span>
+                          <div x-show="agent.result" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px;">
+                            <template x-for="entry in window._ccWorkflowRunResultLinks(agent.result)" :key="entry.key">
+                              <span style="font-size:10px;">
+                                <span style="color:var(--text-muted);" x-text="entry.key + ': '"></span>
+                                <template x-if="entry.isUrl">
+                                  <a :href="entry.value" target="_blank" rel="noopener" style="color:var(--accent);" x-text="entry.value"></a>
+                                </template>
+                                <template x-if="!entry.isUrl">
+                                  <span style="color:var(--text);" x-text="entry.value"></span>
+                                </template>
+                              </span>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+              <template x-if="!pipelineRunViewActive() && !selectedSessionId">
                 <div class="chat-empty">
                   <div>
                     <p style="font-size:1.125rem">Select a session</p>
@@ -415,7 +489,7 @@
                   </div>
                 </div>
               </template>
-              <template x-if="selectedSessionId && chatMessages.length === 0 && !chatLoading">
+              <template x-if="!pipelineRunViewActive() && selectedSessionId && chatMessages.length === 0 && !chatLoading">
                 <div class="chat-empty">
                   <div>
                     <p style="font-size:1.125rem">No messages yet</p>
@@ -424,7 +498,7 @@
                 </div>
               </template>
               <template x-for="(msg, idx) in chatMessages" :key="idx">
-                <div class="chat-item">
+                <div class="chat-item" x-show="!pipelineRunViewActive()">
                   <template x-if="msg.role === 'activity'">
                     <div class="activity-pills">
                       <span class="activity-pill" :class="msg.pillState">
@@ -589,7 +663,7 @@
 
             <!-- Claude Workflow Tool Runs — compact bar linking to sidebar detail -->
             <template x-for="run in toolWorkflowRuns" :key="run.run_id">
-              <div x-show="!selectedToolWorkflowRunId" x-cloak
+              <div x-show="!pipelineRunViewActive()" x-cloak
                    @click="selectToolWorkflowRun(run.run_id)"
                    style="border-top:1px solid var(--border);padding:8px 14px;background:var(--card);cursor:pointer;display:flex;align-items:center;gap:8px;">
                 <span style="font-size:12px;font-weight:600;color:var(--text);">Agent Pipeline</span>
@@ -602,85 +676,8 @@
               </div>
             </template>
 
-            <!-- Tool Workflow Run Detail Panel (opened from sidebar or compact bar) -->
-            <div x-show="getSelectedToolWorkflowRun()" x-cloak style="border-top:1px solid var(--border);padding:10px 14px;background:var(--card);">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <span style="font-size:12px;font-weight:600;color:var(--text);">Agent Pipeline</span>
-                  <span style="font-size:10px;color:var(--text-muted);font-family:monospace;" x-text="getSelectedToolWorkflowRun()?.run_id"></span>
-                  <span class="pipeline-status-pill" :class="getSelectedToolWorkflowRun()?.status"
-                        x-text="pipelineStatusLabel(getSelectedToolWorkflowRun()?.status)"></span>
-                  <span style="font-size:10px;color:var(--text-muted);"
-                        x-text="(getSelectedToolWorkflowRun()?.agents || []).filter(a => a.status === 'complete').length + '/' + (getSelectedToolWorkflowRun()?.agents || []).length + ' agents'"></span>
-                </div>
-                <button @click="selectedToolWorkflowRunId = null" class="btn btn-sm" style="font-size:11px;padding:3px 8px;">Close</button>
-              </div>
-              <div id="tool-workflow-detail-scroll" style="display:flex;flex-direction:column;gap:3px;max-height:400px;overflow-y:auto;">
-                <template x-if="!getSelectedToolWorkflowRun()?.agents || getSelectedToolWorkflowRun()?.agents.length === 0">
-                  <div style="font-size:11px;color:var(--text-muted);padding:2px 6px;">Starting agents...</div>
-                </template>
-                <template x-for="agent in (getSelectedToolWorkflowRun()?.agents || [])" :key="agent.id">
-                  <div :style="'display:flex;align-items:flex-start;gap:8px;padding:4px 6px;border-radius:4px;font-size:12px;' + (agent.status === 'running' ? 'background:rgba(245,158,11,0.1);' : '')">
-                    <span style="width:14px;text-align:center;font-size:11px;flex-shrink:0;"
-                          :style="agent.status === 'complete' ? 'color:#22c55e;' : agent.status === 'running' ? 'color:#f59e0b;' : 'color:#6b7280;'"
-                          x-text="agent.status === 'complete' ? '✓' : agent.status === 'running' ? '▶' : '●'"></span>
-                    <div style="flex:1;min-width:0;">
-                      <span style="color:var(--text);word-break:break-word;" x-text="agent.label || agent.id"></span>
-                      <div x-show="agent.result" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px;">
-                        <template x-for="entry in window._ccWorkflowRunResultLinks(agent.result)" :key="entry.key">
-                          <span style="font-size:10px;">
-                            <span style="color:var(--text-muted);" x-text="entry.key + ': '"></span>
-                            <template x-if="entry.isUrl">
-                              <a :href="entry.value" target="_blank" rel="noopener" style="color:var(--accent);" x-text="entry.value"></a>
-                            </template>
-                            <template x-if="!entry.isUrl">
-                              <span style="color:var(--text);" x-text="entry.value"></span>
-                            </template>
-                          </span>
-                        </template>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-
-            <!-- Pipeline Run Detail Panel -->
-            <div x-show="selectedPipelineRun" x-cloak style="border-top:1px solid var(--border);padding:10px 14px;background:var(--card);">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <span style="font-size:12px;font-weight:600;color:var(--text);" x-text="selectedPipelineRun?.name || 'Pipeline Run'"></span>
-                  <span x-show="selectedPipelineRun?.working_dir" style="font-size:10px;color:var(--text-muted);"
-                        x-text="selectedPipelineRun?.working_dir ? selectedPipelineRun.working_dir.split('/').pop() : ''"></span>
-                  <span class="pipeline-status-pill" :class="selectedPipelineRun?.status"
-                        x-text="pipelineStatusLabel(selectedPipelineRun?.status)"></span>
-                </div>
-                <button @click="selectedPipelineRun = null; pipelineRunItems = []; clearPipelineRunDetailPoll()"
-                        class="btn btn-sm" style="font-size:11px;padding:3px 8px;">Close</button>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:3px;">
-                <template x-for="item in pipelineRunItems" :key="item.id">
-                  <div class="pipeline-item" :class="{ clickable: item.session_id }"
-                       style="display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:12px;"
-                       :style="item.status === 'running' ? 'background:rgba(245,158,11,0.1);' : ''"
-                       @click="item.session_id && selectSession(item.session_id)">
-                    <span style="width:14px;text-align:center;font-size:11px;"
-                          :style="item.status === 'completed' ? 'color:#22c55e;' : item.status === 'running' ? 'color:#f59e0b;' : item.status === 'failed' ? 'color:#ef4444;' : 'color:#6b7280;'"
-                          x-text="item.status === 'completed' ? '✓' : item.status === 'running' ? '▶' : item.status === 'failed' ? '✕' : '●'"></span>
-                    <div style="flex:1;min-width:0;">
-                      <span style="color:var(--text);" x-text="item.feature_label"></span>
-                      <span x-show="item.session_id" style="font-size:10px;color:var(--text-muted);margin-left:4px;"
-                            x-text="item.session_id ? getSessionName(item.session_id) : ''"></span>
-                    </div>
-                    <span x-show="item.error" style="color:#ef4444;font-size:10px;flex-shrink:0;" x-text="item.error"></span>
-                    <span x-show="item.session_id" style="font-size:0.6rem;color:var(--text-muted);flex-shrink:0;">›</span>
-                  </div>
-                </template>
-              </div>
-            </div>
-
             <!-- Response textarea (only when pending prompt) -->
-            <div class="response-area" x-show="currentPendingPrompt">
+            <div class="response-area" x-show="currentPendingPrompt && !pipelineRunViewActive()">
               <textarea x-model="responseText" :placeholder="isPromptStale ? 'Hook timed out — will queue as instruction...' : 'Type your response...'"
                         @keydown.enter.prevent="if(!$event.shiftKey && responseText.trim()){
                           responseSending=true;
@@ -694,7 +691,7 @@
             </div>
 
             <!-- Input bar (managed mode messages OR hook-mode instructions) -->
-            <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt" style="position:relative">
+            <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt && !pipelineRunViewActive()" style="position:relative">
               <input type="file" x-ref="imageInput" accept="image/*" multiple
                      @change="uploadImage($event)" style="display:none">
 
