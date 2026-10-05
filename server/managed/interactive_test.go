@@ -550,3 +550,67 @@ func TestSendPromptSerialization(t *testing.T) {
 			strings.Contains(out, "\x1b[200~BBBB\x1b[201~")
 	})
 }
+
+// Bug 1 (issue #307): when the CLI session id rotates, SetTranscript is called
+// with a new transcript path. The workflow-run watcher must re-derive the
+// workflows sidecar dir from the new path instead of scanning the old one
+// forever.
+func TestSetTranscriptRotationRediscoversWorkflowsDir(t *testing.T) {
+	oldT := TranscriptPollInterval
+	TranscriptPollInterval = 20 * time.Millisecond
+	defer func() { TranscriptPollInterval = oldT }()
+	oldW := WorkflowRunPollInterval
+	WorkflowRunPollInterval = 20 * time.Millisecond
+	defer func() { WorkflowRunPollInterval = oldW }()
+
+	dir := t.TempDir()
+	pathA := filepath.Join(dir, "session-a.jsonl")
+	pathB := filepath.Join(dir, "session-b.jsonl")
+	os.WriteFile(pathA, nil, 0644)
+	os.WriteFile(pathB, nil, 0644)
+
+	var mu sync.Mutex
+	var events []string
+	m := newTestManager("cat")
+	_, err := m.EnsureInteractive("s-rotate", InteractiveOpts{
+		CWD: dir,
+		OnWorkflowEvent: func(line string) {
+			mu.Lock()
+			events = append(events, line)
+			mu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("s-rotate", time.Second)
+
+	m.SetTranscript("s-rotate", pathA)
+	runA := filepath.Join(WorkflowsDirForTranscript(pathA), "wf_runA")
+	if err := os.MkdirAll(runA, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(events) > 0 && strings.Contains(events[len(events)-1], "wf_runA")
+	})
+
+	// Session id rotates: a new transcript path arrives. Runs written under
+	// the NEW session's workflows dir must surface.
+	m.SetTranscript("s-rotate", pathB)
+	runB := filepath.Join(WorkflowsDirForTranscript(pathB), "wf_runB")
+	if err := os.MkdirAll(runB, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, e := range events {
+			if strings.Contains(e, "wf_runB") {
+				return true
+			}
+		}
+		return false
+	})
+}

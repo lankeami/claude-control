@@ -961,6 +961,7 @@ body {
 .pipeline-status-pill.running  { background: rgba(245,158,11,0.15); color: #f59e0b; border-color: #f59e0b; }
 .pipeline-status-pill.completed { background: #14532d; color: #86efac; border-color: #14532d; }
 .pipeline-status-pill.failed   { background: #7f1d1d; color: #fca5a5; border-color: #7f1d1d; }
+.pipeline-status-pill.stale    { background: rgba(249,115,22,0.15); color: #fb923c; border-color: #fb923c; }
 .pipeline-status-pill.cancelled { background: #374151; color: #d1d5db; border-color: #374151; }
 .pipeline-status-pill.paused   { background: #374151; color: #d1d5db; border-color: #374151; }
 

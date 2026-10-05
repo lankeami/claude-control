@@ -277,3 +277,89 @@ func TestWorkflowRunAgentLabelTruncated(t *testing.T) {
 		t.Errorf("label length=%d, want 1..140", got)
 	}
 }
+
+// Bug 2 (issue #307): a run whose journal has agents started but no result,
+// and whose journal file hasn't been modified for over WorkflowRunStaleAfter,
+// must be reported as "stale" instead of running forever.
+func TestWorkflowRunStaleJournalMarksRunStale(t *testing.T) {
+	workflowsDir := t.TempDir()
+	runDir := filepath.Join(workflowsDir, "wf_stale1")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(runDir, "journal.jsonl")
+	writeFileAppend(t, journal, `{"type":"started","key":"v2:k1","agentId":"agent1"}`+"\n")
+
+	// Fresh journal: still running, not stale.
+	snap := readWorkflowRun(runDir, "wf_stale1")
+	if snap.Status != "running" {
+		t.Fatalf("fresh journal status=%q, want running", snap.Status)
+	}
+
+	// Age the journal past the staleness threshold.
+	old := time.Now().Add(-WorkflowRunStaleAfter - time.Minute)
+	if err := os.Chtimes(journal, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	snap = readWorkflowRun(runDir, "wf_stale1")
+	if snap.Status != "stale" {
+		t.Errorf("aged journal status=%q, want stale", snap.Status)
+	}
+	if len(snap.Agents) != 1 || snap.Agents[0].Status != "running" {
+		t.Errorf("agents=%+v, want agent1 still reported running", snap.Agents)
+	}
+}
+
+// A completed run must never be reported stale, no matter how old the journal.
+func TestWorkflowRunCompletedNeverStale(t *testing.T) {
+	workflowsDir := t.TempDir()
+	runDir := filepath.Join(workflowsDir, "wf_stale2")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(runDir, "journal.jsonl")
+	writeFileAppend(t, journal,
+		`{"type":"started","key":"v2:k1","agentId":"agent1"}`+"\n"+
+			`{"type":"result","key":"v2:k1","agentId":"agent1","result":{"ok":true}}`+"\n")
+	old := time.Now().Add(-WorkflowRunStaleAfter - time.Hour)
+	if err := os.Chtimes(journal, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	snap := readWorkflowRun(runDir, "wf_stale2")
+	if snap.Status != "completed" {
+		t.Errorf("status=%q, want completed (staleness must not apply)", snap.Status)
+	}
+}
+
+// Bug 2b (issue #307): a run dir with zero agents (no journal, no meta files)
+// currently reports running indefinitely. A fresh zero-agent dir is a run
+// that just started — still running — but once the dir itself is older than
+// the staleness threshold it must flip to stale.
+func TestWorkflowRunZeroAgentDirGoesStale(t *testing.T) {
+	workflowsDir := t.TempDir()
+	runDir := filepath.Join(workflowsDir, "wf_stale3")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fresh empty run dir: running (existing contract).
+	snap := readWorkflowRun(runDir, "wf_stale3")
+	if snap.Status != "running" {
+		t.Fatalf("fresh zero-agent status=%q, want running", snap.Status)
+	}
+
+	old := time.Now().Add(-WorkflowRunStaleAfter - time.Minute)
+	if err := os.Chtimes(runDir, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	snap = readWorkflowRun(runDir, "wf_stale3")
+	if snap.Status != "stale" {
+		t.Errorf("aged zero-agent status=%q, want stale", snap.Status)
+	}
+	if len(snap.Agents) != 0 {
+		t.Errorf("agents=%d, want 0", len(snap.Agents))
+	}
+}

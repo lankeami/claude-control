@@ -64,3 +64,24 @@ func TestIndexHTMLContainsSessionFilterClearButton(t *testing.T) {
 		t.Errorf("expected at least 2 session filter clear handlers (desktop + mobile), found %d", count)
 	}
 }
+
+// Issue #307: the pipeline runs list must surface the "stale" workflow-run
+// status distinctly (dedicated pill style + label), not fall back to generic
+// rendering.
+func TestPipelineRunsListSurfacesStaleStatus(t *testing.T) {
+	css, err := fs.ReadFile(staticFiles, "static/style.css")
+	if err != nil {
+		t.Fatal("failed to read style.css:", err)
+	}
+	if !strings.Contains(string(css), ".pipeline-status-pill.stale") {
+		t.Error("expected style.css to define a .pipeline-status-pill.stale style")
+	}
+
+	app, err := fs.ReadFile(staticFiles, "static/app.js")
+	if err != nil {
+		t.Fatal("failed to read app.js:", err)
+	}
+	if !strings.Contains(string(app), "stale:") {
+		t.Error("expected app.js pipelineStatusLabel to include a stale label")
+	}
+}

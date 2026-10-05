@@ -4331,7 +4331,7 @@ Please review this PR and provide feedback.`;
                     _isToolWorkflow: true,
                 }));
                 const merged = [...toolRuns, ...dbRuns];
-                const order = { running: 0, failed: 1, completed: 2, cancelled: 3 };
+                const order = { running: 0, stale: 1, failed: 2, completed: 3, cancelled: 4 };
                 merged.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
                 this.pipelineRuns = merged;
             }
@@ -4357,7 +4357,7 @@ Please review this PR and provide feedback.`;
         } else {
             next.unshift(entry);
         }
-        const order = { running: 0, failed: 1, completed: 2, cancelled: 3 };
+        const order = { running: 0, stale: 1, failed: 2, completed: 3, cancelled: 4 };
         next.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
         this.pipelineRuns = next;
         this.pipelineRunsExpanded = true;
@@ -4403,7 +4403,7 @@ Please review this PR and provide feedback.`;
     pipelineStatusLabel(status) {
         const labels = {
             running: '⟳ running', completed: '✓ done', failed: '✕ failed',
-            cancelled: '⊘ cancelled', paused: '⏸ paused'
+            cancelled: '⊘ cancelled', paused: '⏸ paused', stale: '⚠ stale'
         };
         return labels[status] || status || '';
     },

@@ -2,6 +2,8 @@
 
 ## 2026-10-05
 
+- [d0bc1fd](https://github.com/lankeami/claude-control/commit/d0bc1fde62f164fed6ddd0da77ca066b312511fd) Fix workflow run discovery bugs: transcript rotation and stale runs (#307)
+  - Re-derive the workflows sidecar dir when the tailed transcript path changes: SetTranscript now cancels and restarts the tail + workflow watcher on path rotation instead of no-opping forever (tailStarted guard kept for same-path idempotency). - Mark a run stale when its journal.jsonl (or the run dir itself, for zero-agent runs) has not been modified for over 10 minutes while agents are still incomplete (WorkflowRunStaleAfter). - Surface the stale status distinctly in the web UI pipeline runs list: dedicated pill style, label, and sort order.
 - [6a6d975](https://github.com/lankeami/claude-control/commit/6a6d9757c2e594907a3d7572566558ff53baa024) feat: open pipeline run detail as chat-pane takeover (#305)
   Clicking a run in the Pipeline Runs sidebar now takes over the main chat pane with a detail view (same pattern as session selection), replacing the old bottom-of-chat panels. The view shows a running activity log — live-polled while the pipeline is running, final log once finished — for both DB-backed pipeline runs and Claude Workflow tool runs. New pipeline-run-view.js module carries the testable takeover/log/poll state helpers (node:test coverage), with embedded-FS and markup assertions in web_test.go.
 
