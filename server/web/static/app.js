@@ -1018,6 +1018,8 @@ document.addEventListener('alpine:init', () => {
       this.requestNotificationPermission();
       this.mobileMenuOpen = false;
       this.mobileOverlay = null;
+      // Selecting a session returns the chat pane from a pipeline run takeover
+      this.closePipelineRunView();
       if (this.selectedSessionId === id) return;
       this.selectedSessionId = id;
       this.stopSessionSSE();
@@ -4341,7 +4343,6 @@ Please review this PR and provide feedback.`;
 
     syncToolWorkflowToSidebar(snapshot) {
         const syntheticId = 'twf_' + snapshot.run_id;
-        const isNew = !this.pipelineRuns.some(r => r.id === syntheticId);
         const existing = this.pipelineRuns.findIndex(r => r.id === syntheticId);
         const entry = {
             id: syntheticId,
@@ -4360,9 +4361,8 @@ Please review this PR and provide feedback.`;
         next.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
         this.pipelineRuns = next;
         this.pipelineRunsExpanded = true;
-        if (isNew && !this.selectedToolWorkflowRunId) {
-            this.selectToolWorkflowRun(snapshot.run_id);
-        }
+        // No auto-select: the detail view now takes over the chat pane, so it
+        // only opens on an explicit click (sidebar row or compact bar).
         if (this.selectedToolWorkflowRunId === snapshot.run_id) {
             this.$nextTick(() => {
                 const el = document.getElementById('tool-workflow-detail-scroll');
@@ -4385,6 +4385,19 @@ Please review this PR and provide feedback.`;
     getSelectedToolWorkflowRun() {
         if (!this.selectedToolWorkflowRunId) return null;
         return this.toolWorkflowRuns.find(r => r.run_id === this.selectedToolWorkflowRunId) || null;
+    },
+
+    // Whether the pipeline run detail view has taken over the chat pane
+    // (same takeover pattern as selecting a session from the session list).
+    pipelineRunViewActive() {
+        return window._ccPipelineRunViewActive(this.selectedPipelineRun, this.selectedToolWorkflowRunId);
+    },
+
+    closePipelineRunView() {
+        this.selectedPipelineRun = null;
+        this.pipelineRunItems = [];
+        this.clearPipelineRunDetailPoll();
+        this.selectedToolWorkflowRunId = null;
     },
 
     pipelineStatusLabel(status) {
@@ -4413,7 +4426,8 @@ Please review this PR and provide feedback.`;
                 const data = await res.json();
                 this.selectedPipelineRun = data.run;
                 this.pipelineRunItems = data.items || [];
-                if (data.run?.status === 'running') {
+                // Live-updating log while running; final log once finished
+                if (window._ccShouldPollPipelineRunDetail(data.run)) {
                     this.pipelineRunDetailPollTimer = setTimeout(() => this.loadPipelineRunDetail(runId), 2000);
                 }
             }
