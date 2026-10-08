@@ -16,6 +16,10 @@ export function upsertWorkflowRun(runs, snapshot) {
   const next = (runs || []).slice();
   const i = next.findIndex((r) => r.run_id === snapshot.run_id);
   if (i >= 0) {
+    if (!snapshot._sessionId && next[i]._sessionId) {
+      snapshot._sessionId = next[i]._sessionId;
+      snapshot._sessionName = next[i]._sessionName;
+    }
     next[i] = snapshot;
   } else {
     next.push(snapshot);

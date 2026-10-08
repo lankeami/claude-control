@@ -2162,6 +2162,9 @@ document.addEventListener('alpine:init', () => {
           // Claude Workflow tool run snapshot (autoship pipelines etc.) —
           // upsert into the live run card state and sync to sidebar.
           if (data.type === 'workflow_run') {
+            data._sessionId = sessionId;
+            const sess = this.sessions.find(s => s.id === sessionId);
+            data._sessionName = sess ? this.sessionName(sess) : sessionId;
             this.toolWorkflowRuns = window._ccUpsertWorkflowRun(this.toolWorkflowRuns, data);
             this.syncToolWorkflowToSidebar(data);
             return;
@@ -4326,9 +4329,10 @@ Please review this PR and provide feedback.`;
                 const toolRuns = this.toolWorkflowRuns.map(r => ({
                     id: 'twf_' + r.run_id,
                     _tool_run_id: r.run_id,
-                    name: 'Agent Pipeline',
+                    name: r._sessionName || 'Agent Pipeline',
                     status: r.status || 'running',
                     _isToolWorkflow: true,
+                    _sessionId: r._sessionId,
                 }));
                 const merged = [...toolRuns, ...dbRuns];
                 const order = { running: 0, stale: 1, failed: 2, completed: 3, cancelled: 4 };
@@ -4347,9 +4351,10 @@ Please review this PR and provide feedback.`;
         const entry = {
             id: syntheticId,
             _tool_run_id: snapshot.run_id,
-            name: 'Agent Pipeline',
+            name: snapshot._sessionName || 'Agent Pipeline',
             status: snapshot.status || 'running',
             _isToolWorkflow: true,
+            _sessionId: snapshot._sessionId,
         };
         const next = this.pipelineRuns.slice();
         if (existing >= 0) {
@@ -4371,7 +4376,10 @@ Please review this PR and provide feedback.`;
         }
     },
 
-    selectToolWorkflowRun(runId) {
+    selectToolWorkflowRun(runId, sessionId) {
+        if (sessionId && sessionId !== this.selectedSessionId) {
+            this.selectSession(sessionId);
+        }
         this.selectedPipelineRun = null;
         this.pipelineRunItems = [];
         this.clearPipelineRunDetailPoll();
@@ -4477,9 +4485,10 @@ Please review this PR and provide feedback.`;
                 const toolRuns = this.toolWorkflowRuns.map(r => ({
                     id: 'twf_' + r.run_id,
                     _tool_run_id: r.run_id,
-                    name: 'Agent Pipeline',
+                    name: r._sessionName || 'Agent Pipeline',
                     status: r.status || 'running',
                     _isToolWorkflow: true,
+                    _sessionId: r._sessionId,
                 }));
                 const merged = [...toolRuns, ...dbRuns];
                 const order = { running: 0, stale: 1, failed: 2, completed: 3, cancelled: 4 };
