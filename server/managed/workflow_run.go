@@ -25,6 +25,7 @@ var WorkflowRunStaleAfter = 10 * time.Minute
 type WorkflowAgentStatus struct {
 	ID        string          `json:"id"`
 	Label     string          `json:"label,omitempty"`
+	Phase     string          `json:"phase,omitempty"`
 	AgentType string          `json:"agent_type,omitempty"`
 	Status    string          `json:"status"` // "pending" | "running" | "complete"
 	Result    json.RawMessage `json:"result,omitempty"`
@@ -131,6 +132,8 @@ func workflowRunStale(runDir string) bool {
 type workflowJournalEntry struct {
 	Type    string          `json:"type"`
 	AgentID string          `json:"agentId"`
+	Label   string          `json:"label"`
+	Phase   string          `json:"phase"`
 	Result  json.RawMessage `json:"result"`
 }
 
@@ -163,7 +166,12 @@ func readWorkflowAgents(runDir string) []WorkflowAgentStatus {
 		case "started":
 			if _, ok := index[entry.AgentID]; !ok {
 				index[entry.AgentID] = len(agents)
-				agents = append(agents, WorkflowAgentStatus{ID: entry.AgentID, Status: "running"})
+				agents = append(agents, WorkflowAgentStatus{
+					ID:     entry.AgentID,
+					Label:  entry.Label,
+					Phase:  entry.Phase,
+					Status: "running",
+				})
 			}
 		case "result":
 			i, ok := index[entry.AgentID]
@@ -195,25 +203,35 @@ func readWorkflowAgents(runDir string) []WorkflowAgentStatus {
 	}
 
 	for i := range agents {
-		agents[i].AgentType = readAgentType(runDir, agents[i].ID)
-		agents[i].Label = readAgentLabel(runDir, agents[i].ID)
+		meta := readAgentMeta(runDir, agents[i].ID)
+		agents[i].AgentType = meta.AgentType
+		if agents[i].Label == "" {
+			agents[i].Label = meta.Description
+		}
+		if agents[i].Label == "" {
+			agents[i].Label = readAgentLabel(runDir, agents[i].ID)
+		}
+		if agents[i].Phase == "" {
+			agents[i].Phase = meta.WorkflowPhase
+		}
 	}
 	return agents
 }
 
-// readAgentType returns agentType from agent-<id>.meta.json, or "".
-func readAgentType(runDir, agentID string) string {
+type agentMeta struct {
+	AgentType     string `json:"agentType"`
+	Description   string `json:"description"`
+	WorkflowPhase string `json:"workflowPhase"`
+}
+
+func readAgentMeta(runDir, agentID string) agentMeta {
 	data, err := os.ReadFile(filepath.Join(runDir, "agent-"+agentID+".meta.json"))
 	if err != nil {
-		return ""
+		return agentMeta{}
 	}
-	var meta struct {
-		AgentType string `json:"agentType"`
-	}
-	if json.Unmarshal(data, &meta) != nil {
-		return ""
-	}
-	return meta.AgentType
+	var meta agentMeta
+	json.Unmarshal(data, &meta)
+	return meta
 }
 
 const workflowAgentLabelMax = 120
