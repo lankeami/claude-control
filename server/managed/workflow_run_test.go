@@ -211,44 +211,69 @@ func TestWorkflowRunAgentStatusDerivation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// agent1: started + result in journal, has meta + transcript (label source).
-	// agent2: started only — running.
-	// agent3: meta file only, no journal entry yet — pending.
+	// agent1: journal label "issue" + meta description + transcript → journal label wins.
+	// agent2: no journal label, meta description "branch setup" → meta wins.
+	// agent3: meta file only, no journal entry yet — pending, meta description as label.
+	// agent4: no journal label, no meta description → transcript fallback.
 	writeFileAppend(t, filepath.Join(runDir, "journal.jsonl"),
-		`{"type":"started","key":"v2:k1","agentId":"agent1"}`+"\n"+
+		`{"type":"started","key":"v2:k1","agentId":"agent1","label":"issue","phase":"Issue"}`+"\n"+
 			`{"type":"result","key":"v2:k1","agentId":"agent1","result":{"issueNumber":292}}`+"\n"+
-			`{"type":"started","key":"v2:k2","agentId":"agent2"}`+"\n")
-	writeFileAppend(t, filepath.Join(runDir, "agent-agent1.meta.json"), `{"agentType":"workflow-subagent","spawnDepth":1}`)
-	writeFileAppend(t, filepath.Join(runDir, "agent-agent3.meta.json"), `{"agentType":"workflow-subagent","spawnDepth":1}`)
+			`{"type":"started","key":"v2:k2","agentId":"agent2"}`+"\n"+
+			`{"type":"started","key":"v2:k4","agentId":"agent4"}`+"\n")
+	writeFileAppend(t, filepath.Join(runDir, "agent-agent1.meta.json"), `{"agentType":"workflow-subagent","description":"create issue","workflowPhase":"Issue","spawnDepth":1}`)
+	writeFileAppend(t, filepath.Join(runDir, "agent-agent2.meta.json"), `{"agentType":"workflow-subagent","description":"branch setup","spawnDepth":1}`)
+	writeFileAppend(t, filepath.Join(runDir, "agent-agent3.meta.json"), `{"agentType":"workflow-subagent","description":"pending step","spawnDepth":1}`)
 	writeFileAppend(t, filepath.Join(runDir, "agent-agent1.jsonl"),
 		`{"parentUuid":null,"isSidechain":true,"agentId":"agent1","type":"user","message":{"role":"user","content":"Create a GitHub issue for: \"filter textboxes\".\nInvoke Skill(\"git-issue-create\")."}}`+"\n")
+	writeFileAppend(t, filepath.Join(runDir, "agent-agent4.jsonl"),
+		`{"type":"user","message":{"role":"user","content":"Run the test suite and report results."}}`+"\n")
 
 	snap := readWorkflowRun(runDir, "wf_s1")
 
-	if len(snap.Agents) != 3 {
-		t.Fatalf("agents=%d (%+v), want 3", len(snap.Agents), snap.Agents)
+	if len(snap.Agents) != 4 {
+		t.Fatalf("agents=%d (%+v), want 4", len(snap.Agents), snap.Agents)
 	}
-	a1, a2, a3 := snap.Agents[0], snap.Agents[1], snap.Agents[2]
+	// Journal-ordered agents come first (agent1, agent2, agent4), then
+	// meta-only pending agents (agent3) from directory scan.
+	a1, a2 := snap.Agents[0], snap.Agents[1]
+	a4, a3 := snap.Agents[2], snap.Agents[3]
 
+	// agent1: journal label takes priority over meta description and transcript.
 	if a1.ID != "agent1" || a1.Status != "complete" {
 		t.Errorf("agent1=%+v, want complete", a1)
 	}
 	if a1.AgentType != "workflow-subagent" {
 		t.Errorf("agent1 agent_type=%q, want workflow-subagent (from meta.json)", a1.AgentType)
 	}
-	if !strings.Contains(a1.Label, "Create a GitHub issue") {
-		t.Errorf("agent1 label=%q, want prompt-derived label", a1.Label)
+	if a1.Label != "issue" {
+		t.Errorf("agent1 label=%q, want %q (from journal)", a1.Label, "issue")
 	}
-	if strings.Contains(a1.Label, "\n") {
-		t.Errorf("agent1 label=%q, must be single-line", a1.Label)
+	if a1.Phase != "Issue" {
+		t.Errorf("agent1 phase=%q, want %q (from journal)", a1.Phase, "Issue")
 	}
 
+	// agent2: no journal label → meta description used.
 	if a2.ID != "agent2" || a2.Status != "running" {
 		t.Errorf("agent2=%+v, want running", a2)
 	}
+	if a2.Label != "branch setup" {
+		t.Errorf("agent2 label=%q, want %q (from meta description)", a2.Label, "branch setup")
+	}
 
+	// agent3: pending (meta only), label from meta description.
 	if a3.ID != "agent3" || a3.Status != "pending" {
 		t.Errorf("agent3=%+v, want pending (meta only, not started)", a3)
+	}
+	if a3.Label != "pending step" {
+		t.Errorf("agent3 label=%q, want %q (from meta description)", a3.Label, "pending step")
+	}
+
+	// agent4: no journal label, no meta description → transcript fallback.
+	if a4.ID != "agent4" || a4.Status != "running" {
+		t.Errorf("agent4=%+v, want running", a4)
+	}
+	if !strings.Contains(a4.Label, "Run the test suite") {
+		t.Errorf("agent4 label=%q, want transcript-derived label containing %q", a4.Label, "Run the test suite")
 	}
 
 	// A pending agent means the run is still in flight.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-08
+
+- [6b10788](https://github.com/lankeami/claude-control/commit/6b10788b4a7aab10b21e53c4ae7a67f8b50cf1f0) fix: use journal label and meta description for pipeline agent cards
+  Agent cards in the pipeline run view showed the workflow harness preamble instead of meaningful labels. Now reads label from the journal started entry first, falls back to meta.json description, then transcript prompt text as last resort. Also surfaces phase field from journal for UI grouping.
+
 ## 2026-10-05
 
 - [d0bc1fd](https://github.com/lankeami/claude-control/commit/d0bc1fde62f164fed6ddd0da77ca066b312511fd) Fix workflow run discovery bugs: transcript rotation and stale runs (#307)
