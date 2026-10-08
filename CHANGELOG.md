@@ -2,6 +2,8 @@
 
 ## 2026-10-08
 
+- [4cf0155](https://github.com/lankeami/claude-control/commit/4cf0155f0b78ac6256220bc65cf7770657b73d2b) fix: show session name on pipeline runs and remove inline chat cards
+  Pipeline run entries in the sidebar now show the session name instead of generic "Agent Pipeline". Clicking a pipeline run navigates to the owning session before opening the run detail view. Removed the redundant inline workflow cards from the chat area since the sidebar Pipeline Runs section already covers this.
 - [6b10788](https://github.com/lankeami/claude-control/commit/6b10788b4a7aab10b21e53c4ae7a67f8b50cf1f0) fix: use journal label and meta description for pipeline agent cards
   Agent cards in the pipeline run view showed the workflow harness preamble instead of meaningful labels. Now reads label from the journal started entry first, falls back to meta.json description, then transcript prompt text as last resort. Also surfaces phase field from journal for UI grouping.
 
