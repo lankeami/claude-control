@@ -30,6 +30,32 @@ type PipelineRunItem struct {
 	Error        *string    `json:"error"`
 }
 
+// PipelineRunWithItems bundles a run with its items for the refresh endpoint.
+type PipelineRunWithItems struct {
+	Run   PipelineRun       `json:"run"`
+	Items []PipelineRunItem `json:"items"`
+}
+
+// ListPipelineRunsWithItems returns all pipeline runs with their items bundled.
+func (s *Store) ListPipelineRunsWithItems() ([]PipelineRunWithItems, error) {
+	runs, err := s.ListPipelineRuns()
+	if err != nil {
+		return nil, err
+	}
+	results := make([]PipelineRunWithItems, 0, len(runs))
+	for _, run := range runs {
+		items, err := s.GetPipelineRunItems(run.ID)
+		if err != nil {
+			return nil, fmt.Errorf("get items for run %s: %w", run.ID, err)
+		}
+		if items == nil {
+			items = []PipelineRunItem{}
+		}
+		results = append(results, PipelineRunWithItems{Run: run, Items: items})
+	}
+	return results, nil
+}
+
 // ReconcileStalePipelineRuns marks running pipeline runs as completed/failed
 // if all their items are in terminal states, or as failed if older than 24h.
 func (s *Store) ReconcileStalePipelineRuns() {

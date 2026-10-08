@@ -65,6 +65,67 @@ func TestIndexHTMLContainsSessionFilterClearButton(t *testing.T) {
 	}
 }
 
+// Issue #310: pipeline runs must not disappear when switching sessions.
+// The toolWorkflowRuns array is global and must not be cleared on session switch.
+func TestPipelineRunsSurviveSessionSwitch(t *testing.T) {
+	data, err := fs.ReadFile(staticFiles, "static/app.js")
+	if err != nil {
+		t.Fatal("failed to read app.js:", err)
+	}
+	js := string(data)
+
+	// The selectSession method must NOT clear toolWorkflowRuns.
+	// Look for the pattern: it should NOT contain "toolWorkflowRuns = []"
+	// inside selectSession. We check that selectSession exists but does not
+	// reset toolWorkflowRuns.
+	if !strings.Contains(js, "async selectSession(") {
+		t.Fatal("expected app.js to have a selectSession method")
+	}
+
+	// Find the selectSession method body and check it doesn't clear toolWorkflowRuns
+	selectIdx := strings.Index(js, "async selectSession(")
+	if selectIdx < 0 {
+		t.Fatal("could not locate selectSession method")
+	}
+	// Look for the next method definition (roughly) — check ~2000 chars
+	methodBody := js[selectIdx:]
+	if len(methodBody) > 2000 {
+		methodBody = methodBody[:2000]
+	}
+	if strings.Contains(methodBody, "toolWorkflowRuns = []") {
+		t.Error("selectSession must NOT clear toolWorkflowRuns — pipeline runs should survive session switches (issue #310)")
+	}
+}
+
+// Issue #310: pipeline runs section must have a refresh button.
+func TestPipelineRunsRefreshButton(t *testing.T) {
+	data, err := fs.ReadFile(staticFiles, "static/index.html")
+	if err != nil {
+		t.Fatal("failed to read index.html:", err)
+	}
+	html := string(data)
+
+	if !strings.Contains(html, "refreshPipelineRuns") {
+		t.Error("expected index.html to have a refreshPipelineRuns button/action (issue #310)")
+	}
+}
+
+// Issue #310: app.js must have a refreshPipelineRuns method that calls the refresh endpoint.
+func TestPipelineRunsRefreshMethod(t *testing.T) {
+	data, err := fs.ReadFile(staticFiles, "static/app.js")
+	if err != nil {
+		t.Fatal("failed to read app.js:", err)
+	}
+	js := string(data)
+
+	if !strings.Contains(js, "refreshPipelineRuns") {
+		t.Error("expected app.js to define a refreshPipelineRuns method (issue #310)")
+	}
+	if !strings.Contains(js, "/api/pipeline-runs/refresh") {
+		t.Error("expected app.js to call /api/pipeline-runs/refresh endpoint (issue #310)")
+	}
+}
+
 // Issue #307: the pipeline runs list must surface the "stale" workflow-run
 // status distinctly (dedicated pill style + label), not fall back to generic
 // rendering.

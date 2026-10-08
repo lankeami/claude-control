@@ -116,6 +116,51 @@ func TestUpdatePipelineRunItem_API(t *testing.T) {
 	}
 }
 
+func TestRefreshPipelineRuns_API(t *testing.T) {
+	ts, store := newTestServer(t)
+
+	// Create a run with items
+	run, _ := store.CreatePipelineRun("refresh-test", "parallel", "/tmp/refresh")
+	item1, _ := store.CreatePipelineRunItem(run.ID, "feat-1", "")
+	store.CreatePipelineRunItem(run.ID, "feat-2", "")
+
+	// Complete one item
+	store.UpdatePipelineRunItemStatus(item1.ID, "completed", nil)
+
+	// Call the refresh endpoint
+	req := authReq("POST", ts.URL+"/api/pipeline-runs/refresh", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var results []struct {
+		Run   db.PipelineRun       `json:"run"`
+		Items []db.PipelineRunItem `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 run, got %d", len(results))
+	}
+	if results[0].Run.Name != "refresh-test" {
+		t.Errorf("expected 'refresh-test', got %q", results[0].Run.Name)
+	}
+	if len(results[0].Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(results[0].Items))
+	}
+	// Run should still be running (only 1 of 2 items completed)
+	if results[0].Run.Status != "running" {
+		t.Errorf("expected 'running', got %q", results[0].Run.Status)
+	}
+}
+
 func TestWorkflowVisibility(t *testing.T) {
 	ts, store := newTestServer(t)
 

@@ -124,6 +124,21 @@ func (s *Server) handleDeletePipelineRun(w http.ResponseWriter, r *http.Request)
 	w.Write([]byte(`{"ok":true}`))
 }
 
+func (s *Server) handleRefreshPipelineRuns(w http.ResponseWriter, r *http.Request) {
+	// Reconcile stale runs first, then return all runs with their items
+	s.store.ReconcileStalePipelineRuns()
+	results, err := s.store.ListPipelineRunsWithItems()
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	if results == nil {
+		results = []db.PipelineRunWithItems{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
 func (s *Server) handleClearFinishedPipelineRuns(w http.ResponseWriter, r *http.Request) {
 	deleted, err := s.store.DeleteFinishedPipelineRuns()
 	if err != nil {
