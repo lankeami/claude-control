@@ -269,7 +269,7 @@
             </template>
             <template x-for="pr in pipelineRuns" :key="pr.id">
               <div class="session-item"
-                   @click="pr._isToolWorkflow ? selectToolWorkflowRun(pr._tool_run_id) : (selectedToolWorkflowRunId = null, selectedPipelineRun = pr, loadPipelineRunDetail(pr.id))"
+                   @click="pr._isToolWorkflow ? selectToolWorkflowRun(pr._tool_run_id, pr._sessionId) : (selectedToolWorkflowRunId = null, selectedPipelineRun = pr, loadPipelineRunDetail(pr.id))"
                    :class="{ active: pr._isToolWorkflow ? selectedToolWorkflowRunId === pr._tool_run_id : selectedPipelineRun?.id === pr.id }"
                    style="display:flex;align-items:center;gap:6px;">
                 <span class="status-dot"
@@ -419,7 +419,7 @@
                   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px;">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;">
                       <span style="font-size:14px;font-weight:600;color:var(--text);"
-                            x-text="selectedToolWorkflowRunId ? 'Agent Pipeline' : (selectedPipelineRun?.name || 'Pipeline Run')"></span>
+                            x-text="selectedToolWorkflowRunId ? (getSelectedToolWorkflowRun()?._sessionName || 'Agent Pipeline') : (selectedPipelineRun?.name || 'Pipeline Run')"></span>
                       <span x-show="selectedToolWorkflowRunId" style="font-size:10px;color:var(--text-muted);font-family:monospace;"
                             x-text="selectedToolWorkflowRunId"></span>
                       <span x-show="!selectedToolWorkflowRunId && selectedPipelineRun?.working_dir" style="font-size:10px;color:var(--text-muted);"
@@ -670,20 +670,7 @@
               </div>
             </div>
 
-            <!-- Claude Workflow Tool Runs — compact bar linking to sidebar detail -->
-            <template x-for="run in toolWorkflowRuns" :key="run.run_id">
-              <div x-show="!pipelineRunViewActive()" x-cloak
-                   @click="selectToolWorkflowRun(run.run_id)"
-                   style="border-top:1px solid var(--border);padding:8px 14px;background:var(--card);cursor:pointer;display:flex;align-items:center;gap:8px;">
-                <span style="font-size:12px;font-weight:600;color:var(--text);">Agent Pipeline</span>
-                <span style="font-size:10px;color:var(--text-muted);font-family:monospace;" x-text="run.run_id"></span>
-                <span class="pipeline-status-pill" :class="run.status"
-                      x-text="pipelineStatusLabel(run.status)"></span>
-                <span style="font-size:11px;color:var(--text-muted);margin-left:auto;"
-                      x-text="(run.agents || []).filter(a => a.status === 'complete').length + '/' + (run.agents || []).length + ' agents'"></span>
-                <span style="font-size:0.7rem;color:var(--text-muted);">Click to expand ›</span>
-              </div>
-            </template>
+            <!-- Workflow tool runs are shown only in the sidebar Pipeline Runs section -->
 
             <!-- Response textarea (only when pending prompt) -->
             <div class="response-area" x-show="currentPendingPrompt && !pipelineRunViewActive()">
