@@ -143,6 +143,84 @@ func TestAutoCompletePipelineRun(t *testing.T) {
 	}
 }
 
+func TestListPipelineRunsWithItems(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	run1, _ := store.CreatePipelineRun("run1", "parallel", "/tmp/dir1")
+	store.CreatePipelineRunItem(run1.ID, "feat-a", "")
+	store.CreatePipelineRunItem(run1.ID, "feat-b", "")
+
+	run2, _ := store.CreatePipelineRun("run2", "parallel", "/tmp/dir2")
+	store.CreatePipelineRunItem(run2.ID, "feat-c", "")
+
+	results, err := store.ListPipelineRunsWithItems()
+	if err != nil {
+		t.Fatalf("ListPipelineRunsWithItems: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 runs, got %d", len(results))
+	}
+
+	// Find each run by ID (order may vary when timestamps match)
+	itemCountByRun := map[string]int{}
+	for _, r := range results {
+		itemCountByRun[r.Run.ID] = len(r.Items)
+	}
+	if itemCountByRun[run1.ID] != 2 {
+		t.Errorf("expected 2 items for run1, got %d", itemCountByRun[run1.ID])
+	}
+	if itemCountByRun[run2.ID] != 1 {
+		t.Errorf("expected 1 item for run2, got %d", itemCountByRun[run2.ID])
+	}
+}
+
+func TestReconcileAndRefreshPipelineRuns(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer store.Close()
+
+	// Create a run with all items completed but run itself still "running"
+	run, _ := store.CreatePipelineRun("stale-run", "parallel", "")
+	item1, _ := store.CreatePipelineRunItem(run.ID, "feat-1", "")
+	item2, _ := store.CreatePipelineRunItem(run.ID, "feat-2", "")
+	store.UpdatePipelineRunItemStatus(item1.ID, "completed", nil)
+	// Manually set item2 to completed without triggering auto-complete
+	// (simulating a race or missed update)
+	store.db.Exec(`UPDATE pipeline_run_items SET status = 'completed', finished_at = datetime('now') WHERE id = ?`, item2.ID)
+
+	// Run should still be "running" since we bypassed the auto-complete
+	got, _ := store.GetPipelineRun(run.ID)
+	if got.Status != "running" {
+		t.Fatalf("precondition: expected run still 'running', got %q", got.Status)
+	}
+
+	// Reconcile should fix it
+	store.ReconcileStalePipelineRuns()
+
+	got, _ = store.GetPipelineRun(run.ID)
+	if got.Status != "completed" {
+		t.Errorf("expected run reconciled to 'completed', got %q", got.Status)
+	}
+
+	// ListPipelineRunsWithItems should return the reconciled data
+	results, err := store.ListPipelineRunsWithItems()
+	if err != nil {
+		t.Fatalf("ListPipelineRunsWithItems: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 run, got %d", len(results))
+	}
+	if results[0].Run.Status != "completed" {
+		t.Errorf("expected 'completed', got %q", results[0].Run.Status)
+	}
+}
+
 func TestAutoCompletePipelineRun_WithFailure(t *testing.T) {
 	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {

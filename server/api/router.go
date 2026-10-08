@@ -200,6 +200,7 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("PATCH /api/pipeline-runs/{id}", s.handleUpdatePipelineRun)
 	apiMux.HandleFunc("DELETE /api/pipeline-runs/{id}", s.handleDeletePipelineRun)
 	apiMux.HandleFunc("POST /api/pipeline-runs/clear-finished", s.handleClearFinishedPipelineRuns)
+	apiMux.HandleFunc("POST /api/pipeline-runs/refresh", s.handleRefreshPipelineRuns)
 	apiMux.HandleFunc("PATCH /api/pipeline-run-items/{id}", s.handleUpdatePipelineRunItem)
 
 	rl := NewRateLimiter(180, 10)

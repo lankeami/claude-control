@@ -1035,8 +1035,8 @@ document.addEventListener('alpine:init', () => {
       this.showSlashMenu = false;
       this.sessionCost = null;
       this.sessionModel = null;
-      this.toolWorkflowRuns = [];
-      this.selectedToolWorkflowRunId = null;
+      // toolWorkflowRuns are global (not per-session) — do NOT clear them
+      // here, otherwise pipeline runs disappear when switching sessions (#310).
       this.continuationCount = 0;
       this.isCompacting = false;
       this.sessionFiles = [];
@@ -4461,6 +4461,43 @@ Please review this PR and provide feedback.`;
             await this.loadPipelineRuns();
         } catch (err) {
             console.error('Failed to clear finished pipeline runs:', err);
+        }
+    },
+
+    async refreshPipelineRuns() {
+        try {
+            const res = await fetch('/api/pipeline-runs/refresh', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (res.ok) {
+                const results = await res.json() || [];
+                // Merge DB runs from refresh with tool workflow runs
+                const dbRuns = results.map(r => r.run);
+                const toolRuns = this.toolWorkflowRuns.map(r => ({
+                    id: 'twf_' + r.run_id,
+                    _tool_run_id: r.run_id,
+                    name: 'Agent Pipeline',
+                    status: r.status || 'running',
+                    _isToolWorkflow: true,
+                }));
+                const merged = [...toolRuns, ...dbRuns];
+                const order = { running: 0, stale: 1, failed: 2, completed: 3, cancelled: 4 };
+                merged.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+                this.pipelineRuns = merged;
+                // If currently viewing a DB-backed pipeline run detail, refresh it too
+                if (this.selectedPipelineRun && !this.selectedToolWorkflowRunId) {
+                    const match = results.find(r => r.run.id === this.selectedPipelineRun.id);
+                    if (match) {
+                        this.selectedPipelineRun = match.run;
+                        this.pipelineRunItems = match.items || [];
+                    }
+                }
+                this.toast('Pipeline runs refreshed');
+            }
+        } catch (err) {
+            console.error('Failed to refresh pipeline runs:', err);
+            this.toast('Failed to refresh pipeline runs', 4000, 'error');
         }
     },
 
