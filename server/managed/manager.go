@@ -51,6 +51,16 @@ type Manager struct {
 	cprocs       map[string]*CodexProc
 	broadcasters map[string]*Broadcaster
 	mutexes      map[string]*sync.Mutex
+
+	// backgroundActivityFn reports the last known background activity
+	// (workflow/subagent transcripts, background task output) for a session.
+	// A zero time means no background activity is known. Consulted by
+	// ReapIdle so sessions with in-flight background work are not killed.
+	backgroundActivityFn func(sessionID string) time.Time
+
+	// onReap is invoked after a session's process is reaped for idleness,
+	// so callers can record the event durably (e.g. a system message row).
+	onReap func(sessionID string, idleFor time.Duration)
 }
 
 func NewManager(cfg Config) *Manager {
@@ -201,69 +211,145 @@ func (m *Manager) Interrupt(sessionID string) error {
 	return interruptProcess(proc.Cmd.Process)
 }
 
-// ReapIdle closes stdin on any process that has been idle longer than maxIdle.
-// This lets the process exit gracefully. Call this periodically from a goroutine.
-func (m *Manager) ReapIdle(maxIdle time.Duration) {
+// SetBackgroundActivityFn installs the probe ReapIdle consults before
+// reaping a session that is past the turn-idle threshold.
+func (m *Manager) SetBackgroundActivityFn(fn func(sessionID string) time.Time) {
 	m.mu.Lock()
-	var toReap []string
-	var toReapInteractive []string
-	var toReapCodex []string
-	now := time.Now()
-	for id, proc := range m.procs {
-		if now.Sub(proc.LastActivity) > maxIdle {
-			toReap = append(toReap, id)
-		}
-	}
-	for id, proc := range m.iprocs {
-		if now.Sub(proc.LastActivity) > maxIdle {
-			toReapInteractive = append(toReapInteractive, id)
-		}
-	}
-	for id, proc := range m.cprocs {
-		if now.Sub(proc.LastActivity) > maxIdle {
-			toReapCodex = append(toReapCodex, id)
-		}
-	}
-	m.mu.Unlock()
-
-	for _, id := range toReap {
-		m.mu.Lock()
-		proc, ok := m.procs[id]
-		m.mu.Unlock()
-		if ok && proc.Stdin != nil {
-			log.Printf("reaping idle process for session %s", id)
-			proc.Stdin.Close()
-		}
-	}
-
-	for _, id := range toReapInteractive {
-		log.Printf("reaping idle interactive process for session %s", id)
-		m.ShutdownInteractive(id, 10*time.Second)
-	}
-
-	for _, id := range toReapCodex {
-		log.Printf("reaping idle codex process for session %s", id)
-		m.ShutdownCodex(id, 10*time.Second)
-	}
+	defer m.mu.Unlock()
+	m.backgroundActivityFn = fn
 }
 
-// StartReaper starts a background goroutine that periodically calls ReapIdle.
-// If IdleTimeoutMinutes is 0, defaults to 30 minutes.
-func (m *Manager) StartReaper() {
+// BackgroundActivity reports the installed probe's result for a session, or
+// the zero time when no probe is installed.
+func (m *Manager) BackgroundActivity(sessionID string) time.Time {
+	m.mu.Lock()
+	fn := m.backgroundActivityFn
+	m.mu.Unlock()
+	if fn == nil {
+		return time.Time{}
+	}
+	return fn(sessionID)
+}
+
+// SetReapCallback installs a callback invoked after each idle reap with the
+// session ID and how long it had been idle.
+func (m *Manager) SetReapCallback(fn func(sessionID string, idleFor time.Duration)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onReap = fn
+}
+
+// reapHardCap is the absolute idle ceiling: past this, a session is reaped
+// even if the background-activity probe reports recent activity, so phantom
+// file churn can never leak processes forever.
+const reapHardCap = 24 * time.Hour
+
+// IdleTimeout returns the effective idle window: cfg.IdleTimeoutMinutes, or
+// 30 minutes when unset/zero.
+func (m *Manager) IdleTimeout() time.Duration {
 	m.mu.Lock()
 	timeout := m.cfg.IdleTimeoutMinutes
 	m.mu.Unlock()
-
 	if timeout <= 0 {
 		timeout = 30
 	}
-	maxIdle := time.Duration(timeout) * time.Minute
+	return time.Duration(timeout) * time.Minute
+}
 
+// ReapIdle shuts down any process that has been idle longer than maxIdle.
+// A session past the turn-idle threshold is first checked against the
+// background-activity probe (workflow/subagent transcripts, task output):
+// recent background work keeps it alive, up to a 24h hard cap. Call this
+// periodically from a goroutine.
+func (m *Manager) ReapIdle(maxIdle time.Duration) {
+	const (
+		kindProcess = iota
+		kindInteractive
+		kindCodex
+	)
+	type candidate struct {
+		id   string
+		idle time.Duration
+		kind int
+	}
+
+	now := time.Now()
+	m.mu.Lock()
+	probe := m.backgroundActivityFn
+	onReap := m.onReap
+	var candidates []candidate
+	for id, proc := range m.procs {
+		if idle := now.Sub(proc.LastActivity); idle > maxIdle {
+			candidates = append(candidates, candidate{id, idle, kindProcess})
+		}
+	}
+	for id, proc := range m.iprocs {
+		if idle := now.Sub(proc.LastActivity); idle > maxIdle {
+			candidates = append(candidates, candidate{id, idle, kindInteractive})
+		}
+	}
+	for id, proc := range m.cprocs {
+		if idle := now.Sub(proc.LastActivity); idle > maxIdle {
+			candidates = append(candidates, candidate{id, idle, kindCodex})
+		}
+	}
+	m.mu.Unlock()
+
+	for _, c := range candidates {
+		// Only sessions already past the turn-idle threshold are probed,
+		// keeping per-tick I/O minimal.
+		if probe != nil && c.idle <= reapHardCap {
+			if bg := probe(c.id); !bg.IsZero() {
+				bgIdle := now.Sub(bg)
+				if bgIdle <= maxIdle {
+					log.Printf("skipping reap of session %s: background activity %s ago (turn idle %s)",
+						c.id, bgIdle.Round(time.Second), c.idle.Round(time.Second))
+					continue
+				}
+				if bgIdle < c.idle {
+					c.idle = bgIdle
+				}
+			}
+		}
+
+		reaped := false
+		switch c.kind {
+		case kindProcess:
+			m.mu.Lock()
+			proc, ok := m.procs[c.id]
+			m.mu.Unlock()
+			if ok && proc.Stdin != nil {
+				log.Printf("reaping idle process for session %s (idle %s)", c.id, c.idle.Round(time.Second))
+				proc.Stdin.Close()
+				reaped = true
+			}
+		case kindInteractive:
+			if m.IsInteractiveRunning(c.id) {
+				log.Printf("reaping idle interactive process for session %s (idle %s)", c.id, c.idle.Round(time.Second))
+				m.ShutdownInteractive(c.id, 10*time.Second)
+				reaped = true
+			}
+		case kindCodex:
+			if m.IsCodexRunning(c.id) {
+				log.Printf("reaping idle codex process for session %s (idle %s)", c.id, c.idle.Round(time.Second))
+				m.ShutdownCodex(c.id, 10*time.Second)
+				reaped = true
+			}
+		}
+		if reaped && onReap != nil {
+			onReap(c.id, c.idle)
+		}
+	}
+}
+
+// StartReaper starts a background goroutine that periodically calls ReapIdle
+// with the effective idle timeout (cfg.IdleTimeoutMinutes, default 30m).
+func (m *Manager) StartReaper() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			m.ReapIdle(maxIdle)
+			m.ReapIdle(m.IdleTimeout())
 		}
 	}()
 }

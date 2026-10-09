@@ -1,6 +1,8 @@
 package managed
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -367,5 +369,181 @@ func TestAgentDispatch_ConfigHasCodexBin(t *testing.T) {
 	got := m.Config()
 	if got.CodexBin != "codex" {
 		t.Errorf("CodexBin=%q, want codex", got.CodexBin)
+	}
+}
+
+// --- Issue #314: background-work-aware idle reaper ---
+
+func TestReapIdleSkipsSessionWithRecentBackgroundActivity(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc, err := m.EnsureProcess("bg-active", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Teardown("bg-active", 2*time.Second)
+
+	// Turn-idle clock says this session is long past the timeout...
+	m.mu.Lock()
+	proc.LastActivity = time.Now().Add(-1 * time.Hour)
+	m.mu.Unlock()
+
+	// ...but the background-activity probe reports work 1 minute ago.
+	m.SetBackgroundActivityFn(func(sessionID string) time.Time {
+		if sessionID != "bg-active" {
+			t.Errorf("probe called with session %q, want bg-active", sessionID)
+		}
+		return time.Now().Add(-1 * time.Minute)
+	})
+
+	m.ReapIdle(30 * time.Minute)
+
+	select {
+	case <-proc.Done:
+		t.Fatal("session with recent background activity was reaped")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if !m.IsRunning("bg-active") {
+		t.Error("session should still be running")
+	}
+}
+
+func TestReapIdleReapsSessionWithoutBackgroundActivity(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc, err := m.EnsureProcess("bg-idle", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m.mu.Lock()
+	proc.LastActivity = time.Now().Add(-1 * time.Hour)
+	m.mu.Unlock()
+
+	// Probe reports background activity, but it's older than the idle window.
+	m.SetBackgroundActivityFn(func(sessionID string) time.Time {
+		return time.Now().Add(-45 * time.Minute)
+	})
+
+	var reapedID string
+	var reapedIdle time.Duration
+	reaped := make(chan struct{})
+	m.SetReapCallback(func(sessionID string, idleFor time.Duration) {
+		reapedID = sessionID
+		reapedIdle = idleFor
+		close(reaped)
+	})
+
+	m.ReapIdle(30 * time.Minute)
+
+	select {
+	case <-proc.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("genuinely idle session was not reaped")
+	}
+	select {
+	case <-reaped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("reap callback never fired")
+	}
+	if reapedID != "bg-idle" {
+		t.Errorf("reap callback session=%q, want bg-idle", reapedID)
+	}
+	if reapedIdle <= 0 {
+		t.Errorf("reap callback idleFor=%v, want > 0", reapedIdle)
+	}
+}
+
+func TestReapIdleHardCapOverridesBackgroundActivity(t *testing.T) {
+	cfg := Config{ClaudeBin: "cat", ClaudeArgs: []string{}, ClaudeEnv: []string{}}
+	m := NewManager(cfg)
+
+	proc, err := m.EnsureProcess("bg-capped", SpawnOpts{CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Past the 24h hard cap: probe activity must not keep it alive.
+	m.mu.Lock()
+	proc.LastActivity = time.Now().Add(-25 * time.Hour)
+	m.mu.Unlock()
+
+	m.SetBackgroundActivityFn(func(sessionID string) time.Time {
+		return time.Now()
+	})
+
+	m.ReapIdle(30 * time.Minute)
+
+	select {
+	case <-proc.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("session past the 24h hard cap was not reaped")
+	}
+}
+
+func TestLatestBackgroundActivityScansWorkflowAndTaskFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	if got := LatestBackgroundActivity(dir); !got.IsZero() {
+		t.Errorf("empty session dir: got %v, want zero time", got)
+	}
+
+	wfDir := filepath.Join(dir, "subagents", "workflows", "run-1")
+	if err := os.MkdirAll(wfDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	wfFile := filepath.Join(wfDir, "agent.jsonl")
+	if err := os.WriteFile(wfFile, []byte("{}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(wfFile, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	got := LatestBackgroundActivity(dir)
+	if got.IsZero() {
+		t.Fatal("workflow transcript not detected")
+	}
+	if diff := got.Sub(old); diff < -2*time.Second || diff > 2*time.Second {
+		t.Errorf("got %v, want ~%v", got, old)
+	}
+
+	// A newer task-output file wins.
+	taskDir := filepath.Join(dir, "tasks")
+	if err := os.MkdirAll(taskDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	taskFile := filepath.Join(taskDir, "t1.output")
+	if err := os.WriteFile(taskFile, []byte("out"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	newer := time.Now().Add(-1 * time.Minute)
+	if err := os.Chtimes(taskFile, newer, newer); err != nil {
+		t.Fatal(err)
+	}
+
+	got = LatestBackgroundActivity(dir)
+	if diff := got.Sub(newer); diff < -2*time.Second || diff > 2*time.Second {
+		t.Errorf("got %v, want ~%v (newest file wins)", got, newer)
+	}
+}
+
+func TestIdleTimeoutConfigReachesManager(t *testing.T) {
+	m := NewManager(Config{IdleTimeoutMinutes: 120})
+	if got := m.Config().IdleTimeoutMinutes; got != 120 {
+		t.Errorf("cfg.IdleTimeoutMinutes=%d, want 120", got)
+	}
+	if got := m.IdleTimeout(); got != 120*time.Minute {
+		t.Errorf("IdleTimeout()=%v, want 120m", got)
+	}
+}
+
+func TestIdleTimeoutConfigZeroDefaultsTo30(t *testing.T) {
+	m := NewManager(Config{})
+	if got := m.IdleTimeout(); got != 30*time.Minute {
+		t.Errorf("IdleTimeout()=%v, want 30m", got)
 	}
 }

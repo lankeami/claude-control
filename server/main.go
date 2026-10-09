@@ -73,6 +73,7 @@ func main() {
 	dbPath := flag.String("db", "", "path to SQLite database (default: ~/.claude-controller/{instance}/claude.db)")
 	managedModeFlag := flag.String("managed-mode", "", "managed session backend: interactive or print (default: MANAGED_MODE env, then interactive)")
 	instanceName := flag.String("instance", "default", "instance name (default: default)")
+	idleTimeoutMinutes := flag.Int("idle-timeout-minutes", 0, "minutes before an idle managed session is reaped (default: 30)")
 	flag.Parse()
 
 	instReg, err := instance.New()
@@ -148,8 +149,11 @@ func main() {
 		BinaryPath:  binaryPath,
 		KeyFilePath: filepath.Join(filepath.Dir(*dbPath), "api.key"),
 		Mode:        managedMode(*managedModeFlag),
+
+		IdleTimeoutMinutes: *idleTimeoutMinutes,
 	}
 	mgr := managed.NewManager(managedCfg)
+	api.WireReaper(mgr, store)
 	mgr.StartReaper()
 
 	restartCh := make(chan struct{}, 1)
