@@ -388,3 +388,53 @@ func TestWorkflowRunZeroAgentDirGoesStale(t *testing.T) {
 		t.Errorf("agents=%d, want 0", len(snap.Agents))
 	}
 }
+
+// Issue #316: Agent description must be propagated as a separate field,
+// not only used as a label fallback. When a meta description exists it
+// should appear in Description regardless of whether the label comes
+// from the journal or the transcript.
+func TestAgentDescriptionPropagation(t *testing.T) {
+	workflowsDir := t.TempDir()
+	runDir := filepath.Join(workflowsDir, "wf_desc1")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// agent1: journal label "issue" + meta description "create issue" → label from journal, description from meta
+	// agent2: no journal label, meta description "branch setup" → label from meta (fallback), description from meta
+	// agent3: no meta at all → description empty
+	writeFileAppend(t, filepath.Join(runDir, "journal.jsonl"),
+		`{"type":"started","key":"v2:k1","agentId":"agent1","label":"issue"}`+"\n"+
+			`{"type":"started","key":"v2:k2","agentId":"agent2"}`+"\n"+
+			`{"type":"started","key":"v2:k3","agentId":"agent3"}`+"\n")
+	writeFileAppend(t, filepath.Join(runDir, "agent-agent1.meta.json"), `{"agentType":"workflow-subagent","description":"create issue"}`)
+	writeFileAppend(t, filepath.Join(runDir, "agent-agent2.meta.json"), `{"agentType":"workflow-subagent","description":"branch setup"}`)
+
+	snap := readWorkflowRun(runDir, "wf_desc1")
+	if len(snap.Agents) != 3 {
+		t.Fatalf("agents=%d, want 3", len(snap.Agents))
+	}
+
+	a1, a2, a3 := snap.Agents[0], snap.Agents[1], snap.Agents[2]
+
+	// agent1: label from journal, description always from meta
+	if a1.Label != "issue" {
+		t.Errorf("agent1 label=%q, want %q", a1.Label, "issue")
+	}
+	if a1.Description != "create issue" {
+		t.Errorf("agent1 description=%q, want %q (always from meta)", a1.Description, "create issue")
+	}
+
+	// agent2: label falls back to meta description, but description field is also populated
+	if a2.Label != "branch setup" {
+		t.Errorf("agent2 label=%q, want %q", a2.Label, "branch setup")
+	}
+	if a2.Description != "branch setup" {
+		t.Errorf("agent2 description=%q, want %q", a2.Description, "branch setup")
+	}
+
+	// agent3: no meta file → empty description
+	if a3.Description != "" {
+		t.Errorf("agent3 description=%q, want empty (no meta)", a3.Description)
+	}
+}

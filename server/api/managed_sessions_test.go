@@ -1092,3 +1092,65 @@ func TestCreateSessionAgent_RejectsUnknown(t *testing.T) {
 		t.Errorf("status=%d, want 400 for unknown agent", resp.StatusCode)
 	}
 }
+
+// Issue #316: Force kill endpoint for tool workflow runs.
+// POST /api/sessions/{id}/kill terminates the managed session process
+// and marks the session activity state as idle.
+func TestKillWorkflowToolRun(t *testing.T) {
+	ts, store, mock := setupMockTestServer(t)
+
+	sess, _ := store.CreateManagedSession("/tmp/kill-test", `["Bash"]`, 50, 5.0, 0)
+	store.UpdateActivityState(sess.ID, "working")
+	mock.SetInteractiveRunning(sess.ID, true)
+
+	var tornDown bool
+	mock.OnTeardown = func(sessionID string, timeout time.Duration) error {
+		tornDown = true
+		return nil
+	}
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/kill", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	if !tornDown {
+		t.Fatal("expected Teardown to be called on the managed session")
+	}
+
+	var result map[string]string
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["status"] != "killed" {
+		t.Errorf("status=%q, want killed", result["status"])
+	}
+
+	updated, _ := store.GetSessionByID(sess.ID)
+	if updated.ActivityState != "idle" {
+		t.Errorf("activity_state=%q, want idle after kill", updated.ActivityState)
+	}
+}
+
+func TestKillWorkflowToolRun_NotFound(t *testing.T) {
+	ts, store, _ := setupMockTestServer(t)
+	_ = store
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/nonexistent/kill", nil)
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 404 {
+		t.Errorf("status=%d, want 404", resp.StatusCode)
+	}
+}
