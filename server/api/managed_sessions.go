@@ -679,6 +679,27 @@ func (s *Server) handleInterrupt(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "interrupted"})
 }
 
+// handleKillSession forcibly terminates the managed session process and marks
+// it idle. Used by the web UI's "Force Kill" button on stuck tool workflow runs.
+func (s *Server) handleKillSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.PathValue("id")
+	sess, err := s.store.GetSessionByID(sessionID)
+	if err != nil || sess == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	if s.manager != nil {
+		if err := s.manager.Teardown(sessionID, 10*time.Second); err != nil {
+			log.Printf("[kill] teardown error for %s: %v", sessionID, err)
+		}
+	}
+
+	s.store.UpdateActivityState(sessionID, "idle")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "killed"})
+}
+
 func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 	msgs, err := s.store.ListMessages(sessionID)

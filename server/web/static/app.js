@@ -332,6 +332,9 @@ document.addEventListener('alpine:init', () => {
         // Cost data is now pushed via SSE — no polling needed.
         // Initial fetch for immediate display before first SSE tick.
         this.fetchCostSummary();
+        // Periodic staleness check for tool workflow runs (every 30s).
+        // Marks runs as stale if no update received within 10 minutes.
+        this._workflowStaleTimer = setInterval(() => this.checkWorkflowRunStaleness(), 30000);
       }
       this.$watch('mobileMenuOpen', (open) => {
         document.body.style.overflow = open ? 'hidden' : '';
@@ -2443,6 +2446,9 @@ document.addEventListener('alpine:init', () => {
       if (this.sseReconnectAttempts >= 20) {
         this.addActivityPill('Connection lost — reconnect failed', 'disconnected');
         this.sseReconnectAttempts = 0;
+        // Mark tool workflow runs from this session as terminal
+        this.toolWorkflowRuns = window._ccMarkSessionRunsTerminal(this.toolWorkflowRuns, sessionId);
+        this.loadPipelineRuns();
         return;
       }
 
@@ -4393,6 +4399,46 @@ Please review this PR and provide feedback.`;
     getSelectedToolWorkflowRun() {
         if (!this.selectedToolWorkflowRunId) return null;
         return this.toolWorkflowRuns.find(r => r.run_id === this.selectedToolWorkflowRunId) || null;
+    },
+
+    // Periodic staleness check: mark tool workflow runs as stale if no update
+    // received within 10 minutes (matches server-side WorkflowRunStaleAfter).
+    checkWorkflowRunStaleness() {
+        const staleAfterMs = 10 * 60 * 1000; // 10 minutes
+        const now = Date.now();
+        let changed = false;
+        this.toolWorkflowRuns = this.toolWorkflowRuns.map(r => {
+            if (r.status !== 'running') return r;
+            if (r._lastUpdated && (now - r._lastUpdated) > staleAfterMs) {
+                changed = true;
+                return { ...r, status: 'stale' };
+            }
+            return r;
+        });
+        if (changed) this.loadPipelineRuns();
+    },
+
+    // Force kill a session's process (for stuck tool workflow runs).
+    async forceKillSession(sessionId) {
+        if (!sessionId) return;
+        try {
+            const resp = await fetch('/api/sessions/' + sessionId + '/kill', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.apiKey }
+            });
+            if (resp.ok) {
+                // Mark all tool workflow runs from this session as cancelled
+                this.toolWorkflowRuns = this.toolWorkflowRuns.map(r => {
+                    if (r._sessionId === sessionId && (r.status === 'running' || r.status === 'stale')) {
+                        return { ...r, status: 'cancelled' };
+                    }
+                    return r;
+                });
+                this.loadPipelineRuns();
+            }
+        } catch (err) {
+            console.error('Failed to force kill session:', err);
+        }
     },
 
     // Whether the pipeline run detail view has taken over the chat pane

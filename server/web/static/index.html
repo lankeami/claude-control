@@ -431,6 +431,9 @@
                             x-text="(getSelectedToolWorkflowRun()?.agents || []).filter(a => a.status === 'complete').length + '/' + (getSelectedToolWorkflowRun()?.agents || []).length + ' agents'"></span>
                     </div>
                     <span style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                      <button x-show="selectedToolWorkflowRunId && (getSelectedToolWorkflowRun()?.status === 'running' || getSelectedToolWorkflowRun()?.status === 'stale')"
+                              @click="forceKillSession(getSelectedToolWorkflowRun()?._sessionId)"
+                              class="btn btn-sm" style="font-size:11px;padding:3px 8px;color:#ef4444;border-color:#ef4444;" title="Forcibly terminate the session process">Force Kill</button>
                       <button @click="refreshPipelineRuns()" class="btn btn-sm" style="font-size:11px;padding:3px 8px;" title="Refresh status">&#x21bb; Refresh</button>
                       <button @click="closePipelineRunView()" class="btn btn-sm" style="font-size:11px;padding:3px 8px;">Close</button>
                     </span>
@@ -471,6 +474,7 @@
                         <div style="flex:1;min-width:0;">
                           <span x-show="agent.phase && agent.phase.toLowerCase() !== (agent.label || '').toLowerCase()" style="color:var(--text-muted);font-size:10px;margin-right:4px;" x-text="agent.phase"></span>
                           <span style="color:var(--text);word-break:break-word;" x-text="(agent.label || agent.id).replace(/^./, c => c.toUpperCase())"></span>
+                          <div x-show="agent.description && agent.description !== agent.label" style="font-size:10px;color:var(--text-muted);margin-top:1px;word-break:break-word;" x-text="agent.description"></div>
                           <div x-show="agent.result" style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px;">
                             <template x-for="entry in window._ccWorkflowRunResultLinks(agent.result)" :key="entry.key">
                               <span style="font-size:10px;">

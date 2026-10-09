@@ -23,12 +23,13 @@ var WorkflowRunStaleAfter = 10 * time.Minute
 // WorkflowAgentStatus is the derived state of one subagent in a Workflow
 // tool run.
 type WorkflowAgentStatus struct {
-	ID        string          `json:"id"`
-	Label     string          `json:"label,omitempty"`
-	Phase     string          `json:"phase,omitempty"`
-	AgentType string          `json:"agent_type,omitempty"`
-	Status    string          `json:"status"` // "pending" | "running" | "complete"
-	Result    json.RawMessage `json:"result,omitempty"`
+	ID          string          `json:"id"`
+	Label       string          `json:"label,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Phase       string          `json:"phase,omitempty"`
+	AgentType   string          `json:"agent_type,omitempty"`
+	Status      string          `json:"status"` // "pending" | "running" | "complete"
+	Result      json.RawMessage `json:"result,omitempty"`
 }
 
 // WorkflowRunSnapshot is the full state of one Workflow tool run, emitted on
@@ -205,6 +206,7 @@ func readWorkflowAgents(runDir string) []WorkflowAgentStatus {
 	for i := range agents {
 		meta := readAgentMeta(runDir, agents[i].ID)
 		agents[i].AgentType = meta.AgentType
+		agents[i].Description = meta.Description
 		if agents[i].Label == "" {
 			agents[i].Label = meta.Description
 		}

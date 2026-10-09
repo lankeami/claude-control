@@ -13,6 +13,7 @@
 /** Upsert a workflow_run snapshot into the runs list, keyed by run_id. */
 export function upsertWorkflowRun(runs, snapshot) {
   if (!snapshot || !snapshot.run_id) return runs || [];
+  snapshot._lastUpdated = Date.now();
   const next = (runs || []).slice();
   const i = next.findIndex((r) => r.run_id === snapshot.run_id);
   if (i >= 0) {
@@ -25,6 +26,24 @@ export function upsertWorkflowRun(runs, snapshot) {
     next.push(snapshot);
   }
   return next;
+}
+
+/**
+ * Mark tool workflow runs from a specific session as completed or stale when
+ * the session's SSE stream closes. If all agents are complete the run is
+ * "completed"; otherwise it becomes "stale".
+ */
+export function markSessionRunsTerminal(runs, sessionId) {
+  if (!runs || !sessionId) return runs || [];
+  let changed = false;
+  const next = runs.map((r) => {
+    if (r._sessionId !== sessionId || (r.status !== 'running')) return r;
+    const allComplete = r.agents && r.agents.length > 0 &&
+      r.agents.every((a) => a.status === 'complete');
+    changed = true;
+    return { ...r, status: allComplete ? 'completed' : 'stale' };
+  });
+  return changed ? next : runs;
 }
 
 /**
@@ -46,4 +65,5 @@ export function workflowRunResultLinks(result) {
 if (typeof window !== 'undefined') {
   window._ccUpsertWorkflowRun = upsertWorkflowRun;
   window._ccWorkflowRunResultLinks = workflowRunResultLinks;
+  window._ccMarkSessionRunsTerminal = markSessionRunsTerminal;
 }
