@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-13
+
+- [8184ed5](https://github.com/lankeami/claude-control/commit/8184ed57c1827d317ab11ce799582f54bb528786) feat: research and prototype mod rendering in Controller web UI (#309)
+  Research how Claude Code mods render UI and prototype bringing that rendering into the Controller web UI. Includes:
+
 ## 2026-10-08
 
 - [4cf0155](https://github.com/lankeami/claude-control/commit/4cf0155f0b78ac6256220bc65cf7770657b73d2b) fix: show session name on pipeline runs and remove inline chat cards
