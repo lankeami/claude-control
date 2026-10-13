@@ -78,6 +78,27 @@ const (
 	turnEndPromptFailed                        // Prompt was never confirmed after retries
 )
 
+// sessionTokenTotals tracks cumulative token counts across all turns for a
+// managed session. Updated from the transcript tailing callback.
+type sessionTokenTotals struct {
+	mu           sync.Mutex
+	inputTokens  int
+	outputTokens int
+}
+
+func (t *sessionTokenTotals) add(in, out int) {
+	t.mu.Lock()
+	t.inputTokens += in
+	t.outputTokens += out
+	t.mu.Unlock()
+}
+
+func (t *sessionTokenTotals) snapshot() (int, int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.inputTokens, t.outputTokens
+}
+
 // interactiveTurnState tracks per-turn counters shared between the transcript
 // callback (tailer goroutine) and the orchestrator goroutine.
 type interactiveTurnState struct {
@@ -402,6 +423,11 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 				cur.assistantCount++
 				cur.inputTokens += entry.Message.Usage.InputTokens
 				cur.outputTokens += entry.Message.Usage.OutputTokens
+				// Also accumulate into session-level cumulative totals.
+				if in, out := entry.Message.Usage.InputTokens, entry.Message.Usage.OutputTokens; in > 0 || out > 0 {
+					totalsVal, _ := s.sessionTokenTotals.LoadOrStore(sessionID, &sessionTokenTotals{})
+					totalsVal.(*sessionTokenTotals).add(in, out)
+				}
 			}
 			count := cur.assistantCount
 			alreadyInterrupted := cur.interruptedFor != ""
@@ -653,6 +679,18 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 			"cost":  cost, "model": sess.Model,
 		})
 		broadcaster.Send(string(resultEvt))
+
+		if totalCost, err := s.store.SessionCostTotal(sessionID); err == nil {
+			cumIn, cumOut := 0, 0
+			if tv, ok := s.sessionTokenTotals.Load(sessionID); ok {
+				cumIn, cumOut = tv.(*sessionTokenTotals).snapshot()
+			}
+			modEvt, _ := json.Marshal(map[string]any{
+				"type": "mod_state", "panel_id": "tokens", "panel_title": "Tokens", "slot": "bar",
+				"data": map[string]any{"input": cumIn, "output": cumOut, "cost": fmt.Sprintf("$%.2f", totalCost)},
+			})
+			broadcaster.Send(string(modEvt))
+		}
 
 		if newCount, err := s.store.IncrementTurnCount(sessionID); err == nil {
 			turnMsg, _ := json.Marshal(map[string]any{"type": "turn_count", "turn_count": newCount})

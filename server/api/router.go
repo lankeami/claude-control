@@ -50,6 +50,9 @@ type Server struct {
 	// workflowRuns maps sessionID -> *sessionWorkflowRuns — latest Workflow
 	// tool run snapshots, replayed to late-connecting session streams.
 	workflowRuns sync.Map
+	// sessionTokenTotals maps sessionID -> *sessionTokenTotals — cumulative
+	// token counts across all turns, updated from transcript tailing.
+	sessionTokenTotals sync.Map
 }
 
 func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath string, shutdownFunc func(), serverID string, taskTrigger TaskTrigger, instanceName string) http.Handler {
