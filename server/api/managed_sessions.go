@@ -763,6 +763,22 @@ func (s *Server) handleSessionStream(w http.ResponseWriter, r *http.Request, api
 		flusher.Flush()
 	}
 
+	// Replay current mod state (token panel) so late-connecting clients see
+	// the bar immediately without waiting for the next turn to complete.
+	if tv, ok := s.sessionTokenTotals.Load(sessionID); ok {
+		cumIn, cumOut := tv.(*sessionTokenTotals).snapshot()
+		if cumIn > 0 || cumOut > 0 {
+			if totalCost, err := s.store.SessionCostTotal(sessionID); err == nil {
+				modEvt, _ := json.Marshal(map[string]any{
+					"type": "mod_state", "panel_id": "tokens", "panel_title": "Tokens", "slot": "bar",
+					"data": map[string]any{"input": cumIn, "output": cumOut, "cost": fmt.Sprintf("$%.2f", totalCost)},
+				})
+				fmt.Fprintf(w, "data: %s\n\n", modEvt)
+				flusher.Flush()
+			}
+		}
+	}
+
 	// Per-connection heartbeat: the interactive backend can go silent for
 	// minutes mid-turn (long thinking, long tool runs), and the web UI treats
 	// >30s of SSE silence as a dead connection.

@@ -2,6 +2,8 @@
 
 ## 2026-10-13
 
+- [c4c57d5](https://github.com/lankeami/claude-control/commit/c4c57d509b9048a60e4837d90a56877018777158) fix: replay mod state on SSE connect so token bar shows on page load
+  The mod bar (token/cost panel) only appeared after a turn completed while the client was connected. Late-connecting clients (page refresh, new tab) never saw it until the next turn finished. Replay the current mod state during SSE stream setup, alongside pending questions and workflow snapshots.
 - [1b8392b](https://github.com/lankeami/claude-control/commit/1b8392bf1108457fc1b26b8b26071d2d7eb638d2) feat: cumulative token tracking via transcript tailing
   Add server-side cumulative token tracking for managed sessions. Token counts are accumulated from the transcript tailing callback across all turns and emitted as a mod_state event after each turn completes. The token panel shows cumulative input/output tokens and cost in the mod bar without any external scripts or hooks.
 - [0d30790](https://github.com/lankeami/claude-control/commit/0d307900c1b29e1024f29e03d69469090b8f3533) fix: replace await import with promise-based import in SSE handler
