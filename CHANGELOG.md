@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-13
+
+- [0d30790](https://github.com/lankeami/claude-control/commit/0d307900c1b29e1024f29e03d69469090b8f3533) fix: replace await import with promise-based import in SSE handler
+  app.js is loaded as a regular defer script, not a module, so await is illegal inside the non-async onmessage callback. This parse error silently killed the entire script, preventing Alpine from initializing and rendering a white screen.
+- [4e7764b](https://github.com/lankeami/claude-control/commit/4e7764b0393e2f7e1e2cdfcb946b74df87b67319) docs: add mod panel usage guide, visual test, and screenshot
+  Add documentation for creating and importing mod panels, a standalone HTML visual test page that exercises mod-bar.js rendering, and a Playwright-verified screenshot showing the bar and pane layout.
+- [8184ed5](https://github.com/lankeami/claude-control/commit/8184ed57c1827d317ab11ce799582f54bb528786) feat: research and prototype mod rendering in Controller web UI (#309)
+  Research how Claude Code mods render UI and prototype bringing that rendering into the Controller web UI. Includes:
+
 ## 2026-10-08
 
 - [4cf0155](https://github.com/lankeami/claude-control/commit/4cf0155f0b78ac6256220bc65cf7770657b73d2b) fix: show session name on pipeline runs and remove inline chat cards

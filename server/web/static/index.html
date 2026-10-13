@@ -34,6 +34,7 @@
   <script type="module" src="/workflow-run-card.js"></script>
   <script type="module" src="/pipeline-run-view.js"></script>
   <script type="module" src="/sidebar-section-filter.js"></script>
+  <script type="module" src="/mod-bar.js"></script>
   <script defer src="/app.js"></script>
   <script defer src="/alpine.min.js"></script>
 </head>
@@ -408,6 +409,22 @@
             </button>
           </div>
         </template>
+
+        <!-- Mod Bar (renders above chat when mods have bar-slot panels) -->
+        <div class="mod-bar" x-show="modState.visible && modBarPanels().length > 0" x-cloak>
+          <div class="mod-bar-inner">
+            <template x-for="panel in modBarPanels()" :key="panel.id">
+              <div class="mod-bar-panel" :data-panel-id="panel.id">
+                <span class="mod-bar-panel-title" x-text="panel.title"></span>
+                <span class="mod-bar-panel-data" x-text="typeof panel.data === 'object' ? Object.entries(panel.data).map(([k,v]) => k + ': ' + v).join(' · ') : panel.data"></span>
+              </div>
+            </template>
+            <button x-show="modPanePanels().length > 0" class="mod-bar-pane-toggle"
+                    @click="toggleModPane()" :title="modPaneOpen ? 'Close mod pane' : 'Open mod pane'">
+              <span x-text="modPaneOpen ? '◁' : '▷'"></span>
+            </button>
+          </div>
+        </div>
 
         <div class="main-content-split">
           <div class="chat-column" :class="{ 'has-viewer': viewerFile || selectedIssue || selectedPull }">
@@ -980,6 +997,37 @@
                 </div>
               </div>
             </template>
+          </div>
+
+          <!-- Mod Pane (side panel for mod content) -->
+          <div class="mod-pane" x-show="modPaneOpen && modPanePanels().length > 0" x-cloak
+               :style="'flex:0 0 ' + modPaneWidth + 'px'">
+            <div class="mod-pane-header">
+              <span style="font-size:0.8rem; font-weight:600;">Mod Panels</span>
+              <button class="mod-pane-close" @click="modPaneOpen = false" title="Close mod pane">&times;</button>
+            </div>
+            <div class="mod-pane-body">
+              <template x-for="panel in modPanePanels()" :key="panel.id">
+                <div class="mod-pane-panel" :data-panel-id="panel.id">
+                  <div class="mod-pane-panel-title" x-text="panel.title"></div>
+                  <div class="mod-pane-panel-content">
+                    <template x-if="typeof panel.data === 'object' && panel.data !== null">
+                      <div>
+                        <template x-for="[key, value] in Object.entries(panel.data)" :key="key">
+                          <div class="mod-pane-data-row">
+                            <span class="mod-pane-data-key" x-text="key"></span>
+                            <span class="mod-pane-data-value" x-text="typeof value === 'object' ? JSON.stringify(value) : value"></span>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                    <template x-if="typeof panel.data !== 'object' || panel.data === null">
+                      <span x-text="panel.data"></span>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
       </div>
