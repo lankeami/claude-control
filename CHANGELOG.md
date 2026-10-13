@@ -2,6 +2,8 @@
 
 ## 2026-10-13
 
+- [4e7764b](https://github.com/lankeami/claude-control/commit/4e7764b0393e2f7e1e2cdfcb946b74df87b67319) docs: add mod panel usage guide, visual test, and screenshot
+  Add documentation for creating and importing mod panels, a standalone HTML visual test page that exercises mod-bar.js rendering, and a Playwright-verified screenshot showing the bar and pane layout.
 - [8184ed5](https://github.com/lankeami/claude-control/commit/8184ed57c1827d317ab11ce799582f54bb528786) feat: research and prototype mod rendering in Controller web UI (#309)
   Research how Claude Code mods render UI and prototype bringing that rendering into the Controller web UI. Includes:
 
