@@ -2,6 +2,8 @@
 
 ## 2026-10-13
 
+- [1b8392b](https://github.com/lankeami/claude-control/commit/1b8392bf1108457fc1b26b8b26071d2d7eb638d2) feat: cumulative token tracking via transcript tailing
+  Add server-side cumulative token tracking for managed sessions. Token counts are accumulated from the transcript tailing callback across all turns and emitted as a mod_state event after each turn completes. The token panel shows cumulative input/output tokens and cost in the mod bar without any external scripts or hooks.
 - [0d30790](https://github.com/lankeami/claude-control/commit/0d307900c1b29e1024f29e03d69469090b8f3533) fix: replace await import with promise-based import in SSE handler
   app.js is loaded as a regular defer script, not a module, so await is illegal inside the non-async onmessage callback. This parse error silently killed the entire script, preventing Alpine from initializing and rendering a white screen.
 - [4e7764b](https://github.com/lankeami/claude-control/commit/4e7764b0393e2f7e1e2cdfcb946b74df87b67319) docs: add mod panel usage guide, visual test, and screenshot
