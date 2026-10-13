@@ -2299,11 +2299,12 @@ document.addEventListener('alpine:init', () => {
           }
 
           if (data.type === 'mod_state') {
-            const { routeModEvent } = await import('./mod-bar.js');
-            const result = routeModEvent(this.modState, data);
-            if (result.handled) {
-              this.modState = result.state;
-            }
+            import('./mod-bar.js').then(({ routeModEvent }) => {
+              const result = routeModEvent(this.modState, data);
+              if (result.handled) {
+                this.modState = result.state;
+              }
+            });
             return;
           }
 
