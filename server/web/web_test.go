@@ -146,3 +146,60 @@ func TestPipelineRunsListSurfacesStaleStatus(t *testing.T) {
 		t.Error("expected app.js pipelineStatusLabel to include a stale label")
 	}
 }
+
+// Issue #318: Issues and Pull Requests sidebar panels must have refresh
+// buttons and opening the accordion should trigger a data refresh.
+
+func TestIssuesSectionHasRefreshButton(t *testing.T) {
+	data, err := fs.ReadFile(staticFiles, "static/index.html")
+	if err != nil {
+		t.Fatal("failed to read index.html:", err)
+	}
+	html := string(data)
+
+	// The Issues header must contain a refresh button (like Skills has)
+	if !strings.Contains(html, "refreshIssues") {
+		t.Error("expected index.html Issues section to have a refreshIssues button/action (issue #318)")
+	}
+}
+
+func TestPullRequestsSectionHasRefreshButton(t *testing.T) {
+	data, err := fs.ReadFile(staticFiles, "static/index.html")
+	if err != nil {
+		t.Fatal("failed to read index.html:", err)
+	}
+	html := string(data)
+
+	// The Pull Requests header must contain a refresh button (like Skills has)
+	if !strings.Contains(html, "refreshPulls") {
+		t.Error("expected index.html Pull Requests section to have a refreshPulls button/action (issue #318)")
+	}
+}
+
+func TestAccordionExpandTriggersRefresh(t *testing.T) {
+	data, err := fs.ReadFile(staticFiles, "static/app.js")
+	if err != nil {
+		t.Fatal("failed to read app.js:", err)
+	}
+	js := string(data)
+
+	// app.js must define refreshIssues and refreshPulls methods
+	if !strings.Contains(js, "refreshIssues(") {
+		t.Error("expected app.js to define a refreshIssues method (issue #318)")
+	}
+	if !strings.Contains(js, "refreshPulls(") {
+		t.Error("expected app.js to define a refreshPulls method (issue #318)")
+	}
+
+	// app.js must define expandIssues and expandPulls methods that fetch on expand
+	if !strings.Contains(js, "expandIssues(") {
+		t.Error("expected app.js to define an expandIssues method that fetches on expand (issue #318)")
+	}
+	if !strings.Contains(js, "expandPulls(") {
+		t.Error("expected app.js to define an expandPulls method that fetches on expand (issue #318)")
+	}
+	// Skills accordion should also refresh on expand
+	if !strings.Contains(js, "expandSkills(") {
+		t.Error("expected app.js to define an expandSkills method that fetches on expand (issue #318)")
+	}
+}

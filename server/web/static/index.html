@@ -1055,7 +1055,7 @@
 
         <!-- Skills Section -->
         <div class="issues-section" x-show="selectedSessionId">
-          <div class="issues-header" @click="skillsExpanded = !skillsExpanded" style="cursor:pointer">
+          <div class="issues-header" @click="expandSkills()" style="cursor:pointer">
             <span class="issues-title">
               <span class="issues-toggle" x-text="skillsExpanded ? '▼' : '▶'"></span>
               Skills
@@ -1095,11 +1095,12 @@
 
         <!-- GitHub Issues Section -->
         <div class="issues-section" x-show="issuesProvider === 'github' && gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
-          <div class="issues-header" @click="issuesExpanded = !issuesExpanded" style="cursor:pointer">
+          <div class="issues-header" @click="expandIssues()" style="cursor:pointer">
             <span class="issues-title">
               <span class="issues-toggle" x-text="issuesExpanded ? '▼' : '▶'"></span>
               Issues
             </span>
+            <button class="file-tree-refresh" x-show="issuesExpanded" @click.stop="refreshIssues()" title="Refresh issues">↻</button>
           </div>
           <div class="issue-state-toggles" x-show="issuesExpanded" style="margin-bottom:6px;padding:0 12px" @click.stop>
             <button class="issue-state-toggle"
@@ -1158,11 +1159,12 @@
 
         <!-- GitHub Pull Requests Section -->
         <div class="issues-section" x-show="issuesProvider === 'github' && gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
-          <div class="issues-header" @click="pullsExpanded = !pullsExpanded" style="cursor:pointer">
+          <div class="issues-header" @click="expandPulls()" style="cursor:pointer">
             <span class="issues-title">
               <span class="issues-toggle" x-text="pullsExpanded ? '▼' : '▶'"></span>
               Pull Requests
             </span>
+            <button class="file-tree-refresh" x-show="pullsExpanded" @click.stop="refreshPulls()" title="Refresh pull requests">↻</button>
           </div>
           <div class="issue-state-toggles" x-show="pullsExpanded" style="margin-bottom:6px;padding:0 12px" @click.stop>
             <button class="issue-state-toggle"
@@ -1442,6 +1444,7 @@
             <div x-show="issuesProvider === 'github'">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                 <span style="font-weight:600;font-size:14px;">Issues</span>
+                <button class="file-tree-refresh" @click.stop="refreshIssues()" title="Refresh issues">↻</button>
                 <div class="issue-state-toggles" @click.stop>
                   <button class="issue-state-toggle" :class="{ 'active-open': githubIssuesState === 'open' }"
                           @click="toggleIssueState('open')">Open</button>

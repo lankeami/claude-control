@@ -2803,6 +2803,13 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    expandSkills() {
+      this.skillsExpanded = !this.skillsExpanded;
+      if (this.skillsExpanded) {
+        this.fetchSkills(this.selectedSessionId);
+      }
+    },
+
     get filteredSkills() {
       let list = this.skills;
       if (this.skillsFilter === 'global') list = list.filter(s => s.dir !== 'project');
@@ -2914,6 +2921,17 @@ document.addEventListener('alpine:init', () => {
       this.githubIssuesLimit = 10;
       this.selectedIssue = null;
       this.fetchGithubIssues(this.selectedSessionId);
+    },
+
+    refreshIssues() {
+      this.fetchGithubIssues(this.selectedSessionId);
+    },
+
+    expandIssues() {
+      this.issuesExpanded = !this.issuesExpanded;
+      if (this.issuesExpanded) {
+        this.fetchGithubIssues(this.selectedSessionId);
+      }
     },
 
     searchIssues() {
@@ -3117,6 +3135,17 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       this.githubPullsLimit = 10;
       this.selectedPull = null;
       this.fetchGithubPulls(this.selectedSessionId);
+    },
+
+    refreshPulls() {
+      this.fetchGithubPulls(this.selectedSessionId);
+    },
+
+    expandPulls() {
+      this.pullsExpanded = !this.pullsExpanded;
+      if (this.pullsExpanded) {
+        this.fetchGithubPulls(this.selectedSessionId);
+      }
     },
 
     searchPulls() {
