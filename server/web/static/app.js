@@ -146,6 +146,11 @@ document.addEventListener('alpine:init', () => {
     taskRunsLoading: false,
     tasksExpanded: false,
 
+    // Mod bar / pane state
+    modState: { panels: {}, visible: false },
+    modPaneOpen: false,
+    modPaneWidth: 320,
+
     // Workflows state
     workflows: [],
     workflowModalOpen: false,
@@ -883,6 +888,23 @@ document.addEventListener('alpine:init', () => {
       if (pct >= 90) return '#ef4444';
       if (pct >= 80) return '#f59e0b';
       return 'var(--accent)';
+    },
+
+    modBarPanels() {
+      return Object.values(this.modState.panels).filter(p => p.slot === 'bar');
+    },
+
+    modPanePanels() {
+      return Object.values(this.modState.panels).filter(p => p.slot === 'pane');
+    },
+
+    modPaneStyle() {
+      if (!this.modPaneOpen || this.modPanePanels().length === 0) return 'display:none';
+      return `flex:0 0 ${this.modPaneWidth}px; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden;`;
+    },
+
+    toggleModPane() {
+      this.modPaneOpen = !this.modPaneOpen;
     },
 
     toggleStatusLineItem(key) {
@@ -2273,6 +2295,15 @@ document.addEventListener('alpine:init', () => {
               content: data.message || 'Claude sent a notification'
             });
             this.$nextTick(() => this.scrollToBottom(true));
+            return;
+          }
+
+          if (data.type === 'mod_state') {
+            const { routeModEvent } = await import('./mod-bar.js');
+            const result = routeModEvent(this.modState, data);
+            if (result.handled) {
+              this.modState = result.state;
+            }
             return;
           }
 
