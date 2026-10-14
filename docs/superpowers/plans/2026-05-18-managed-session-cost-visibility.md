@@ -28,12 +28,13 @@
 ---
 
 ## Task 1: Create `pricing.go` with model constants, `selectModel`, and `calcCost`
+**Status:** [x] complete — commit `d56c59a` (2026-05-18T00:00Z)
 
 **Files:**
 - Create: `server/api/pricing_test.go`
 - Create: `server/api/pricing.go`
 
-- [ ] **Step 1.1: Write the failing tests**
+- [x] **Step 1.1: Write the failing tests**
 
 Create `server/api/pricing_test.go`:
 
@@ -109,7 +110,7 @@ func TestCalcCost_ZeroTokens(t *testing.T) {
 }
 ```
 
-- [ ] **Step 1.2: Run tests — expect FAIL (undefined)**
+- [x] **Step 1.2: Run tests — expect FAIL (undefined)**
 
 ```bash
 cd server && go test ./api/ -run "TestSelectModel|TestCalcCost" -v 2>&1 | head -20
@@ -117,7 +118,7 @@ cd server && go test ./api/ -run "TestSelectModel|TestCalcCost" -v 2>&1 | head -
 
 Expected: compile error — `selectModel`, `ModelHaiku`, etc. undefined.
 
-- [ ] **Step 1.3: Create `pricing.go`**
+- [x] **Step 1.3: Create `pricing.go`**
 
 Create `server/api/pricing.go`:
 
@@ -167,7 +168,7 @@ func calcCost(model string, inputTokens, outputTokens int) float64 {
 }
 ```
 
-- [ ] **Step 1.4: Run tests — expect PASS**
+- [x] **Step 1.4: Run tests — expect PASS**
 
 ```bash
 cd server && go test ./api/ -run "TestSelectModel|TestCalcCost" -v
@@ -175,7 +176,7 @@ cd server && go test ./api/ -run "TestSelectModel|TestCalcCost" -v
 
 Expected: all 8 tests PASS.
 
-- [ ] **Step 1.5: Commit**
+- [x] **Step 1.5: Commit**
 
 ```bash
 cd server && git add api/pricing.go api/pricing_test.go
@@ -185,12 +186,13 @@ git commit -m "feat(api): add model routing and cost calculation (pricing.go)"
 ---
 
 ## Task 2: Add variadic `transform` hook to `StreamNDJSON`
+**Status:** [x] complete — commit `d56c59a` (2026-05-18T00:00Z)
 
 **Files:**
 - Modify: `server/managed/stream.go`
 - Modify: `server/managed/stream_test.go`
 
-- [ ] **Step 2.1: Write the failing test**
+- [x] **Step 2.1: Write the failing test**
 
 Open `server/managed/stream_test.go` and add after the last test (before the closing brace of the file):
 
@@ -255,7 +257,7 @@ func TestStreamNDJSON_NilTransformBroadcastsRaw(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2.2: Run tests — expect FAIL**
+- [x] **Step 2.2: Run tests — expect FAIL**
 
 ```bash
 cd server && go test ./managed/ -run "TestStreamNDJSON_Transform" -v
@@ -263,7 +265,7 @@ cd server && go test ./managed/ -run "TestStreamNDJSON_Transform" -v
 
 Expected: compile error — `StreamNDJSON` called with 5 args but only takes 4.
 
-- [ ] **Step 2.3: Update `StreamNDJSON` signature and broadcast logic**
+- [x] **Step 2.3: Update `StreamNDJSON` signature and broadcast logic**
 
 In `server/managed/stream.go`, change the function signature and the broadcast step.
 
@@ -292,7 +294,7 @@ with:
 
 The `onLine` callback still receives the **original** line — the transform only affects what gets broadcast. `onLine(res.line)` stays unchanged.
 
-- [ ] **Step 2.4: Run all managed tests — expect PASS**
+- [x] **Step 2.4: Run all managed tests — expect PASS**
 
 ```bash
 cd server && go test ./managed/ -v
@@ -300,7 +302,7 @@ cd server && go test ./managed/ -v
 
 Expected: all tests PASS. Existing callers (`StreamNDJSON(r, b, nil, nil)`) work unchanged via variadic.
 
-- [ ] **Step 2.5: Confirm the whole server compiles**
+- [x] **Step 2.5: Confirm the whole server compiles**
 
 ```bash
 cd server && go build ./...
@@ -308,7 +310,7 @@ cd server && go build ./...
 
 Expected: no errors.
 
-- [ ] **Step 2.6: Commit**
+- [x] **Step 2.6: Commit**
 
 ```bash
 git add server/managed/stream.go server/managed/stream_test.go
@@ -318,12 +320,13 @@ git commit -m "feat(managed): add variadic transform hook to StreamNDJSON"
 ---
 
 ## Task 3: Wire model routing and cost enrichment in `handleSendMessage`
+**Status:** [x] complete — commit `d56c59a` (2026-05-18T00:00Z)
 
 **Files:**
 - Modify: `server/api/managed_sessions.go`
 - Modify: `server/api/managed_sessions_test.go`
 
-- [ ] **Step 3.1: Read the existing managed_sessions_test.go pattern**
+- [x] **Step 3.1: Read the existing managed_sessions_test.go pattern**
 
 The test server uses `ClaudeBin: "echo"` so `claude -p` becomes `echo -p ...`. The echo process exits immediately with no NDJSON output. That's fine for testing session creation and send-message HTTP responses — it doesn't test SSE content. For model routing tests we only need to assert that the right model is stored in the DB and the right model was passed to `buildPersistentArgs`.
 
@@ -401,7 +404,7 @@ func TestEnrichResultLine_PassesThroughMissingUsage(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3.2: Run tests — expect FAIL**
+- [x] **Step 3.2: Run tests — expect FAIL**
 
 ```bash
 cd server && go test ./api/ -run "TestHandleSendMessage_|TestEnrichResultLine" -v 2>&1 | head -20
@@ -409,7 +412,7 @@ cd server && go test ./api/ -run "TestHandleSendMessage_|TestEnrichResultLine" -
 
 Expected: compile error — `enrichResultLine` undefined.
 
-- [ ] **Step 3.3: Extract `enrichResultLine` as a standalone function**
+- [x] **Step 3.3: Extract `enrichResultLine` as a standalone function**
 
 Add this function to `server/api/managed_sessions.go` (place it near the bottom with other helpers, after `jsonString`):
 
@@ -454,7 +457,7 @@ func enrichResultLine(line string, model string) string {
 }
 ```
 
-- [ ] **Step 3.4: Run tests — expect PASS**
+- [x] **Step 3.4: Run tests — expect PASS**
 
 ```bash
 cd server && go test ./api/ -run "TestHandleSendMessage_|TestEnrichResultLine|TestSelectModel|TestCalcCost" -v
@@ -462,7 +465,7 @@ cd server && go test ./api/ -run "TestHandleSendMessage_|TestEnrichResultLine|Te
 
 Expected: all tests PASS.
 
-- [ ] **Step 3.5: Wire routing and enrichment into `handleSendMessage`**
+- [x] **Step 3.5: Wire routing and enrichment into `handleSendMessage`**
 
 In `server/api/managed_sessions.go`, inside the `go func()` that handles the message, add these blocks **before** the `continuationCount := 0` line at the top of the goroutine:
 
@@ -504,7 +507,7 @@ to:
 				})
 ```
 
-- [ ] **Step 3.6: Build the server — confirm no compile errors**
+- [x] **Step 3.6: Build the server — confirm no compile errors**
 
 ```bash
 cd server && go build ./...
@@ -512,7 +515,7 @@ cd server && go build ./...
 
 Expected: clean build.
 
-- [ ] **Step 3.7: Run all server tests**
+- [x] **Step 3.7: Run all server tests**
 
 ```bash
 cd server && go test ./... -v 2>&1 | tail -30
@@ -520,7 +523,7 @@ cd server && go test ./... -v 2>&1 | tail -30
 
 Expected: all tests PASS.
 
-- [ ] **Step 3.8: Commit**
+- [x] **Step 3.8: Commit**
 
 ```bash
 git add server/api/managed_sessions.go server/api/managed_sessions_test.go
@@ -530,6 +533,7 @@ git commit -m "feat(api): wire Haiku model routing and result event cost enrichm
 ---
 
 ## Task 4: UI — Auto option, `model_selected` handler, compact guard fix, billing callout
+**Status:** [x] complete — commit `d56c59a` (2026-05-18T00:00Z)
 
 **Files:**
 - Modify: `server/web/static/index.html`
@@ -537,7 +541,7 @@ git commit -m "feat(api): wire Haiku model routing and result event cost enrichm
 
 ### 4a: Add "Auto" option to model picker and change default
 
-- [ ] **Step 4.1: Add "Auto" option to the model `<select>` in `index.html`**
+- [x] **Step 4.1: Add "Auto" option to the model `<select>` in `index.html`**
 
 Find this block in `server/web/static/index.html` (around line 418):
 
@@ -570,7 +574,7 @@ Replace with:
                 </select>
 ```
 
-- [ ] **Step 4.2: Change default `selectedModel` in `app.js`**
+- [x] **Step 4.2: Change default `selectedModel` in `app.js`**
 
 Find line 39 in `server/web/static/app.js`:
 
@@ -586,7 +590,7 @@ Replace with:
 
 ### 4b: Handle `model_selected` SSE event
 
-- [ ] **Step 4.3: Add `model_selected` handler in `app.js`**
+- [x] **Step 4.3: Add `model_selected` handler in `app.js`**
 
 Find the existing system init handler (around line 2139):
 
@@ -613,7 +617,7 @@ Add the `model_selected` handler directly above it:
 
 ### 4c: Fix compact guard so cost accumulates during compact turns
 
-- [ ] **Step 4.4: Move cost accumulation above the `isCompacting` early return**
+- [x] **Step 4.4: Move cost accumulation above the `isCompacting` early return**
 
 Find this block in `app.js` (around line 2097):
 
@@ -645,7 +649,7 @@ Replace with:
 
 ### 4d: Add billing callout to the new-session modal
 
-- [ ] **Step 4.5: Add the callout banner in `index.html`**
+- [x] **Step 4.5: Add the callout banner in `index.html`**
 
 Find the path input section in the new-session modal (around line 1096):
 
@@ -668,7 +672,7 @@ Add the callout **above** the path input `<div>`:
 
 ### 4e: Verify visually and commit
 
-- [ ] **Step 4.6: Start the server and verify in the browser**
+- [x] **Step 4.6: Start the server and verify in the browser**
 
 ```bash
 cd server && go run . --port 3001
@@ -680,7 +684,7 @@ Open `http://localhost:3001`. Check:
 3. New Session modal shows the billing callout above the path input
 4. In a managed session: sending a message triggers `model_selected` event → status line Model updates
 
-- [ ] **Step 4.7: Commit UI changes**
+- [x] **Step 4.7: Commit UI changes**
 
 ```bash
 git add server/web/static/index.html server/web/static/app.js
@@ -690,8 +694,9 @@ git commit -m "feat(ui): Auto model default, model_selected handler, compact cos
 ---
 
 ## Task 5: Create GitHub issue for Approach A (Interactive Pool / PTY)
+**Status:** [x] complete — issue #155 (closed, implemented via interactive backend)
 
-- [ ] **Step 5.1: Create the GitHub issue**
+- [x] **Step 5.1: Create the GitHub issue**
 
 ```bash
 gh issue create \
@@ -760,7 +765,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 5.2: Copy the issue URL and note it**
+- [x] **Step 5.2: Copy the issue URL and note it**
 
 ```bash
 gh issue list --limit 1
