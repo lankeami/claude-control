@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-14
+
+- [2dce66e](https://github.com/lankeami/claude-control/commit/2dce66e1e086746b7c726e09c3ea99b6a06a5578) plan: add status lines
+
 ## 2026-10-13
 
 - [c4c57d5](https://github.com/lankeami/claude-control/commit/c4c57d509b9048a60e4837d90a56877018777158) fix: replay mod state on SSE connect so token bar shows on page load
