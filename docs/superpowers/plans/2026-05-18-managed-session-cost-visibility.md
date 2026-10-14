@@ -28,6 +28,7 @@
 ---
 
 ## Task 1: Create `pricing.go` with model constants, `selectModel`, and `calcCost`
+**Status:** [ ] pending
 
 **Files:**
 - Create: `server/api/pricing_test.go`
@@ -185,6 +186,7 @@ git commit -m "feat(api): add model routing and cost calculation (pricing.go)"
 ---
 
 ## Task 2: Add variadic `transform` hook to `StreamNDJSON`
+**Status:** [ ] pending
 
 **Files:**
 - Modify: `server/managed/stream.go`
@@ -318,6 +320,7 @@ git commit -m "feat(managed): add variadic transform hook to StreamNDJSON"
 ---
 
 ## Task 3: Wire model routing and cost enrichment in `handleSendMessage`
+**Status:** [ ] pending
 
 **Files:**
 - Modify: `server/api/managed_sessions.go`
@@ -530,6 +533,7 @@ git commit -m "feat(api): wire Haiku model routing and result event cost enrichm
 ---
 
 ## Task 4: UI — Auto option, `model_selected` handler, compact guard fix, billing callout
+**Status:** [ ] pending
 
 **Files:**
 - Modify: `server/web/static/index.html`
@@ -690,6 +694,7 @@ git commit -m "feat(ui): Auto model default, model_selected handler, compact cos
 ---
 
 ## Task 5: Create GitHub issue for Approach A (Interactive Pool / PTY)
+**Status:** [ ] pending
 
 - [ ] **Step 5.1: Create the GitHub issue**
 
