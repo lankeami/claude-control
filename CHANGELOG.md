@@ -2,6 +2,7 @@
 
 ## 2026-10-14
 
+- [2027743](https://github.com/lankeami/claude-control/commit/20277439304bceac58426c84e9ffdc31d1f83eae) plan: reconcile status after resume — all 5 tasks already complete
 - [2dce66e](https://github.com/lankeami/claude-control/commit/2dce66e1e086746b7c726e09c3ea99b6a06a5578) plan: add status lines
 
 ## 2026-10-13
