@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-16
+
+- [0228a8e](https://github.com/lankeami/claude-control/commit/0228a8ecb9b5c8af6d82b63e790139024e4b8565) fix: run make commands in background to prevent shell timeout
+  Make targets triggered from the sidebar play button now execute with background: true, which skips the 30-second shell timeout entirely. The process runs until completion with output streamed live via SSE.
+
 ## 2026-10-14
 
 - [2027743](https://github.com/lankeami/claude-control/commit/20277439304bceac58426c84e9ffdc31d1f83eae) plan: reconcile status after resume — all 5 tasks already complete
