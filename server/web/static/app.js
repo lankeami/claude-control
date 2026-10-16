@@ -272,6 +272,7 @@ document.addEventListener('alpine:init', () => {
     // Mobile menu state
     mobileMenuOpen: false,
     mobileTab: 'sessions',
+    mobileSkillsSection: 'skills', // 'skills' | 'make' sub-tab within the Skills tab
     mobileOverlay: null, // null | 'file' | 'issue'
 
     isMobile() {
@@ -2926,6 +2927,14 @@ document.addEventListener('alpine:init', () => {
     expandMakeTargets() {
       this.makeTargetsExpanded = !this.makeTargetsExpanded;
       if (this.makeTargetsExpanded) {
+        this.fetchMakeTargets(this.selectedSessionId);
+      }
+    },
+
+    // Fetch make targets only when stale/empty — avoids redundant requests
+    // on every mobile tab switch while guaranteeing the list is populated.
+    ensureMakeTargets() {
+      if (this.makeTargets.length === 0 && !this.makeTargetsLoading) {
         this.fetchMakeTargets(this.selectedSessionId);
       }
     },
