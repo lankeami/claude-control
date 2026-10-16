@@ -220,6 +220,7 @@ document.addEventListener('alpine:init', () => {
 
     // Shell mode
     shellMode: false,
+    shellBackground: false,
     activeShellId: null,
 
     // Voice chat mode
@@ -1927,7 +1928,7 @@ document.addEventListener('alpine:init', () => {
     async executeShell(opts) {
       if (!this.inputText.trim() || !this.selectedSessionId) return;
       const cmd = this.inputText.trim();
-      const background = opts && opts.background;
+      const background = (opts && opts.background) || this.shellBackground;
       this.inputText = '';
       this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
       this.inputSending = true;

@@ -780,6 +780,13 @@
                         :class="{ active: shellMode }"
                         @click="shellMode = !shellMode"
                         :title="shellMode ? 'Switch to chat mode' : 'Switch to shell mode'">$</button>
+                <button class="shell-toggle-btn"
+                        x-show="shellMode"
+                        x-cloak
+                        :class="{ active: shellBackground }"
+                        @click="shellBackground = !shellBackground"
+                        :title="shellBackground ? 'Background mode ON — commands run without timeout' : 'Background mode OFF — commands timeout after 30s'"
+                        style="font-size: 0.65rem; font-weight: 700; letter-spacing: -0.02em;">BG</button>
                 <button class="image-upload-btn"
                         x-show="currentSession?.mode === 'managed' && !shellMode"
                         @click="$refs.imageInput.click()"
