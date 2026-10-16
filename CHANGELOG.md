@@ -2,6 +2,8 @@
 
 ## 2026-10-16
 
+- [1252e61](https://github.com/lankeami/claude-control/commit/1252e61d78ce79669d03442858425c62a1a88c46) feat: add BG toggle button for backgrounding shell commands
+  Adds a BG button next to the $ shell toggle that appears in shell mode. When active, any shell command sent runs with background: true (no timeout). Reuses existing shell-toggle-btn styling with green active state.
 - [0228a8e](https://github.com/lankeami/claude-control/commit/0228a8ecb9b5c8af6d82b63e790139024e4b8565) fix: run make commands in background to prevent shell timeout
   Make targets triggered from the sidebar play button now execute with background: true, which skips the 30-second shell timeout entirely. The process runs until completion with output streamed live via SSE.
 
