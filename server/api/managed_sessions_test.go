@@ -360,6 +360,35 @@ func TestShellExecuteUsesClientID(t *testing.T) {
 	}
 }
 
+func TestShellExecuteBackgroundSkipsTimeout(t *testing.T) {
+	ts, store := setupTestServer(t)
+	defer ts.Close()
+	defer store.Close()
+
+	sess, _ := store.CreateManagedSession("/tmp", `["Read"]`, 50, 5.0, 0)
+
+	body := `{"command": "echo bg", "background": true}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/sessions/"+sess.ID+"/shell", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-api-key")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d, want 200", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result["id"] == nil || result["id"] == "" {
+		t.Error("expected non-empty command id in response")
+	}
+}
+
 // TestShellSSE_EventsDeliveredToPreconnectedSubscriber verifies that when an SSE
 // subscriber is connected BEFORE a shell command is executed, all events
 // (shell_start, shell_output, shell_exit) are received. This is the regression
