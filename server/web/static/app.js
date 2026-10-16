@@ -117,6 +117,12 @@ document.addEventListener('alpine:init', () => {
     skillsLoading: false,
     skillsError: null,
     skillsFilter: 'all',
+    // Make targets state
+    makeTargets: [],
+    makeTargetsExpanded: false,
+    makeTargetsLoading: false,
+    makeTargetsError: null,
+    makeTargetsTextFilter: '',
     // Per-section right-sidebar text filters (independent of each other)
     filesTextFilter: '',
     skillsTextFilter: '',
@@ -1100,6 +1106,9 @@ document.addEventListener('alpine:init', () => {
       this.skills = [];
       this.skillsError = null;
       this.fetchSkills(this.selectedSessionId);
+      this.makeTargets = [];
+      this.makeTargetsError = null;
+      this.fetchMakeTargets(this.selectedSessionId);
       this.activeWorkflowRun = null;
       this.workflowRunSteps = [];
       if (this.workflowRunSSE) { this.workflowRunSSE.close(); this.workflowRunSSE = null; }
@@ -2871,6 +2880,74 @@ document.addEventListener('alpine:init', () => {
     insertSkill(skillName) {
       if (!skillName) return;
       const cmd = '/' + skillName;
+      this.inputText = this.inputText ? this.inputText + ' ' + cmd : cmd;
+      this.$nextTick(() => {
+        const el = this.$refs.promptInput;
+        if (el) {
+          el.focus();
+          el.style.height = 'auto';
+          el.style.height = el.scrollHeight + 'px';
+        }
+      });
+    },
+
+    // Make targets methods
+    async fetchMakeTargets(sessionId) {
+      if (!sessionId) return;
+      this.makeTargetsLoading = true;
+      this.makeTargetsError = null;
+      try {
+        const resp = await fetch(`/api/sessions/${sessionId}/make-targets`, {
+          headers: { 'Authorization': 'Bearer ' + this.apiKey }
+        });
+        if (resp.status === 401) { this.disconnect(); return; }
+        if (!resp.ok) {
+          this.makeTargetsError = 'Failed to load make targets';
+          return;
+        }
+        const raw = await resp.json() || [];
+        this.makeTargets = raw;
+      } catch (e) {
+        this.makeTargetsError = e.message || 'Failed to load make targets';
+      } finally {
+        this.makeTargetsLoading = false;
+      }
+    },
+
+    expandMakeTargets() {
+      this.makeTargetsExpanded = !this.makeTargetsExpanded;
+      if (this.makeTargetsExpanded) {
+        this.fetchMakeTargets(this.selectedSessionId);
+      }
+    },
+
+    get filteredMakeTargets() {
+      let list = this.makeTargets;
+      if (this.makeTargetsTextFilter) {
+        if (typeof window._ccFilterByText === 'function') {
+          list = window._ccFilterByText(list, this.makeTargetsTextFilter, t => t.name);
+        } else {
+          const q = this.makeTargetsTextFilter.toLowerCase();
+          list = list.filter(t => (t.name || '').toLowerCase().includes(q));
+        }
+      }
+      return list;
+    },
+
+    sendMakeTarget(targetName) {
+      if (!this.selectedSessionId || !targetName) return;
+      this.inputText = 'make ' + targetName;
+      const sess = this.currentSession;
+      if (sess && sess.mode === 'managed') {
+        this.$nextTick(() => this.sendManagedMessage());
+      } else {
+        this.$nextTick(() => this.handleInput());
+      }
+    },
+
+    insertMakeTarget(targetName) {
+      if (!targetName) return;
+      const cmd = 'make ' + targetName;
       this.inputText = this.inputText ? this.inputText + ' ' + cmd : cmd;
       this.$nextTick(() => {
         const el = this.$refs.promptInput;

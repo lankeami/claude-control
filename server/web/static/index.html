@@ -1141,6 +1141,41 @@
           </div>
         </div>
 
+        <!-- Make Targets Section -->
+        <div class="issues-section" x-show="selectedSessionId && makeTargets.length > 0">
+          <div class="issues-header" @click="expandMakeTargets()" style="cursor:pointer">
+            <span class="issues-title">
+              <span class="issues-toggle" x-text="makeTargetsExpanded ? '▼' : '▶'"></span>
+              Make
+            </span>
+            <button class="file-tree-refresh" x-show="makeTargetsExpanded" @click.stop="fetchMakeTargets(selectedSessionId)" title="Refresh make targets">↻</button>
+          </div>
+          <div x-show="makeTargetsExpanded" x-collapse style="padding:0 12px 8px 12px">
+            <div x-show="!makeTargetsLoading && !makeTargetsError && makeTargets.length > 0" style="position:relative;margin-bottom:6px;">
+              <input x-model="makeTargetsTextFilter" type="text" placeholder="Filter targets..."
+                     style="width:100%;box-sizing:border-box;padding:4px 24px 4px 8px;font-size:12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;outline:none;"
+                     @focus="$el.style.borderColor='var(--accent)'" @blur="$el.style.borderColor='var(--border)'">
+              <button x-show="makeTargetsTextFilter.length > 0" @click="makeTargetsTextFilter = ''"
+                      style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;"
+                      title="Clear filter">&times;</button>
+            </div>
+            <div x-show="makeTargetsLoading" class="issues-loading">Loading...</div>
+            <div x-show="!makeTargetsLoading && makeTargetsError" class="issues-error" x-text="makeTargetsError"></div>
+            <div class="issue-list" x-show="!makeTargetsLoading && !makeTargetsError && makeTargets.length > 0">
+              <template x-for="target in filteredMakeTargets" :key="target.name">
+                <div class="issue-row" :title="target.description || target.name">
+                  <button class="skill-action-btn skill-play" @click.stop="sendMakeTarget(target.name)" title="Run make target">&#9654;</button>
+                  <div class="issue-row-content" @click.stop="insertMakeTarget(target.name)" style="cursor:pointer">
+                    <div class="issue-row-title" x-text="target.name"></div>
+                    <div class="issue-row-meta" x-show="target.description" x-text="target.description" style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                  </div>
+                  <button class="skill-action-btn skill-inspect" x-show="target.filePath" @click.stop="openFileViewer(target.filePath)" title="Open Makefile">&#10697;</button>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
         <!-- GitHub Issues Section -->
         <div class="issues-section" x-show="issuesProvider === 'github' && gitInfo && sessions.find(s => s.id === selectedSessionId)?.mode === 'managed'">
           <div class="issues-header" @click="expandIssues()" style="cursor:pointer">
@@ -1584,6 +1619,29 @@
                 </div>
               </template>
             </div>
+
+            <!-- Make Targets (mobile) -->
+            <template x-if="makeTargets.length > 0">
+              <div style="margin-top:16px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                  <span style="font-weight:600;font-size:14px;">Make</span>
+                  <span class="file-count-badge" x-show="filteredMakeTargets.length > 0" x-text="filteredMakeTargets.length"></span>
+                  <button class="file-tree-refresh" @click="fetchMakeTargets(selectedSessionId)" title="Refresh">&#8635;</button>
+                </div>
+                <div class="issue-list full">
+                  <template x-for="target in filteredMakeTargets" :key="target.name">
+                    <div class="issue-row" :title="target.description || target.name">
+                      <button class="skill-action-btn skill-play" @click.stop="mobileMenuOpen=false; sendMakeTarget(target.name)" title="Run make target">&#9654;</button>
+                      <div class="issue-row-content" @click.stop="mobileMenuOpen=false; insertMakeTarget(target.name)" style="cursor:pointer">
+                        <div class="issue-row-title" x-text="target.name"></div>
+                        <div class="issue-row-meta" x-show="target.description" x-text="target.description" style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                      </div>
+                      <button class="skill-action-btn skill-inspect" x-show="target.filePath" @click.stop="mobileMenuOpen=false; openFileViewer(target.filePath)" title="Open Makefile">&#10697;</button>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
           </div>
         </template>
       </div>
