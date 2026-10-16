@@ -150,6 +150,9 @@ func NewRouter(store *db.Store, apiKey string, mgr SessionManager, envPath strin
 	apiMux.HandleFunc("POST /api/skill-trust", s.handleTrustSkill)
 	apiMux.HandleFunc("DELETE /api/skill-trust/{name}", s.handleRevokeSkillTrust)
 
+	// Make targets endpoint
+	apiMux.HandleFunc("GET /api/sessions/{id}/make-targets", s.handleListMakeTargets)
+
 	// GitHub endpoints
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues", s.handleListGithubIssues)
 	apiMux.HandleFunc("GET /api/sessions/{id}/github/issues/linked", s.handleBatchLinkedPRs)
