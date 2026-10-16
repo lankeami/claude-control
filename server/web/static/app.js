@@ -220,6 +220,7 @@ document.addEventListener('alpine:init', () => {
 
     // Shell mode
     shellMode: false,
+    shellBackground: false,
     activeShellId: null,
 
     // Voice chat mode
@@ -1924,9 +1925,10 @@ document.addEventListener('alpine:init', () => {
       this.focusPromptInput();
     },
 
-    async executeShell() {
+    async executeShell(opts) {
       if (!this.inputText.trim() || !this.selectedSessionId) return;
       const cmd = this.inputText.trim();
+      const background = (opts && opts.background) || this.shellBackground;
       this.inputText = '';
       this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
       this.inputSending = true;
@@ -1962,10 +1964,17 @@ document.addEventListener('alpine:init', () => {
         // Ensure SSE is connected BEFORE sending the command
         await this.ensureSSEConnected(this.selectedSessionId);
 
+        const payload = { command: cmd, id: commandId };
+        if (background) {
+          payload.background = true;
+        } else {
+          payload.timeout = 30;
+        }
+
         const res = await fetch(`/api/sessions/${this.selectedSessionId}/shell`, {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + this.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: cmd, timeout: 30, id: commandId })
+          body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error(await res.text());
       } catch (e) {
@@ -2937,12 +2946,7 @@ document.addEventListener('alpine:init', () => {
     sendMakeTarget(targetName) {
       if (!this.selectedSessionId || !targetName) return;
       this.inputText = 'make ' + targetName;
-      const sess = this.currentSession;
-      if (sess && sess.mode === 'managed') {
-        this.$nextTick(() => this.sendManagedMessage());
-      } else {
-        this.$nextTick(() => this.handleInput());
-      }
+      this.$nextTick(() => this.executeShell({ background: true }));
     },
 
     insertMakeTarget(targetName) {

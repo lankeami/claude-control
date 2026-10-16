@@ -909,9 +909,10 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
 	var req struct {
-		Command string `json:"command"`
-		Timeout int    `json:"timeout"`
-		ID      string `json:"id"`
+		Command    string `json:"command"`
+		Timeout    int    `json:"timeout"`
+		ID         string `json:"id"`
+		Background bool   `json:"background"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
@@ -921,11 +922,15 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "command is required", http.StatusBadRequest)
 		return
 	}
-	if req.Timeout <= 0 {
-		req.Timeout = 30
-	}
-	if req.Timeout > 300 {
-		req.Timeout = 300
+	if req.Background {
+		req.Timeout = 0
+	} else {
+		if req.Timeout <= 0 {
+			req.Timeout = 30
+		}
+		if req.Timeout > 300 {
+			req.Timeout = 300
+		}
 	}
 
 	sess, err := s.store.GetSessionByID(sessionID)
