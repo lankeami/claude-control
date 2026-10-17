@@ -43,7 +43,7 @@ document.addEventListener('alpine:init', () => {
     showNewSessionModal: false,
     pendingPermission: null,
     pendingQuestion: null,
-    pendingQuestionOtherText: '',
+    pendingQuestionOtherTexts: {},
     newSessionCWD: '',
     sessionConflict: { open: false, cwd: '', name: '' },
     sessionSSE: null,
@@ -2570,16 +2570,14 @@ document.addEventListener('alpine:init', () => {
       const exists = window._ccQuestionCardExists || (() => false);
       if (exists(this.chatMessages, toolUseId)) return false;
       this.pendingQuestion = { toolUseId, questions, timestamp };
-      this.pendingQuestionOtherText = '';
+      this.pendingQuestionOtherTexts = {};
       this.chatMessages.push({
         id: 'question-' + Date.now(),
         role: 'question',
         toolUseId,
-        // answered must be a defined (falsy) property, not absent: the option
-        // buttons bind :disabled="msg.answered", and Alpine renders them
-        // disabled when the key is missing entirely — leaving the card
-        // unclickable until an explicit value exists.
         answered: false,
+        selectedOptions: {},
+        answerTexts: {},
         questions,
         timestamp
       });
@@ -2587,37 +2585,48 @@ document.addEventListener('alpine:init', () => {
       return true;
     },
 
-    async respondToQuestion(msg, questionIdx, optionIdx, label, optionCount) {
-      if (msg.answered || !this.selectedSessionId) return;
-      msg.answered = true;
-      msg.selectedOption = optionIdx;
-      msg.answerText = label;
-      this.pendingQuestion = null;
-      try {
-        await fetch(`/api/sessions/${this.selectedSessionId}/question-respond`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ option_index: optionIdx, option_count: optionCount, text: '' })
-        });
-      } catch (e) {
-        console.error('Failed to respond to question:', e);
-        this.toast('Failed to send answer: ' + e.message);
-        msg.answered = false;
-        msg.selectedOption = null;
-        msg.answerText = '';
+    selectQuestionOption(msg, questionIdx, optionIdx, label) {
+      if (msg.answered || !msg.selectedOptions) return;
+      msg.selectedOptions[questionIdx] = optionIdx;
+      msg.answerTexts[questionIdx] = label;
+      if (msg.questions.length === 1) {
+        this.submitAllQuestionAnswers(msg);
       }
     },
 
-    async respondToQuestionOther(msg, questionIdx, text, optionCount) {
-      if (msg.answered || !this.selectedSessionId || !text) return;
+    selectQuestionOther(msg, questionIdx, text) {
+      if (msg.answered || !text || !msg.selectedOptions) return;
+      msg.selectedOptions[questionIdx] = -1;
+      msg.answerTexts[questionIdx] = text;
+      if (msg.questions.length === 1) {
+        this.submitAllQuestionAnswers(msg);
+      }
+    },
+
+    clearQuestionSelection(msg, questionIdx) {
+      if (msg.answered) return;
+      delete msg.selectedOptions[questionIdx];
+      delete msg.answerTexts[questionIdx];
+    },
+
+    allQuestionsSelected(msg) {
+      if (!msg.questions || !msg.selectedOptions) return false;
+      for (let i = 0; i < msg.questions.length; i++) {
+        if (msg.selectedOptions[i] === undefined) return false;
+      }
+      return true;
+    },
+
+    async submitAllQuestionAnswers(msg) {
+      if (msg.answered || !this.selectedSessionId) return;
+      if (!this.allQuestionsSelected(msg)) return;
       msg.answered = true;
-      msg.selectedOption = -1;
-      msg.answerText = text;
       this.pendingQuestion = null;
-      this.pendingQuestionOtherText = '';
+      const answers = msg.questions.map((q, qi) => ({
+        option_index: msg.selectedOptions[qi],
+        option_count: q.options.length,
+        text: msg.selectedOptions[qi] === -1 ? (msg.answerTexts[qi] || '') : ''
+      }));
       try {
         await fetch(`/api/sessions/${this.selectedSessionId}/question-respond`, {
           method: 'POST',
@@ -2625,14 +2634,12 @@ document.addEventListener('alpine:init', () => {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ option_index: -1, option_count: optionCount, text: text })
+          body: JSON.stringify({ answers })
         });
       } catch (e) {
         console.error('Failed to respond to question:', e);
         this.toast('Failed to send answer: ' + e.message);
         msg.answered = false;
-        msg.selectedOption = null;
-        msg.answerText = '';
       }
     },
 
