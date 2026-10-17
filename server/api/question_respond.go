@@ -8,19 +8,36 @@ import (
 	"time"
 )
 
+type questionAnswer struct {
+	OptionIndex int    `json:"option_index"`
+	OptionCount int    `json:"option_count"`
+	Text        string `json:"text"`
+}
+
 // handleQuestionRespond sends the user's AskUserQuestion selection to the
-// Claude Code TUI via PTY keystrokes. The TUI presents options as an
-// interactive list; we navigate with arrow-down and confirm with Enter.
+// Claude Code TUI via PTY keystrokes. Supports both single-question (legacy)
+// and multi-question payloads.
 func (s *Server) handleQuestionRespond(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 
-	var req struct {
-		OptionIndex int    `json:"option_index"`
-		OptionCount int    `json:"option_count"`
-		Text        string `json:"text"`
+	var raw struct {
+		Answers     []questionAnswer `json:"answers"`
+		OptionIndex *int             `json:"option_index"`
+		OptionCount int              `json:"option_count"`
+		Text        string           `json:"text"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	var answers []questionAnswer
+	if len(raw.Answers) > 0 {
+		answers = raw.Answers
+	} else if raw.OptionIndex != nil {
+		answers = []questionAnswer{{OptionIndex: *raw.OptionIndex, OptionCount: raw.OptionCount, Text: raw.Text}}
+	} else {
+		http.Error(w, "missing answers or option_index", http.StatusBadRequest)
 		return
 	}
 
@@ -38,21 +55,21 @@ func (s *Server) handleQuestionRespond(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isOther := req.OptionIndex < 0 || req.OptionIndex >= req.OptionCount
-
 	s.pendingQuestions.Delete(sessionID)
 	s.manager.GetBroadcaster(sessionID).Send(`{"type":"question_cleared"}`)
 
-	if isOther {
-		// Navigate past all options to "Other", select it, type text, confirm
-		if err := s.sendQuestionKeys(sessionID, req.OptionCount, true, req.Text); err != nil {
-			http.Error(w, fmt.Sprintf("failed to send keystrokes: %v", err), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		if err := s.sendQuestionKeys(sessionID, req.OptionIndex, false, ""); err != nil {
-			http.Error(w, fmt.Sprintf("failed to send keystrokes: %v", err), http.StatusInternalServerError)
-			return
+	for _, ans := range answers {
+		isOther := ans.OptionIndex < 0 || ans.OptionIndex >= ans.OptionCount
+		if isOther {
+			if err := s.sendQuestionKeys(sessionID, ans.OptionCount, true, ans.Text); err != nil {
+				http.Error(w, fmt.Sprintf("failed to send keystrokes: %v", err), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			if err := s.sendQuestionKeys(sessionID, ans.OptionIndex, false, ""); err != nil {
+				http.Error(w, fmt.Sprintf("failed to send keystrokes: %v", err), http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
