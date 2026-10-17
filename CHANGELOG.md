@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-17
+
+- [c2cb911](https://github.com/lankeami/claude-control/commit/c2cb91160fb6e07f0089d3ac829e23cc1427ffce) fix: track per-question selections in multi-question AskUserQuestion cards
+  Two bugs: (1) clicking any option immediately marked the entire card as answered and sent a single answer, so multi-question prompts hung waiting for remaining answers; (2) msg.selectedOption was a flat int shared across all questions, so selecting Q1 option 0 also highlighted Q2 option 0.
+
 ## 2026-10-16
 
 - [1252e61](https://github.com/lankeami/claude-control/commit/1252e61d78ce79669d03442858425c62a1a88c46) feat: add BG toggle button for backgrounding shell commands
