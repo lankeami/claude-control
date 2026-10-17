@@ -14,6 +14,7 @@ document.addEventListener('alpine:init', () => {
     selectedSessionId: null,
     chatMessages: [],
     chatLoading: false,
+    showJumpToBottom: false,
     editingSessionName: null,
     editingNameValue: '',
     responseText: '',
@@ -325,6 +326,9 @@ document.addEventListener('alpine:init', () => {
 
     async init() {
       window._ccOpenFile = (path) => this.openFileViewer(path);
+      // On mobile the document scrolls (chat-area grows to content height),
+      // so the jump-to-bottom button tracks window scroll there.
+      window.addEventListener('scroll', () => this.updateJumpToBottom(), { passive: true });
       // Detect Web Speech API support
       this.voiceChatSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
       // Load status line config from localStorage
@@ -596,6 +600,26 @@ document.addEventListener('alpine:init', () => {
       const isNearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150;
       if (force || isNearBottom) {
         el.scrollTop = el.scrollHeight;
+      }
+      this.updateJumpToBottom();
+    },
+
+    updateJumpToBottom() {
+      if (!window._ccPickScroller || !window._ccShouldShowJumpToBottom) return;
+      const scroller = window._ccPickScroller(
+        document.getElementById('chat-area'), document.scrollingElement);
+      this.showJumpToBottom = window._ccShouldShowJumpToBottom(scroller);
+    },
+
+    jumpToBottom() {
+      if (!window._ccPickScroller) return;
+      const scroller = window._ccPickScroller(
+        document.getElementById('chat-area'), document.scrollingElement);
+      if (!scroller) return;
+      if (scroller === document.scrollingElement) {
+        window.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
+      } else {
+        scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
       }
     },
 
