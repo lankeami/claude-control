@@ -27,6 +27,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script type="module" src="/option-selector.js"></script>
   <script type="module" src="/bubble-time.js"></script>
+  <script type="module" src="/jump-to-bottom.js"></script>
   <script type="module" src="/input-routing.js"></script>
   <script type="module" src="/session-conflict.js"></script>
   <script type="module" src="/agent-tracker.js"></script>
@@ -429,7 +430,7 @@
         <div class="main-content-split">
           <div class="chat-column" :class="{ 'has-viewer': viewerFile || selectedIssue || selectedPull }">
             <!-- Chat area -->
-            <div class="chat-area" id="chat-area">
+            <div class="chat-area" id="chat-area" @scroll.passive="updateJumpToBottom()">
               <!-- Pipeline run detail takeover (chat-pane takeover, like session selection) -->
               <template x-if="pipelineRunViewActive()">
                 <div id="pipeline-run-takeover" style="display:flex;flex-direction:column;flex:1;min-height:0;">
@@ -721,6 +722,10 @@
 
             <!-- Input bar (managed mode messages OR hook-mode instructions) -->
             <div class="instruction-bar" x-show="selectedSessionId && !currentPendingPrompt && !pipelineRunViewActive()" style="position:relative">
+              <!-- Jump to bottom (floats above the input bar; visible once scrolled up) -->
+              <button class="jump-to-bottom" x-show="showJumpToBottom" x-cloak
+                      @click="jumpToBottom()" title="Jump to bottom" aria-label="Jump to bottom">&#8595;</button>
+
               <input type="file" x-ref="imageInput" accept="image/*" multiple
                      @change="uploadImage($event)" style="display:none">
 
