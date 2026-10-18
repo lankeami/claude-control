@@ -1619,13 +1619,7 @@
         </template>
         <template x-if="selectedSessionId">
           <div>
-            <!-- Skills / Make sub-tabs: Make must be reachable without scrolling past the skills list -->
-            <div class="issue-state-toggles" style="margin-bottom:8px">
-              <button class="issue-state-toggle" :class="{ 'active-skills-all': mobileSkillsSection === 'skills' }" @click="mobileSkillsSection = 'skills'">Skills</button>
-              <button class="issue-state-toggle" :class="{ 'active-skills-all': mobileSkillsSection === 'make' }" @click="mobileSkillsSection = 'make'; ensureMakeTargets()">Make</button>
-            </div>
-
-            <div x-show="mobileSkillsSection === 'skills'">
+            <div>
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
                 <span style="font-weight:600;font-size:14px;">Skills</span>
                 <span class="file-count-badge" x-show="filteredSkills.length > 0" x-text="filteredSkills.length"></span>
@@ -1652,8 +1646,20 @@
               </div>
             </div>
 
-            <!-- Make Targets (mobile) -->
-            <div x-show="mobileSkillsSection === 'make'">
+          </div>
+        </template>
+      </div>
+
+      <!-- Make Tab -->
+      <div x-show="mobileTab === 'make'" style="flex:1;overflow-y:auto;padding:8px;">
+        <template x-if="!selectedSessionId">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;">
+            Select a session to view make targets
+          </div>
+        </template>
+        <template x-if="selectedSessionId">
+          <div>
+            <div>
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
                 <span style="font-weight:600;font-size:14px;">Make</span>
                 <span class="file-count-badge" x-show="filteredMakeTargets.length > 0" x-text="filteredMakeTargets.length"></span>
@@ -1739,11 +1745,19 @@
         <span>Issues</span>
       </button>
       <button class="mobile-tab" :class="{ active: mobileTab === 'skills' }"
-              @click="mobileTab = 'skills'; ensureMakeTargets()" role="tab" :aria-selected="mobileTab === 'skills'">
+              @click="mobileTab = 'skills'" role="tab" :aria-selected="mobileTab === 'skills'">
         <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
           <path d="M10 2l1.5 4.5H16l-3.5 2.5 1.5 4.5L10 11l-4 2.5 1.5-4.5L4 6.5h4.5L10 2z"/>
         </svg>
         <span>Skills</span>
+      </button>
+      <button class="mobile-tab" :class="{ active: mobileTab === 'make' }"
+              @click="mobileTab = 'make'; ensureMakeTargets()" role="tab" :aria-selected="mobileTab === 'make'">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5l5 5-5 5"/>
+          <path d="M11 15h5"/>
+        </svg>
+        <span>Make</span>
       </button>
       <button class="mobile-tab" :class="{ active: mobileTab === 'tasks' }"
               @click="mobileTab = 'tasks'" role="tab" :aria-selected="mobileTab === 'tasks'">

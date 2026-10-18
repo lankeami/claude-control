@@ -273,7 +273,6 @@ document.addEventListener('alpine:init', () => {
     // Mobile menu state
     mobileMenuOpen: false,
     mobileTab: 'sessions',
-    mobileSkillsSection: 'skills', // 'skills' | 'make' sub-tab within the Skills tab
     mobileOverlay: null, // null | 'file' | 'issue'
 
     isMobile() {
