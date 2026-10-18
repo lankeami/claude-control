@@ -1610,6 +1610,52 @@
         </template>
       </div>
 
+      <!-- Pull Requests Tab -->
+      <div x-show="mobileTab === 'prs'" style="flex:1;overflow-y:auto;padding:8px;">
+        <template x-if="!selectedSessionId">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;">
+            Select a session to view pull requests
+          </div>
+        </template>
+        <template x-if="selectedSessionId">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="font-weight:600;font-size:14px;">Pull Requests</span>
+              <button class="file-tree-refresh" @click.stop="refreshPulls()" title="Refresh pull requests">↻</button>
+              <div class="issue-state-toggles" @click.stop>
+                <button class="issue-state-toggle" :class="{ 'active-open': githubPullsState === 'open' }"
+                        @click="togglePullState('open')">Open</button>
+                <button class="issue-state-toggle" :class="{ 'active-closed': githubPullsState === 'closed' }"
+                        @click="togglePullState('closed')">Closed</button>
+              </div>
+            </div>
+            <input type="text" class="issues-search" placeholder="Search pull requests..."
+                   x-model="githubPullsSearch" @input="searchPulls()">
+            <div x-show="githubPullsLoading" class="issues-loading">Loading...</div>
+            <div x-show="!githubPullsLoading && githubPullsError" class="issues-error" x-text="githubPullsError"></div>
+            <div x-show="!githubPullsLoading && !githubPullsError && githubPulls.length === 0" class="issues-empty">No pull requests found</div>
+            <div class="issue-list full" x-show="!githubPullsLoading && !githubPullsError && githubPulls.length > 0">
+              <template x-for="pull in githubPulls" :key="pull.number">
+                <div class="issue-row" @click="fetchPullDetail(selectedSessionId, pull.number)">
+                  <div class="issue-dot" :class="pull.state"></div>
+                  <div class="issue-row-content">
+                    <div class="issue-row-title" x-text="pull.title"></div>
+                    <div class="issue-row-meta" x-text="'#' + pull.number + ' &middot; ' + pull.author + ' &middot; ' + issueTimeAgo(pull.updated_at)"></div>
+                  </div>
+                  <button class="skill-action-btn pr-branch-btn" x-show="pull.head_branch"
+                          @click.stop="mobileMenuOpen=false; switchToPullBranch(pull)"
+                          :title="'Switch to branch ' + pull.head_branch">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/></svg>
+                  </button>
+                </div>
+              </template>
+            </div>
+            <button x-show="githubPullsHasMore && !githubPullsLoading"
+                    class="issues-show-more" @click="loadMorePulls()">Show more</button>
+          </div>
+        </template>
+      </div>
+
       <!-- Skills Tab -->
       <div x-show="mobileTab === 'skills'" style="flex:1;overflow-y:auto;padding:8px;">
         <template x-if="!selectedSessionId">
@@ -1744,6 +1790,13 @@
         </svg>
         <span>Issues</span>
       </button>
+      <button class="mobile-tab" :class="{ active: mobileTab === 'prs' }"
+              @click="mobileTab = 'prs'" role="tab" :aria-selected="mobileTab === 'prs'">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
+        </svg>
+        <span>PRs</span>
+      </button>
       <button class="mobile-tab" :class="{ active: mobileTab === 'skills' }"
               @click="mobileTab = 'skills'" role="tab" :aria-selected="mobileTab === 'skills'">
         <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
@@ -1814,21 +1867,41 @@
   <div class="mobile-detail-overlay" x-show="mobileOverlay === 'issue'" x-cloak
        :style="mobileOverlay === 'issue' ? 'transform:translateX(0)' : 'transform:translateX(100%)'">
     <div class="mobile-detail-header">
-      <button @click="mobileOverlay = null; closeIssueViewer()" class="mobile-back-btn" aria-label="Back">
+      <button @click="mobileOverlay = null; closeIssueViewer(); closePullViewer()" class="mobile-back-btn" aria-label="Back">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
           <path d="M12.7 5.3a1 1 0 010 1.4L9.4 10l3.3 3.3a1 1 0 01-1.4 1.4l-4-4a1 1 0 010-1.4l4-4a1 1 0 011.4 0z"/>
         </svg>
       </button>
-      <span class="mobile-detail-title" x-text="selectedIssue ? 'Issue #' + selectedIssue.number : ''"></span>
+      <span class="mobile-detail-title" x-text="selectedIssue ? 'Issue #' + selectedIssue.number : (selectedPull ? 'PR #' + selectedPull.number : '')"></span>
       <span class="file-type-badge" x-show="selectedIssue"
             x-text="selectedIssue?.state"
             :style="selectedIssue?.state === 'OPEN' ? 'background:#238636;color:#fff' : 'background:#8957e5;color:#fff'"></span>
+      <span class="file-type-badge" x-show="!selectedIssue && selectedPull"
+            x-text="selectedPull?.state"
+            :style="selectedPull?.state === 'open' ? 'background:#238636;color:#fff' : 'background:#8957e5;color:#fff'"></span>
       <div style="margin-left:auto;display:flex;gap:4px;">
         <a class="btn btn-sm" x-show="selectedIssue" :href="'https://github.com/' + githubRepo + '/issues/' + selectedIssue?.number" target="_blank" rel="noopener">&#8599; GitHub</a>
         <button class="btn btn-sm" x-show="selectedIssue" @click="generateIssuePrompt(selectedIssue); mobileMenuOpen=false; mobileOverlay=null;">Prompt</button>
+        <a class="btn btn-sm" x-show="!selectedIssue && selectedPull" :href="'https://github.com/' + githubRepo + '/pull/' + selectedPull?.number" target="_blank" rel="noopener">&#8599; GitHub</a>
+        <button class="btn btn-sm" x-show="!selectedIssue && selectedPull" @click="generatePullPrompt(selectedPull); mobileMenuOpen=false; mobileOverlay=null;">Prompt</button>
       </div>
     </div>
     <div class="mobile-detail-body" style="padding:16px;">
+      <div x-show="selectedPullLoading" class="viewer-loading">Loading pull request...</div>
+      <div x-show="!selectedPullLoading && !selectedIssue && selectedPull">
+        <h3 style="margin:0 0 8px;font-size:16px;" x-text="selectedPull?.title"></h3>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+          opened by <span x-text="selectedPull?.author"></span> &middot;
+          <span x-text="issueTimeAgo(selectedPull?.created_at || selectedPull?.updated_at)"></span>
+        </div>
+        <div class="issue-labels" x-show="selectedPull?.labels?.length > 0" style="margin-bottom:12px">
+          <template x-for="label in (selectedPull?.labels || [])" :key="label.name">
+            <span class="issue-label" :style="issueLabelStyle(label)" x-text="label.name"></span>
+          </template>
+        </div>
+        <div class="issue-body" style="max-height:none;background:transparent;border:none;padding:0"
+             x-html="renderMarkdown(selectedPull?.body || '*No description*')"></div>
+      </div>
       <div x-show="selectedIssueLoading" class="viewer-loading">Loading issue...</div>
       <div x-show="!selectedIssueLoading && selectedIssue">
         <h3 style="margin:0 0 8px;font-size:16px;" x-text="selectedIssue?.title"></h3>
