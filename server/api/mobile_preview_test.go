@@ -47,22 +47,31 @@ func TestSandboxAllowsSameOrigin(t *testing.T) {
 	}
 }
 
-func TestMobilePreviewTouchAction(t *testing.T) {
+func TestPreviewScrollWrapper(t *testing.T) {
 	ts, _ := newTestServer(t)
 
-	resp, err := http.Get(ts.URL + "/style.css")
+	resp, err := http.Get(ts.URL + "/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	css := string(body)
+	js := string(body)
 
-	if !strings.Contains(css, "html-preview-frame") {
-		t.Fatal("html-preview-frame class not found in CSS")
+	if !strings.Contains(js, "html-preview-scroll") {
+		t.Error("iframe should be wrapped in html-preview-scroll div for cross-platform scrolling")
 	}
-	if !strings.Contains(css, "pinch-zoom") {
-		t.Error("CSS should include touch-action with pinch-zoom on .html-preview-frame for mobile scroll/zoom support")
+	if !strings.Contains(js, "onload=") {
+		t.Error("iframe should have onload handler to resize to content dimensions")
+	}
+
+	resp2, _ := http.Get(ts.URL + "/style.css")
+	defer resp2.Body.Close()
+	cssBody, _ := io.ReadAll(resp2.Body)
+	css := string(cssBody)
+
+	if !strings.Contains(css, "html-preview-scroll") {
+		t.Error("CSS should define html-preview-scroll as the scroll container")
 	}
 }
