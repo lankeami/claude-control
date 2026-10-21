@@ -1950,11 +1950,13 @@ document.addEventListener('alpine:init', () => {
     },
 
     async executeShell(opts) {
-      if (!this.inputText.trim() || !this.selectedSessionId) return;
-      const cmd = this.inputText.trim();
+      const cmd = (opts && opts.command) ? opts.command.trim() : this.inputText.trim();
+      if (!cmd || !this.selectedSessionId) return;
       const background = (opts && opts.background) || this.shellBackground;
-      this.inputText = '';
-      this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
+      if (!(opts && opts.command)) {
+        this.inputText = '';
+        this.$nextTick(() => { if (this.$refs.promptInput) this.$refs.promptInput.style.height = 'auto'; });
+      }
       this.inputSending = true;
 
       // Generate ID client-side so placeholders and SSE are ready before
@@ -3247,13 +3249,17 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       if (!this.selectedSessionId || !pull || !pull.head_branch) return;
       const branch = pull.head_branch;
       // The branch name comes from the PR head ref, which any PR author controls;
-      // reject anything that could smuggle instructions or flags into the prompt.
+      // reject anything that could smuggle shell metacharacters.
       if (!/^[A-Za-z0-9._\/-]{1,200}$/.test(branch) || branch.startsWith('-') || branch.includes('..')) return;
-      this.inputText = 'Switch to the branch for PR #' + pull.number + ': fetch from origin if needed, then check out the `' + branch + '` branch.';
       const sess = this.currentSession;
+      // Use a direct shell command instead of a Claude prompt to avoid wasting credits (issue #337).
+      // Stash any uncommitted changes, git fetch origin, then checkout the PR branch.
+      const cmd = 'git stash --include-untracked 2>/dev/null; git fetch origin ' + branch + ' && git checkout ' + branch;
       if (sess && sess.mode === 'managed') {
-        this.$nextTick(() => this.sendManagedMessage());
+        this.$nextTick(() => this.executeShell({ command: cmd }));
       } else {
+        // Hook sessions: set as instruction with shell prefix so the TUI interprets it.
+        this.inputText = '!' + cmd;
         this.$nextTick(() => this.sendInstruction());
       }
     },

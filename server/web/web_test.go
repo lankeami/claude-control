@@ -203,3 +203,43 @@ func TestAccordionExpandTriggersRefresh(t *testing.T) {
 		t.Error("expected app.js to define an expandSkills method that fetches on expand (issue #318)")
 	}
 }
+
+// Issue #337: switchToPullBranch must run a direct shell command (git stash + checkout)
+// instead of sending a prompt to Claude, which wastes credits.
+func TestSwitchToPullBranchUsesShellNotPrompt(t *testing.T) {
+	data, err := fs.ReadFile(staticFiles, "static/app.js")
+	if err != nil {
+		t.Fatal("failed to read app.js:", err)
+	}
+	js := string(data)
+
+	// Find the switchToPullBranch method body
+	idx := strings.Index(js, "switchToPullBranch(")
+	if idx < 0 {
+		t.Fatal("expected app.js to have a switchToPullBranch method")
+	}
+	methodBody := js[idx:]
+	if len(methodBody) > 1500 {
+		methodBody = methodBody[:1500]
+	}
+
+	// Must NOT send a Claude prompt via sendManagedMessage (wastes credits)
+	if strings.Contains(methodBody, "sendManagedMessage") {
+		t.Error("switchToPullBranch must NOT call sendManagedMessage — use a direct shell command instead (issue #337)")
+	}
+
+	// Must use the shell endpoint for managed sessions (executeShell or /shell API)
+	if !strings.Contains(methodBody, "/shell") && !strings.Contains(methodBody, "executeShell") {
+		t.Error("switchToPullBranch must execute a shell command via executeShell or the /shell API (issue #337)")
+	}
+
+	// Must stash uncommitted changes before switching
+	if !strings.Contains(methodBody, "git stash") {
+		t.Error("switchToPullBranch must stash uncommitted changes before switching branches (issue #337)")
+	}
+
+	// Must checkout the PR branch
+	if !strings.Contains(methodBody, "git checkout") || !strings.Contains(methodBody, "git fetch") {
+		t.Error("switchToPullBranch must fetch and checkout the PR branch (issue #337)")
+	}
+}
