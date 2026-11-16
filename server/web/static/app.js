@@ -84,6 +84,7 @@ document.addEventListener('alpine:init', () => {
     // GitHub Issues state
     githubRepo: null,
     githubIssues: [],
+    _githubIssuesAll: [],
     githubIssuesState: 'open',
     githubIssuesSearch: '',
     githubIssuesLimit: 10,
@@ -101,6 +102,7 @@ document.addEventListener('alpine:init', () => {
 
     // GitHub Pull Requests state
     githubPulls: [],
+    _githubPullsAll: [],
     githubPullsState: 'open',
     githubPullsSearch: '',
     githubPullsLimit: 10,
@@ -1114,6 +1116,7 @@ document.addEventListener('alpine:init', () => {
       this.loadSessionFiles(this.selectedSessionId);
       if (sess && sess.mode === 'managed') {
         this.githubIssues = [];
+        this._githubIssuesAll = [];
         this.githubIssuesState = 'open';
         this.githubIssuesSearch = '';
         this.githubIssuesLimit = 10;
@@ -1121,6 +1124,7 @@ document.addEventListener('alpine:init', () => {
         this.githubIssuesError = null;
         this.fetchGithubIssues(this.selectedSessionId);
         this.githubPulls = [];
+        this._githubPullsAll = [];
         this.githubPullsState = 'open';
         this.githubPullsSearch = '';
         this.githubPullsLimit = 10;
@@ -3007,16 +3011,23 @@ document.addEventListener('alpine:init', () => {
     // GitHub Issues methods
     async fetchGithubIssues(sessionId) {
       if (!sessionId) return;
+      const search = this.githubIssuesSearch.trim();
+      if (this._githubIssuesAll.length > 0) {
+        if (search) {
+          this._filterIssuesLocally(search);
+        } else {
+          this.githubIssues = this._githubIssuesAll.slice(0, this.githubIssuesLimit);
+          this.githubIssuesHasMore = this._githubIssuesAll.length > this.githubIssuesLimit;
+        }
+        return;
+      }
       this.githubIssuesLoading = true;
       this.githubIssuesError = null;
       try {
         const params = new URLSearchParams({
           state: this.githubIssuesState,
-          limit: this.githubIssuesLimit,
+          limit: '100',
         });
-        if (this.githubIssuesSearch.trim()) {
-          params.set('search', this.githubIssuesSearch.trim());
-        }
         const resp = await fetch(`/api/sessions/${sessionId}/github/issues?${params}`, {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
         });
@@ -3027,15 +3038,32 @@ document.addEventListener('alpine:init', () => {
           return;
         }
         const data = await resp.json();
-        this.githubIssues = data.issues || [];
-        this.githubIssuesHasMore = data.has_more || false;
+        const all = data.issues || [];
+        this._githubIssuesAll = all;
         if (data.repo) this.githubRepo = data.repo;
+        if (search) {
+          this._filterIssuesLocally(search);
+        } else {
+          this.githubIssues = all.slice(0, this.githubIssuesLimit);
+          this.githubIssuesHasMore = all.length > this.githubIssuesLimit;
+        }
         this.fetchBatchLinkedPRs(sessionId, this.githubIssues);
       } catch (e) {
         this.githubIssuesError = e.message || 'Failed to load issues';
       } finally {
         this.githubIssuesLoading = false;
       }
+    },
+
+    _filterIssuesLocally(search) {
+      const q = search.toLowerCase();
+      const filtered = this._githubIssuesAll.filter(issue =>
+        (issue.title && issue.title.toLowerCase().includes(q)) ||
+        (issue.author && issue.author.toLowerCase().includes(q)) ||
+        (issue.number && String(issue.number).includes(q))
+      );
+      this.githubIssues = filtered.slice(0, this.githubIssuesLimit);
+      this.githubIssuesHasMore = filtered.length > this.githubIssuesLimit;
     },
 
     async fetchIssueDetail(sessionId, number) {
@@ -3074,10 +3102,12 @@ document.addEventListener('alpine:init', () => {
       this.githubIssuesState = state;
       this.githubIssuesLimit = 10;
       this.selectedIssue = null;
+      this._githubIssuesAll = [];
       this.fetchGithubIssues(this.selectedSessionId);
     },
 
     refreshIssues() {
+      this._githubIssuesAll = [];
       this.fetchGithubIssues(this.selectedSessionId);
     },
 
@@ -3215,16 +3245,23 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
     // GitHub Pull Requests methods
     async fetchGithubPulls(sessionId) {
       if (!sessionId) return;
+      const search = this.githubPullsSearch.trim();
+      if (this._githubPullsAll.length > 0) {
+        if (search) {
+          this._filterPullsLocally(search);
+        } else {
+          this.githubPulls = this._githubPullsAll.slice(0, this.githubPullsLimit);
+          this.githubPullsHasMore = this._githubPullsAll.length > this.githubPullsLimit;
+        }
+        return;
+      }
       this.githubPullsLoading = true;
       this.githubPullsError = null;
       try {
         const params = new URLSearchParams({
           state: this.githubPullsState,
-          limit: this.githubPullsLimit,
+          limit: '100',
         });
-        if (this.githubPullsSearch.trim()) {
-          params.set('search', this.githubPullsSearch.trim());
-        }
         const resp = await fetch(`/api/sessions/${sessionId}/github/pulls?${params}`, {
           headers: { 'Authorization': 'Bearer ' + this.apiKey }
         });
@@ -3235,14 +3272,31 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
           return;
         }
         const data = await resp.json();
-        this.githubPulls = data.pulls || [];
-        this.githubPullsHasMore = data.has_more || false;
+        const all = data.pulls || [];
+        this._githubPullsAll = all;
         if (data.repo) this.githubRepo = data.repo;
+        if (search) {
+          this._filterPullsLocally(search);
+        } else {
+          this.githubPulls = all.slice(0, this.githubPullsLimit);
+          this.githubPullsHasMore = all.length > this.githubPullsLimit;
+        }
       } catch (e) {
         this.githubPullsError = e.message || 'Failed to load pull requests';
       } finally {
         this.githubPullsLoading = false;
       }
+    },
+
+    _filterPullsLocally(search) {
+      const q = search.toLowerCase();
+      const filtered = this._githubPullsAll.filter(pull =>
+        (pull.title && pull.title.toLowerCase().includes(q)) ||
+        (pull.author && pull.author.toLowerCase().includes(q)) ||
+        (pull.number && String(pull.number).includes(q))
+      );
+      this.githubPulls = filtered.slice(0, this.githubPullsLimit);
+      this.githubPullsHasMore = filtered.length > this.githubPullsLimit;
     },
 
     switchToPullBranch(pull) {
@@ -3292,10 +3346,12 @@ Create a feature branch, implement the solution, and open a draft PR linking to 
       this.githubPullsState = state;
       this.githubPullsLimit = 10;
       this.selectedPull = null;
+      this._githubPullsAll = [];
       this.fetchGithubPulls(this.selectedSessionId);
     },
 
     refreshPulls() {
+      this._githubPullsAll = [];
       this.fetchGithubPulls(this.selectedSessionId);
     },
 

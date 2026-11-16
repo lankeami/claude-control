@@ -1219,7 +1219,7 @@
           </div>
           <div x-show="issuesExpanded" x-collapse style="padding:6px 12px 8px">
             <div style="position:relative;margin-bottom:6px;">
-              <input type="text" class="issues-search" placeholder="Search issues or @author..."
+              <input type="text" class="issues-search" placeholder="Search issues or author..."
                      x-model="githubIssuesSearch"
                      style="margin-bottom:0;padding-right:24px;"
                      @input="searchIssues()">
@@ -1283,7 +1283,7 @@
           </div>
           <div x-show="pullsExpanded" x-collapse style="padding:6px 12px 8px">
             <div style="position:relative;margin-bottom:6px;">
-              <input type="text" class="issues-search" placeholder="Search PRs or @author..."
+              <input type="text" class="issues-search" placeholder="Search PRs or author..."
                      x-model="githubPullsSearch"
                      style="margin-bottom:0;padding-right:24px;"
                      @input="searchPulls()">
@@ -1559,7 +1559,7 @@
                           @click="toggleIssueState('closed')">Closed</button>
                 </div>
               </div>
-              <input type="text" class="issues-search" placeholder="Search issues or @author..."
+              <input type="text" class="issues-search" placeholder="Search issues or author..."
                      x-model="githubIssuesSearch" @input="searchIssues()">
               <div x-show="githubIssuesLoading" class="issues-loading">Loading...</div>
               <div x-show="!githubIssuesLoading && githubIssuesError" class="issues-error" x-text="githubIssuesError"></div>
@@ -1629,7 +1629,7 @@
                         @click="togglePullState('closed')">Closed</button>
               </div>
             </div>
-            <input type="text" class="issues-search" placeholder="Search PRs or @author..."
+            <input type="text" class="issues-search" placeholder="Search PRs or author..."
                    x-model="githubPullsSearch" @input="searchPulls()">
             <div x-show="githubPullsLoading" class="issues-loading">Loading...</div>
             <div x-show="!githubPullsLoading && githubPullsError" class="issues-error" x-text="githubPullsError"></div>
