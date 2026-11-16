@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-16
+
+- [b11d26a](https://github.com/lankeami/claude-control/commit/b11d26ace3c5943b195ac361d5cfa4ec07d2f37b) fix: make PR/issue search match author names and issue numbers, not just titles
+  Switch from server-side GitHub search API to client-side filtering against a cached list of up to 100 items. Search now matches against title, author login, and issue/PR number instantly without API round-trips.
+
 ## 2026-10-17
 
 - [c2cb911](https://github.com/lankeami/claude-control/commit/c2cb91160fb6e07f0089d3ac829e23cc1427ffce) fix: track per-question selections in multi-question AskUserQuestion cards
