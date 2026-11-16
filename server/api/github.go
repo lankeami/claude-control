@@ -123,6 +123,51 @@ func repoFromRemote(cwd string) (string, error) {
 	return m[1], nil
 }
 
+// buildGitHubSearchQuery constructs a GitHub search query string.
+// It recognises @username and author:username in the search text and
+// converts them into proper GitHub search qualifiers so the user can
+// filter PRs/issues by author from the same search box.
+func buildGitHubSearchQuery(repo, issueType, state, search string) string {
+	base := fmt.Sprintf("repo:%s is:%s state:%s", repo, issueType, state)
+	if search == "" {
+		return base
+	}
+
+	words := strings.Fields(search)
+	var authorQualifier string
+	remaining := make([]string, 0, len(words))
+
+	for _, w := range words {
+		switch {
+		case strings.HasPrefix(w, "author:") && len(w) > len("author:"):
+			// Explicit author:xxx qualifier — pass first one through, rest stay as text
+			if authorQualifier == "" {
+				authorQualifier = w
+			} else {
+				remaining = append(remaining, w)
+			}
+		case strings.HasPrefix(w, "@") && len(w) > 1:
+			// @username shorthand — convert first to author: qualifier
+			if authorQualifier == "" {
+				authorQualifier = "author:" + w[1:]
+			} else {
+				remaining = append(remaining, w)
+			}
+		default:
+			remaining = append(remaining, w)
+		}
+	}
+
+	parts := []string{base}
+	if authorQualifier != "" {
+		parts = append(parts, authorQualifier)
+	}
+	if len(remaining) > 0 {
+		parts = append(parts, strings.Join(remaining, " "))
+	}
+	return strings.Join(parts, " ")
+}
+
 // githubToken reads the GITHUB_TOKEN from the env file.
 func (s *Server) githubToken() string {
 	vals := readEnvFile(s.envPath)
@@ -279,9 +324,9 @@ func (s *Server) handleListGithubIssues(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var apiURL string
-	if search != "" {
-		// Use search API for text queries
-		query := fmt.Sprintf("repo:%s is:issue state:%s %s", repo, state, search)
+	useSearchAPI := search != ""
+	if useSearchAPI {
+		query := buildGitHubSearchQuery(repo, "issue", state, search)
 		apiURL = fmt.Sprintf("https://api.github.com/search/issues?q=%s&per_page=%d",
 			strings.ReplaceAll(query, " ", "+"), limit+1)
 	} else {
@@ -304,7 +349,7 @@ func (s *Server) handleListGithubIssues(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var raw []ghAPIIssue
-	if search != "" {
+	if useSearchAPI {
 		// Search API wraps results in { items: [...] }
 		var searchResult struct {
 			Items []ghAPIIssue `json:"items"`
@@ -451,8 +496,9 @@ func (s *Server) handleListGithubPulls(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var apiURL string
-	if search != "" {
-		query := fmt.Sprintf("repo:%s is:pr state:%s %s", repo, state, search)
+	useSearchAPI := search != ""
+	if useSearchAPI {
+		query := buildGitHubSearchQuery(repo, "pr", state, search)
 		apiURL = fmt.Sprintf("https://api.github.com/search/issues?q=%s&per_page=%d",
 			strings.ReplaceAll(query, " ", "+"), limit+1)
 	} else {
@@ -475,7 +521,7 @@ func (s *Server) handleListGithubPulls(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var raw []ghAPIIssue
-	if search != "" {
+	if useSearchAPI {
 		var searchResult struct {
 			Items []ghAPIIssue `json:"items"`
 		}

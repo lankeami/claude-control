@@ -281,3 +281,89 @@ func TestReshapeAPIPullNoHeadBranch(t *testing.T) {
 		t.Fatalf("pullResponse.HeadBranch = %q; want empty", result.HeadBranch)
 	}
 }
+
+func TestBuildGitHubSearchQuery(t *testing.T) {
+	tests := []struct {
+		name      string
+		repo      string
+		issueType string // "issue" or "pr"
+		state     string
+		search    string
+		wantQuery string
+	}{
+		{
+			name:      "plain text search passes through",
+			repo:      "owner/repo",
+			issueType: "pr",
+			state:     "open",
+			search:    "fix bug",
+			wantQuery: "repo:owner/repo is:pr state:open fix bug",
+		},
+		{
+			name:      "at-sign prefix becomes author qualifier",
+			repo:      "owner/repo",
+			issueType: "pr",
+			state:     "open",
+			search:    "@lankeami",
+			wantQuery: "repo:owner/repo is:pr state:open author:lankeami",
+		},
+		{
+			name:      "author:prefix passes through as qualifier",
+			repo:      "owner/repo",
+			issueType: "issue",
+			state:     "closed",
+			search:    "author:jay",
+			wantQuery: "repo:owner/repo is:issue state:closed author:jay",
+		},
+		{
+			name:      "at-sign mixed with text",
+			repo:      "owner/repo",
+			issueType: "pr",
+			state:     "open",
+			search:    "fix @lankeami",
+			wantQuery: "repo:owner/repo is:pr state:open author:lankeami fix",
+		},
+		{
+			name:      "author:prefix mixed with text",
+			repo:      "owner/repo",
+			issueType: "issue",
+			state:     "open",
+			search:    "bug author:jay urgent",
+			wantQuery: "repo:owner/repo is:issue state:open author:jay bug urgent",
+		},
+		{
+			name:      "empty search returns base query",
+			repo:      "owner/repo",
+			issueType: "pr",
+			state:     "open",
+			search:    "",
+			wantQuery: "repo:owner/repo is:pr state:open",
+		},
+		{
+			name:      "at-sign alone with no username ignored",
+			repo:      "owner/repo",
+			issueType: "pr",
+			state:     "open",
+			search:    "@",
+			wantQuery: "repo:owner/repo is:pr state:open @",
+		},
+		{
+			name:      "multiple at-sign uses first as author",
+			repo:      "owner/repo",
+			issueType: "pr",
+			state:     "open",
+			search:    "@user1 @user2",
+			wantQuery: "repo:owner/repo is:pr state:open author:user1 @user2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildGitHubSearchQuery(tt.repo, tt.issueType, tt.state, tt.search)
+			if got != tt.wantQuery {
+				t.Errorf("buildGitHubSearchQuery(%q, %q, %q, %q)\n  got  = %q\n  want = %q",
+					tt.repo, tt.issueType, tt.state, tt.search, got, tt.wantQuery)
+			}
+		})
+	}
+}
