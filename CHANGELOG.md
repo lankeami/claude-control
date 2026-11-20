@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-20
+
+- [b369377](https://github.com/lankeami/claude-control/commit/b3693775539e96990e1a051796f5fb2df97dd30f) fix: prevent mobile keyboard from shifting entire viewport to top
+  When the virtual keyboard opened on mobile, the whole window shifted up and the text area became barely visible at the top of the screen.
+
 ## 2026-11-16
 
 - [b11d26a](https://github.com/lankeami/claude-control/commit/b11d26ace3c5943b195ac361d5cfa4ec07d2f37b) fix: make PR/issue search match author names and issue numbers, not just titles
