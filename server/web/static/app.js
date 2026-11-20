@@ -330,6 +330,16 @@ document.addEventListener('alpine:init', () => {
       // On mobile the document scrolls (chat-area grows to content height),
       // so the jump-to-bottom button tracks window scroll there.
       window.addEventListener('scroll', () => this.updateJumpToBottom(), { passive: true });
+      // Mobile virtual keyboard fix: track visual viewport height so the
+      // layout shrinks when the keyboard opens (iOS Safari ignores
+      // interactive-widget, so we need the JS fallback).
+      if (window.visualViewport) {
+        const updateAppHeight = () => {
+          document.documentElement.style.setProperty('--app-height', `${window.visualViewport.height}px`);
+        };
+        window.visualViewport.addEventListener('resize', updateAppHeight);
+        updateAppHeight();
+      }
       // Detect Web Speech API support
       this.voiceChatSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
       // Load status line config from localStorage

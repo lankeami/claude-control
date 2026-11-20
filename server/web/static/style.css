@@ -373,18 +373,9 @@ body {
   color: #ffffff;
 }
 
-/* Mobile: the document scrolls and the input bar sits at the end of the
-   page (overflow:hidden ancestors defeat its sticky positioning), so the
-   button pins to the viewport instead. It hides within 150px of the
-   bottom, before it would overlap the input bar. */
-@media (max-width: 768px) {
-  .jump-to-bottom {
-    position: fixed;
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    right: 16px;
-    z-index: 20;
-  }
-}
+/* Mobile: the layout is now contained (dashboard overflow:hidden), so the
+   chat-area scrolls internally and the desktop absolute positioning —
+   anchored above the instruction-bar — works on mobile too. */
 
 .chat-empty {
   display: flex;
@@ -1924,7 +1915,12 @@ body {
   .mod-pane { display: none; }
   .mod-bar-pane-toggle { display: none; }
 
-  .dashboard { flex-direction: column; }
+  .dashboard {
+    flex-direction: column;
+    height: 100dvh;
+    height: var(--app-height, 100dvh);
+    overflow: hidden;
+  }
 
   /* Hamburger button */
   .mobile-hamburger {
@@ -1940,13 +1936,19 @@ body {
     flex-shrink: 0;
   }
 
-  /* Main header mobile layout — sticky so hamburger is always accessible */
+  /* Fix flex chain: .main needs min-height:0 so the column layout
+     stays contained within the dashboard height (chat-area scrolls
+     internally instead of the document scrolling). */
+  .main {
+    min-height: 0;
+  }
+
+  /* Main header mobile layout */
   .main-header {
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    position: sticky;
-    top: 0;
+    flex-shrink: 0;
     background: var(--bg);
     z-index: 10;
   }
@@ -1968,10 +1970,9 @@ body {
     max-width: 90%;
   }
 
-  /* Input bar sticky — stack vertically on mobile */
+  /* Input bar — stack vertically on mobile */
   .instruction-bar {
-    position: sticky;
-    bottom: 0;
+    flex-shrink: 0;
     flex-wrap: wrap;
     padding: 0.5rem 0.75rem;
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0));
