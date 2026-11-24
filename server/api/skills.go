@@ -28,8 +28,8 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For managed sessions use CWD; for hook sessions use ProjectPath.
-	cwd := sess.CWD
+	// For managed sessions use CWD (or worktree); for hook sessions use ProjectPath.
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		cwd = sess.ProjectPath
 	}

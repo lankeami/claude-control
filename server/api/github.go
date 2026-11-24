@@ -210,7 +210,7 @@ func (s *Server) handleGetGithubIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		jsonError(w, "Session has no working directory", http.StatusBadRequest)
 		return
@@ -278,7 +278,7 @@ func (s *Server) handleListGithubIssues(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		jsonError(w, "Session has no working directory", http.StatusBadRequest)
 		return
@@ -451,7 +451,7 @@ func (s *Server) handleListGithubPulls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		jsonError(w, "Session has no working directory", http.StatusBadRequest)
 		return
@@ -569,7 +569,7 @@ func (s *Server) handleGetGithubPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		jsonError(w, "Session has no working directory", http.StatusBadRequest)
 		return
@@ -643,7 +643,7 @@ func (s *Server) handleListIssueComments(w http.ResponseWriter, r *http.Request)
 		jsonError(w, "Comments are only available for managed sessions", http.StatusBadRequest)
 		return
 	}
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		jsonError(w, "Session has no working directory", http.StatusBadRequest)
 		return
@@ -777,7 +777,7 @@ func (s *Server) handleListIssueLinkedPRs(w http.ResponseWriter, r *http.Request
 		jsonError(w, "Linked PRs are only available for managed sessions", http.StatusBadRequest)
 		return
 	}
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		jsonError(w, "Session has no working directory", http.StatusBadRequest)
 		return
@@ -833,7 +833,7 @@ func (s *Server) handleBatchLinkedPRs(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "Linked PRs are only available for managed sessions", http.StatusBadRequest)
 		return
 	}
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		jsonError(w, "Session has no working directory", http.StatusBadRequest)
 		return

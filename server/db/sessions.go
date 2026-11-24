@@ -33,9 +33,10 @@ type Session struct {
 	CompactEveryNContinues int       `json:"compact_every_n_continues"`
 	Model                  string    `json:"model,omitempty"`
 	Agent                  string    `json:"agent"`
+	WorktreeCWD            string    `json:"worktree_cwd,omitempty"`
 }
 
-const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), turn_count, COALESCE(name,''), compact_every_n_continues, COALESCE(model,''), COALESCE(agent,'claude')`
+const sessionColumns = `id, computer_name, project_path, COALESCE(transcript_path,''), status, created_at, last_seen_at, archived, mode, COALESCE(cwd,''), COALESCE(allowed_tools,''), max_turns, max_budget_usd, initialized, COALESCE(claude_session_id,''), max_continuations, COALESCE(activity_state,'idle'), turn_count, COALESCE(name,''), compact_every_n_continues, COALESCE(model,''), COALESCE(agent,'claude'), COALESCE(worktree_cwd,'')`
 
 func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, error) {
 	var sess Session
@@ -46,7 +47,7 @@ func scanSession(scanner interface{ Scan(...interface{}) error }) (Session, erro
 		&sess.Mode, &sess.CWD, &sess.AllowedTools, &sess.MaxTurns, &sess.MaxBudgetUSD, &initialized,
 		&sess.ClaudeSessionID, &sess.MaxContinuations, &sess.ActivityState,
 		&sess.TurnCount, &sess.Name, &sess.CompactEveryNContinues, &sess.Model,
-		&sess.Agent,
+		&sess.Agent, &sess.WorktreeCWD,
 	)
 	if err != nil {
 		return sess, err
@@ -259,6 +260,23 @@ func (s *Store) UpdateActivityState(id, state string) error {
 
 func (s *Store) UpdateClaudeSessionID(id, claudeSessionID string) error {
 	_, err := s.db.Exec("UPDATE sessions SET claude_session_id = ? WHERE id = ? AND deleted_at IS NULL", claudeSessionID, id)
+	return err
+}
+
+func (sess *Session) EffectiveCWD() string {
+	if sess.WorktreeCWD != "" {
+		return sess.WorktreeCWD
+	}
+	return sess.CWD
+}
+
+func (s *Store) UpdateWorktreeCWD(id, worktreeCWD string) error {
+	_, err := s.db.Exec("UPDATE sessions SET worktree_cwd = ? WHERE id = ? AND deleted_at IS NULL", worktreeCWD, id)
+	return err
+}
+
+func (s *Store) ClearWorktreeCWD(id string) error {
+	_, err := s.db.Exec("UPDATE sessions SET worktree_cwd = NULL WHERE id = ? AND deleted_at IS NULL", id)
 	return err
 }
 

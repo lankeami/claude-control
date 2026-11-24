@@ -2489,6 +2489,11 @@ document.addEventListener('alpine:init', () => {
             });
             this.$nextTick(() => this.scrollToBottom());
           }
+          // Worktree CWD change — refresh the entire file tree and git info
+          if (data.type === 'cwd_change' && data.cwd) {
+            this.loadSessionFiles(this.selectedSessionId);
+            return;
+          }
           // Extract file paths from tool_use events for the file tree
           if (data.type === 'assistant' && data.message && data.message.content && Array.isArray(data.message.content)) {
             for (const block of data.message.content) {

@@ -132,8 +132,8 @@ func (s *Server) handleListCommands(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Project-level commands (take priority over user-level)
-	if sess.CWD != "" {
-		for _, cmd := range discoverCommands(filepath.Join(sess.CWD, ".claude", "commands"), "project") {
+	if sess.EffectiveCWD() != "" {
+		for _, cmd := range discoverCommands(filepath.Join(sess.EffectiveCWD(), ".claude", "commands"), "project") {
 			if !seen[cmd.Name] {
 				all = append(all, cmd)
 				seen[cmd.Name] = true
@@ -186,8 +186,8 @@ func (s *Server) handleCommandContent(w http.ResponseWriter, r *http.Request) {
 
 	// Search project-level first, then user-level
 	searchDirs := []string{}
-	if sess.CWD != "" {
-		searchDirs = append(searchDirs, filepath.Join(sess.CWD, ".claude", "commands"))
+	if sess.EffectiveCWD() != "" {
+		searchDirs = append(searchDirs, filepath.Join(sess.EffectiveCWD(), ".claude", "commands"))
 	}
 	if configDir, err := claudeConfigDir(); err == nil {
 		searchDirs = append(searchDirs, filepath.Join(configDir, "commands"))

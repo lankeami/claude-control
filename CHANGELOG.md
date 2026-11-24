@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-24
+
+- [2293895](https://github.com/lankeami/claude-control/commit/22938957fa718d6bf6373da41e2fe42fac1d11b5) feat: track worktree CWD changes in sidebar file tree
+  When Claude Code enters a worktree mid-session (via EnterWorktree tool), the sidebar file tree, git status, and all sidebar sections now reflect the worktree state instead of the original repo.
+
 ## 2026-11-23
 
 - [1e15405](https://github.com/lankeami/claude-control/commit/1e1540558ea41ef1e0a5bd1bf37d93dcf1529c1c) fix: auto-dismiss trust-this-folder dialog in drain goroutine (#344)
