@@ -2,6 +2,8 @@
 
 ## 2026-11-24
 
+- [c857d3e](https://github.com/lankeami/claude-control/commit/c857d3e282dfa82d9ef04ebb5fadb37969e4ca5c) fix: prevent mobile body scroll when iOS keyboard opens (#347)
+  Add position:fixed + overflow:hidden + overscroll-behavior:none on html,body in the mobile media query so Safari cannot scroll the document when the textarea receives focus and the virtual keyboard opens. This is a preventive CSS fix that replaces the need for any reactive scrollTo(0,0) snap-back.
 - [2293895](https://github.com/lankeami/claude-control/commit/22938957fa718d6bf6373da41e2fe42fac1d11b5) feat: track worktree CWD changes in sidebar file tree
   When Claude Code enters a worktree mid-session (via EnterWorktree tool), the sidebar file tree, git status, and all sidebar sections now reflect the worktree state instead of the original repo.
 
