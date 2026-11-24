@@ -2,6 +2,8 @@
 
 ## 2026-11-24
 
+- [bcb8819](https://github.com/lankeami/claude-control/commit/bcb881946070ad22885d1e3d9eccbf0045c97e6b) fix: use overflow:clip instead of position:fixed for iOS keyboard scroll (#347)
+  The previous fix (position:fixed on html/body) made things worse on iOS Safari -- fixed positioning creates a visual viewport context that shifts when the keyboard opens, hiding the textarea entirely.
 - [c857d3e](https://github.com/lankeami/claude-control/commit/c857d3e282dfa82d9ef04ebb5fadb37969e4ca5c) fix: prevent mobile body scroll when iOS keyboard opens (#347)
   Add position:fixed + overflow:hidden + overscroll-behavior:none on html,body in the mobile media query so Safari cannot scroll the document when the textarea receives focus and the virtual keyboard opens. This is a preventive CSS fix that replaces the need for any reactive scrollTo(0,0) snap-back.
 - [2293895](https://github.com/lankeami/claude-control/commit/22938957fa718d6bf6373da41e2fe42fac1d11b5) feat: track worktree CWD changes in sidebar file tree
