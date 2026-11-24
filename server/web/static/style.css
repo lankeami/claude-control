@@ -1906,16 +1906,8 @@ body {
 .mobile-modal-header { display: none; }
 
 @media (max-width: 768px) {
-  /* mobile-keyboard-scroll-fix: prevent iOS Safari from scrolling the
-     document body when the virtual keyboard opens on textarea focus.
-     position:fixed + overflow:hidden locks the html/body so Safari
-     cannot perform its default focus-reveal scroll. overscroll-behavior
-     prevents scroll chaining from inner containers to the document. */
   html, body {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+    overflow: clip;
     overscroll-behavior: none;
   }
 

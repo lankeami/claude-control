@@ -340,6 +340,13 @@ document.addEventListener('alpine:init', () => {
         window.visualViewport.addEventListener('resize', updateAppHeight);
         updateAppHeight();
       }
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        window.addEventListener('scroll', () => {
+          if (document.scrollingElement.scrollTop !== 0) {
+            document.scrollingElement.scrollTop = 0;
+          }
+        });
+      }
       // Detect Web Speech API support
       this.voiceChatSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition) && !!window.speechSynthesis;
       // Load status line config from localStorage
