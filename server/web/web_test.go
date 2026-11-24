@@ -215,32 +215,38 @@ func TestMobileKeyboardScrollPrevention(t *testing.T) {
 	}
 	css := string(cssData)
 
-	// Find the main mobile media query block.
 	mobileIdx := strings.Index(css, "@media (max-width: 768px)")
 	if mobileIdx < 0 {
 		t.Fatal("expected a @media (max-width: 768px) block in style.css")
 	}
 	mobileCss := css[mobileIdx:]
 
-	// SC1: There must be a mobile-keyboard-scroll-fix rule targeting html/body
-	// that prevents the document from scrolling when the iOS keyboard opens.
-	if !strings.Contains(mobileCss, "mobile-keyboard-scroll-fix") {
-		t.Error("mobile styles must include a .mobile-keyboard-scroll-fix or comment-marked rule for html,body to prevent keyboard-triggered document scroll (issue #347)")
+	if !strings.Contains(mobileCss, "overflow: clip") {
+		t.Error("mobile styles must set overflow: clip on html/body to prevent iOS keyboard-triggered document scroll (issue #347)")
 	}
 
-	// overscroll-behavior: none prevents scroll chaining on mobile.
 	if !strings.Contains(mobileCss, "overscroll-behavior: none") {
 		t.Error("mobile styles must set overscroll-behavior: none on html/body (issue #347)")
 	}
 
-	// SC2: app.js must NOT contain a reactive scrollTo(0, 0) snap-back.
+	htmlBodyIdx := strings.Index(mobileCss, "html, body")
+	if htmlBodyIdx >= 0 {
+		ruleEnd := strings.Index(mobileCss[htmlBodyIdx:], "}")
+		if ruleEnd > 0 {
+			htmlBodyRule := mobileCss[htmlBodyIdx : htmlBodyIdx+ruleEnd]
+			if strings.Contains(htmlBodyRule, "position: fixed") || strings.Contains(htmlBodyRule, "position:fixed") {
+				t.Error("mobile html,body must NOT use position:fixed — it breaks iOS Safari layout when the keyboard opens (issue #347)")
+			}
+		}
+	}
+
 	jsData, err := fs.ReadFile(staticFiles, "static/app.js")
 	if err != nil {
 		t.Fatal("failed to read app.js:", err)
 	}
 	js := string(jsData)
-	if strings.Contains(js, "scrollTo(0, 0)") || strings.Contains(js, "scrollTo(0,0)") {
-		t.Error("app.js must not contain a reactive scrollTo(0,0) snap-back — the CSS fix should prevent body scroll entirely (issue #347)")
+	if !strings.Contains(js, "scrollingElement.scrollTop") {
+		t.Error("app.js must include a scroll guard that resets scrollingElement.scrollTop on mobile as a fallback for older iOS (issue #347)")
 	}
 }
 
