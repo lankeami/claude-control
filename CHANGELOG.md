@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-24
+
+- [2293895](https://github.com/lankeami/claude-control/commit/22938957fa718d6bf6373da41e2fe42fac1d11b5) feat: track worktree CWD changes in sidebar file tree
+  When Claude Code enters a worktree mid-session (via EnterWorktree tool), the sidebar file tree, git status, and all sidebar sections now reflect the worktree state instead of the original repo.
+
 ## 2026-11-20
 
 - [b369377](https://github.com/lankeami/claude-control/commit/b3693775539e96990e1a051796f5fb2df97dd30f) fix: prevent mobile keyboard from shifting entire viewport to top
