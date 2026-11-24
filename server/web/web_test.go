@@ -206,6 +206,44 @@ func TestAccordionExpandTriggersRefresh(t *testing.T) {
 
 // Issue #337: switchToPullBranch must run a direct shell command (git stash + checkout)
 // instead of sending a prompt to Claude, which wastes credits.
+// Issue #347: prevent mobile body scroll when iOS keyboard opens.
+// The fix must be preventive (CSS on html/body) rather than reactive (scrollTo snap-back).
+func TestMobileKeyboardScrollPrevention(t *testing.T) {
+	cssData, err := fs.ReadFile(staticFiles, "static/style.css")
+	if err != nil {
+		t.Fatal("failed to read style.css:", err)
+	}
+	css := string(cssData)
+
+	// Find the main mobile media query block.
+	mobileIdx := strings.Index(css, "@media (max-width: 768px)")
+	if mobileIdx < 0 {
+		t.Fatal("expected a @media (max-width: 768px) block in style.css")
+	}
+	mobileCss := css[mobileIdx:]
+
+	// SC1: There must be a mobile-keyboard-scroll-fix rule targeting html/body
+	// that prevents the document from scrolling when the iOS keyboard opens.
+	if !strings.Contains(mobileCss, "mobile-keyboard-scroll-fix") {
+		t.Error("mobile styles must include a .mobile-keyboard-scroll-fix or comment-marked rule for html,body to prevent keyboard-triggered document scroll (issue #347)")
+	}
+
+	// overscroll-behavior: none prevents scroll chaining on mobile.
+	if !strings.Contains(mobileCss, "overscroll-behavior: none") {
+		t.Error("mobile styles must set overscroll-behavior: none on html/body (issue #347)")
+	}
+
+	// SC2: app.js must NOT contain a reactive scrollTo(0, 0) snap-back.
+	jsData, err := fs.ReadFile(staticFiles, "static/app.js")
+	if err != nil {
+		t.Fatal("failed to read app.js:", err)
+	}
+	js := string(jsData)
+	if strings.Contains(js, "scrollTo(0, 0)") || strings.Contains(js, "scrollTo(0,0)") {
+		t.Error("app.js must not contain a reactive scrollTo(0,0) snap-back — the CSS fix should prevent body scroll entirely (issue #347)")
+	}
+}
+
 func TestSwitchToPullBranchUsesShellNotPrompt(t *testing.T) {
 	data, err := fs.ReadFile(staticFiles, "static/app.js")
 	if err != nil {
