@@ -90,6 +90,45 @@ func (p *InteractiveProc) appendOutput(data []byte) {
 	p.lastOutputAt = time.Now()
 }
 
+// autoHandleDialogs checks the ring buffer for known blocking TUI dialogs
+// (trust-this-folder, welcome splash) and auto-dismisses them. Called from
+// the PTY drain goroutine on each read so dialogs are handled immediately,
+// regardless of whether waitReady has run or already completed. Uses the
+// same trustAnswered/splashDismissed flags as waitReady to prevent
+// double-sending.
+func (p *InteractiveProc) autoHandleDialogs(sessionID string) {
+	p.mu.Lock()
+	ring := string(p.lastOutput)
+	answered := p.trustAnswered
+	splashed := p.splashDismissed
+	p.mu.Unlock()
+
+	if !answered && containsTrustDialog(ring) {
+		p.mu.Lock()
+		if !p.trustAnswered {
+			p.trustAnswered = true
+			p.mu.Unlock()
+			log.Printf("session %s: trust dialog detected (drain), auto-accepting", sessionID)
+			p.PTY.Write([]byte("\r"))
+		} else {
+			p.mu.Unlock()
+		}
+		return
+	}
+
+	if !splashed && containsWelcomeSplash(ring) {
+		p.mu.Lock()
+		if !p.splashDismissed {
+			p.splashDismissed = true
+			p.mu.Unlock()
+			log.Printf("session %s: welcome splash detected (drain), dismissing", sessionID)
+			p.PTY.Write([]byte("\x1b"))
+		} else {
+			p.mu.Unlock()
+		}
+	}
+}
+
 var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;?>]*[a-zA-Z]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[()][0-9A-Z]|\x1b.`)
 
 // compactTerminalText strips ANSI escape sequences and all whitespace so
@@ -222,12 +261,16 @@ func (m *Manager) EnsureInteractive(sessionID string, opts InteractiveOpts) (*In
 	m.mu.Unlock()
 
 	// Drain PTY output continuously — the child blocks if the master fills up.
+	// After each read, check for blocking TUI dialogs (trust-this-folder,
+	// welcome splash) and auto-dismiss them immediately so the session doesn't
+	// hang even if waitReady has already declared quiescence.
 	go func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := ptmx.Read(buf)
 			if n > 0 {
 				proc.appendOutput(buf[:n])
+				proc.autoHandleDialogs(sessionID)
 			}
 			if err != nil {
 				return

@@ -614,3 +614,80 @@ func TestSetTranscriptRotationRediscoversWorkflowsDir(t *testing.T) {
 		return false
 	})
 }
+
+// TestTrustDialogAutoAcceptedAfterQuiescence verifies that the trust dialog is
+// auto-accepted even when it appears AFTER the quiescence window has elapsed.
+// This reproduces the bug where a managed session hangs because Claude Code
+// takes time to initialize before showing the trust dialog, so waitReady
+// declares quiescence and sets readyDone=true before the dialog ever appears.
+// The drain goroutine must detect and auto-accept the dialog independently.
+func TestTrustDialogAutoAcceptedAfterQuiescence(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 100 * time.Millisecond
+	interactiveReadyTimeout = 300 * time.Millisecond
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+
+	// Simulate delayed trust dialog: initial output, then pause (longer than
+	// quiescence timeout), then trust dialog appears. The trust dialog blocks
+	// on `read` until Enter is received, then prints TRUSTED.
+	script := writeScript(t, `echo "initializing..."
+sleep 0.5
+printf '> Yes, I \x1b[32mtrust this folder\x1b[0m\n  2. No, exit\n'
+read -r _
+echo "TRUSTED"
+exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("trust-delayed", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("trust-delayed", time.Second)
+
+	// The trust dialog appears ~500ms after boot — well after quiescence
+	// (100ms) would have declared the TUI ready. The drain goroutine must
+	// detect and auto-accept it without waiting for SendPrompt.
+	waitFor(t, 3*time.Second, func() bool {
+		return strings.Contains(proc.LastOutput(), "TRUSTED")
+	})
+}
+
+// TestSendPromptSucceedsAfterDelayedTrustDialog verifies that a prompt sent
+// after a delayed trust dialog is accepted gets through to the CLI normally.
+func TestSendPromptSucceedsAfterDelayedTrustDialog(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 100 * time.Millisecond
+	interactiveReadyTimeout = 300 * time.Millisecond
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+
+	script := writeScript(t, `echo "initializing..."
+sleep 0.5
+printf '> Yes, I \x1b[32mtrust this folder\x1b[0m\n  2. No, exit\n'
+read -r _
+echo "TRUSTED"
+exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("trust-delayed-prompt", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("trust-delayed-prompt", time.Second)
+
+	// Wait for trust dialog to be auto-accepted by the drain goroutine.
+	waitFor(t, 3*time.Second, func() bool {
+		return strings.Contains(proc.LastOutput(), "TRUSTED")
+	})
+
+	// Now send a prompt — it should go through without hanging.
+	if err := m.SendPrompt("trust-delayed-prompt", "hello after trust"); err != nil {
+		t.Fatalf("SendPrompt failed after delayed trust dialog: %v", err)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		return strings.Contains(proc.LastOutput(), "\x1b[200~hello after trust\x1b[201~")
+	})
+}
