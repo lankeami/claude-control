@@ -2,6 +2,8 @@
 
 ## 2026-11-24
 
+- [118a9e3](https://github.com/lankeami/claude-control/commit/118a9e3b16d17f5cbf936ce2c2c48b4c4bb5cfea) feat: add skill invocation enforcement parser for managed sessions (#352)
+  Prevents the model from skipping skill pipelines by detecting registered skill names in user messages and prepending a mandatory Skill() invocation prefix before the prompt reaches the PTY.
 - [b8e193e](https://github.com/lankeami/claude-control/commit/b8e193e2cbe77f16f68bbd8e4a8be314adbaa3b8) fix: prevent managed session hang when slash commands echo to transcript
   The local command fallback in waitForTurnEnd required !turn.submitted() to fire, but CLI slash commands like /reload-skills echo as a user entry in the transcript, making submitted() true and disabling the fallback. Since no Stop hook fires for local commands, the session hung in "working" state permanently.
 - [bcb8819](https://github.com/lankeami/claude-control/commit/bcb881946070ad22885d1e3d9eccbf0045c97e6b) fix: use overflow:clip instead of position:fixed for iOS keyboard scroll (#347)
