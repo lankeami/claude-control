@@ -924,6 +924,53 @@ func TestInteractiveLocalSlashCommandCompletesWithoutStopHook(t *testing.T) {
 	}
 }
 
+func TestInteractiveLocalSlashCommandCompletesWhenEchoed(t *testing.T) {
+	old := localCommandFallback
+	localCommandFallback = 200 * time.Millisecond
+	defer func() { localCommandFallback = old }()
+
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-local-cmd-echo", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	resp, err := sendMessage(ts, sess.ID, "/reload-skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	waitForTranscriptFn(t, mock, sess.ID)
+
+	// The CLI echoes the command as a user entry (prompt confirmed) but
+	// never starts a model turn — no assistant activity, no Stop hook.
+	// Before the fix, this caused the session to hang because the echo
+	// disabled the local command fallback.
+	mock.EmitTranscriptLine(sess.ID, userEchoTranscriptLine("/reload-skills"))
+
+	pollActivityState(t, store, sess.ID, "waiting", 2*time.Second)
+
+	var sawDone bool
+	timeout := time.After(2 * time.Second)
+	for !sawDone {
+		select {
+		case msg := <-ch:
+			var obj map[string]any
+			json.Unmarshal([]byte(msg), &obj)
+			if obj["type"] == "done" {
+				sawDone = true
+			}
+		case <-timeout:
+			t.Fatal("turn never completed — /reload-skills with echo stalled the session")
+		}
+	}
+}
+
 func TestInteractiveSlashCommandWithModelTurnUsesStopHook(t *testing.T) {
 	old := localCommandFallback
 	localCommandFallback = 200 * time.Millisecond

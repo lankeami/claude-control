@@ -865,9 +865,12 @@ func (s *Server) waitForTurnEnd(sessionID string, stopCh <-chan struct{}, done <
 				log.Printf("session %s: no Stop hook after interrupt, assuming turn ended", sessionID)
 				return turnEndStop
 			}
-			if turn.slashCmd && !turn.submitted() && time.Since(turnStart) > localCommandFallback {
-				log.Printf("session %s: slash command completed locally (no model turn after %s)", sessionID, localCommandFallback)
-				return turnEndLocalCommand
+			if turn.slashCmd && time.Since(turnStart) > localCommandFallback {
+				count, _, _, _ := turn.snapshot()
+				if count == 0 {
+					log.Printf("session %s: slash command completed locally (no assistant activity after %s)", sessionID, localCommandFallback)
+					return turnEndLocalCommand
+				}
 			}
 		}
 	}
