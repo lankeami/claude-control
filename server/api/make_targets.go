@@ -97,7 +97,7 @@ func (s *Server) handleListMakeTargets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		cwd = sess.ProjectPath
 	}

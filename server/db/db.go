@@ -16,7 +16,7 @@ var sessionColumnList = []string{
 	"id", "computer_name", "project_path", "status", "created_at", "last_seen_at", "archived",
 	"transcript_path", "mode", "cwd", "allowed_tools", "max_turns", "max_budget_usd", "initialized",
 	"claude_session_id", "turn_count", "auto_continue_threshold", "max_continuations", "activity_state",
-	"name", "compact_every_n_continues", "model", "deleted_at", "agent",
+	"name", "compact_every_n_continues", "model", "deleted_at", "agent", "worktree_cwd",
 }
 
 type Store struct {
@@ -237,6 +237,7 @@ func migrate(db *sql.DB) error {
 )`,
 		`CREATE INDEX IF NOT EXISTS idx_pipeline_run_items_run ON pipeline_run_items(run_id)`,
 		`ALTER TABLE pipeline_runs ADD COLUMN working_dir TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN worktree_cwd TEXT`,
 	}
 
 	for _, m := range migrations {
@@ -313,7 +314,8 @@ func rebuildSessionsTableIfNeeded(db *sql.DB) error {
 			compact_every_n_continues INTEGER NOT NULL DEFAULT 0,
 			model TEXT NOT NULL DEFAULT '',
 			deleted_at DATETIME,
-			agent TEXT NOT NULL DEFAULT 'claude'
+			agent TEXT NOT NULL DEFAULT 'claude',
+			worktree_cwd TEXT
 		)`,
 		`INSERT INTO sessions_new (` + cols + `) SELECT ` + cols + ` FROM sessions`,
 		`DROP TABLE sessions`,

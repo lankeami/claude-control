@@ -25,7 +25,7 @@ func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		cwd = sess.ProjectPath
 	}
@@ -121,7 +121,7 @@ func (s *Server) handleFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cwd := sess.CWD
+	cwd := sess.EffectiveCWD()
 	if cwd == "" {
 		cwd = sess.ProjectPath
 	}

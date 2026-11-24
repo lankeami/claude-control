@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -403,6 +404,7 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 				s.registerPendingQuestion(sessionID, pq, "transcript")
 			}
 			extractSessionFiles(line, sessionID, s.store)
+			s.detectWorktreeToolUse(line, sessionID)
 
 			v, ok := s.interactiveTurns.Load(sessionID)
 			if !ok {
@@ -444,6 +446,7 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		case "user":
 			if !hasOnlyTextContent(entry.Message.Content) {
 				broadcaster.Send(line)
+				s.processWorktreeResults(entry.Message.Content, sessionID, broadcaster)
 				// A tool_result for the pending question means it was answered
 				// outside the web UI (TUI/terminal) — clear the card and let
 				// the turn loop resume via the WaitForClear channel.
@@ -920,6 +923,144 @@ func hasToolResultFor(content json.RawMessage, toolUseID string) bool {
 		}
 	}
 	return false
+}
+
+type pendingWorktreeOp struct {
+	SessionID string
+	ToolName  string // "EnterWorktree" or "ExitWorktree"
+}
+
+// detectWorktreeToolUse scans an assistant transcript entry for
+// EnterWorktree/ExitWorktree tool_use blocks and records their IDs so
+// the matching tool_result can update the session CWD.
+func (s *Server) detectWorktreeToolUse(line, sessionID string) {
+	var msg struct {
+		Message struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal([]byte(line), &msg) != nil || msg.Message.Content == nil {
+		return
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(msg.Message.Content, &blocks) != nil {
+		return
+	}
+	for _, b := range blocks {
+		if b.Type != "tool_use" || b.ID == "" {
+			continue
+		}
+		if b.Name == "EnterWorktree" || b.Name == "ExitWorktree" {
+			s.pendingWorktreeEnters.Store(b.ID, pendingWorktreeOp{
+				SessionID: sessionID,
+				ToolName:  b.Name,
+			})
+		}
+	}
+}
+
+// processWorktreeResults checks user transcript entries for tool_results
+// that match pending EnterWorktree/ExitWorktree calls. On a match it
+// extracts the worktree path, updates the session's worktree_cwd, and
+// emits a cwd_change SSE event so the frontend refreshes its file tree.
+func (s *Server) processWorktreeResults(content json.RawMessage, sessionID string, broadcaster *managed.Broadcaster) {
+	var blocks []struct {
+		Type      string          `json:"type"`
+		ToolUseID string          `json:"tool_use_id"`
+		Content   json.RawMessage `json:"content"`
+	}
+	if json.Unmarshal(content, &blocks) != nil {
+		return
+	}
+	for _, b := range blocks {
+		if b.Type != "tool_result" || b.ToolUseID == "" {
+			continue
+		}
+		val, ok := s.pendingWorktreeEnters.LoadAndDelete(b.ToolUseID)
+		if !ok {
+			continue
+		}
+		op := val.(pendingWorktreeOp)
+		if op.SessionID != sessionID {
+			continue
+		}
+
+		if op.ToolName == "ExitWorktree" {
+			if err := s.store.ClearWorktreeCWD(sessionID); err != nil {
+				log.Printf("session %s: failed to clear worktree_cwd: %v", sessionID, err)
+				continue
+			}
+			log.Printf("session %s: exited worktree", sessionID)
+			sess, err := s.store.GetSessionByID(sessionID)
+			if err == nil {
+				cwdMsg := fmt.Sprintf(`{"type":"cwd_change","cwd":%s}`, jsonString(sess.CWD))
+				broadcaster.Send(cwdMsg)
+			}
+			continue
+		}
+
+		// EnterWorktree — extract path from tool_result content
+		wtPath := extractPathFromToolResult(b.Content)
+		if wtPath == "" {
+			log.Printf("session %s: EnterWorktree result contained no extractable path", sessionID)
+			continue
+		}
+		if err := s.store.UpdateWorktreeCWD(sessionID, wtPath); err != nil {
+			log.Printf("session %s: failed to update worktree_cwd: %v", sessionID, err)
+			continue
+		}
+		log.Printf("session %s: entered worktree at %s", sessionID, wtPath)
+		cwdMsg := fmt.Sprintf(`{"type":"cwd_change","cwd":%s}`, jsonString(wtPath))
+		broadcaster.Send(cwdMsg)
+	}
+}
+
+// extractPathFromToolResult tries to find an absolute directory path in a
+// tool_result content field. The content may be a JSON string, an array
+// of text blocks, or a nested content wrapper.
+func extractPathFromToolResult(raw json.RawMessage) string {
+	// Try as a plain string
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		if p := findWorktreePath(text); p != "" {
+			return p
+		}
+	}
+	// Try as array of content blocks
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) == nil {
+		for _, b := range blocks {
+			if b.Type == "text" || b.Text != "" {
+				if p := findWorktreePath(b.Text); p != "" {
+					return p
+				}
+			}
+		}
+	}
+	return ""
+}
+
+var absPathRe = regexp.MustCompile(`(/[^\s"',;:]+)`)
+
+// findWorktreePath extracts the first absolute filesystem path from text
+// that exists as a directory.
+func findWorktreePath(text string) string {
+	for _, m := range absPathRe.FindAllString(text, 10) {
+		m = strings.TrimRight(m, ".!?)")
+		if filepath.IsAbs(m) {
+			if info, err := os.Stat(m); err == nil && info.IsDir() {
+				return m
+			}
+		}
+	}
+	return ""
 }
 
 func (s *Server) finishInteractiveTurn(sessionID string, broadcaster *managed.Broadcaster) {

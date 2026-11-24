@@ -83,7 +83,7 @@ func (s *Server) handleGetFileRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !pathWithinAllowedRoots(resolved, sess.CWD) {
+	if !pathWithinAllowedRoots(resolved, sess.EffectiveCWD()) {
 		http.Error(w, "file is outside session working directory and temp dirs", http.StatusForbidden)
 		return
 	}
@@ -261,7 +261,7 @@ func (s *Server) handleGetFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !pathWithinAllowedRoots(resolved, sess.CWD) {
+	if !pathWithinAllowedRoots(resolved, sess.EffectiveCWD()) {
 		http.Error(w, `{"error":"file is outside session working directory and temp dirs"}`, http.StatusForbidden)
 		return
 	}

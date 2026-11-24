@@ -960,7 +960,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 
 	proc, err := s.manager.SpawnShell(sessionID, managed.ShellOpts{
 		Command: req.Command,
-		CWD:     sess.CWD,
+		CWD:     sess.EffectiveCWD(),
 		Timeout: time.Duration(req.Timeout) * time.Second,
 	})
 	if err != nil {
@@ -978,7 +978,7 @@ func (s *Server) handleShellExecute(w http.ResponseWriter, r *http.Request) {
 	broadcaster := s.manager.GetBroadcaster(sessionID)
 
 	startMsg := fmt.Sprintf(`{"type":"shell_start","command":%s,"id":%s,"cwd":%s}`,
-		jsonString(req.Command), jsonString(commandID), jsonString(sess.CWD))
+		jsonString(req.Command), jsonString(commandID), jsonString(sess.EffectiveCWD()))
 	broadcaster.Send(startMsg)
 
 	SafeGo("shell:"+commandID, func() {
