@@ -2,6 +2,8 @@
 
 ## 2026-11-24
 
+- [b8e193e](https://github.com/lankeami/claude-control/commit/b8e193e2cbe77f16f68bbd8e4a8be314adbaa3b8) fix: prevent managed session hang when slash commands echo to transcript
+  The local command fallback in waitForTurnEnd required !turn.submitted() to fire, but CLI slash commands like /reload-skills echo as a user entry in the transcript, making submitted() true and disabling the fallback. Since no Stop hook fires for local commands, the session hung in "working" state permanently.
 - [bcb8819](https://github.com/lankeami/claude-control/commit/bcb881946070ad22885d1e3d9eccbf0045c97e6b) fix: use overflow:clip instead of position:fixed for iOS keyboard scroll (#347)
   The previous fix (position:fixed on html/body) made things worse on iOS Safari -- fixed positioning creates a visual viewport context that shifts when the keyboard opens, hiding the textarea entirely.
 - [c857d3e](https://github.com/lankeami/claude-control/commit/c857d3e282dfa82d9ef04ebb5fadb37969e4ca5c) fix: prevent mobile body scroll when iOS keyboard opens (#347)
