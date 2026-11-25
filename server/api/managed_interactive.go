@@ -335,6 +335,21 @@ func (s *Server) sendMessageInteractive(sess *db.Session, message string, imageP
 			if r := recover(); r != nil {
 				log.Printf("session %s: interactive goroutine panicked: %v", sessionID, r)
 				_ = s.store.UpdateActivityState(sessionID, "idle")
+				broadcaster.Send(`{"type":"done","exit_code":1}`)
+				return
+			}
+			// Safety net: if the goroutine exits normally but state is still
+			// "working", something prevented the normal state transition. Skip
+			// cleanup when superseded — the replacement goroutine owns the state.
+			select {
+			case <-supersedeCh:
+				return
+			default:
+			}
+			if cur, err := s.store.GetSession(sessionID); err == nil && cur != nil && cur.ActivityState == "working" {
+				log.Printf("session %s: interactive goroutine exited with activity_state still 'working' — resetting to 'waiting'", sessionID)
+				_ = s.store.UpdateActivityState(sessionID, "waiting")
+				broadcaster.Send(`{"type":"done","exit_code":0}`)
 			}
 		}()
 
@@ -568,6 +583,10 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		default:
 		}
 
+		if turn.slashCmd {
+			log.Printf("session %s: slash command detected, sending prompt %q", sessionID, currentPrompt)
+		}
+
 		if err := s.manager.SendPrompt(sessionID, currentPrompt); err != nil {
 			// The process may have died with a session-ID conflict before
 			// the prompt could be typed (PTY write fails on a dead pty).
@@ -590,6 +609,10 @@ func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *inte
 		})
 
 		reason := s.waitForTurnEnd(sessionID, stopCh, proc.Done, turn, supersedeCh)
+
+		if turn.slashCmd {
+			log.Printf("session %s: slash command waitForTurnEnd returned reason=%d", sessionID, reason)
+		}
 
 		// A new message arrived — this goroutine is stale. Exit without
 		// emitting result/done; the new goroutine owns the session now.

@@ -1089,6 +1089,62 @@ func TestSupersedeCancelsOldTurn(t *testing.T) {
 	}
 }
 
+// TestInteractiveSafetyNetResetsStaleworkingOnPanic verifies that if the
+// interactive goroutine panics, the deferred safety net catches the panic,
+// sets activity_state to "idle", and emits a done event so the session
+// doesn't get permanently stuck.
+func TestInteractiveSafetyNetResetsStaleworkingOnPanic(t *testing.T) {
+	ts, store, mock := setupInteractiveTestServer(t)
+	sess, err := store.CreateManagedSession("/tmp/int-safety", `["Bash"]`, 50, 5.0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := mock.GetBroadcaster(sess.ID)
+	ch := b.Subscribe()
+	defer b.Unsubscribe(ch)
+
+	// Make SendPrompt panic — simulates an unexpected nil dereference or
+	// similar bug inside the interactive goroutine.
+	mock.OnSendPrompt = func(sessionID, text string) error {
+		panic("simulated unexpected crash in SendPrompt")
+	}
+
+	resp, err := sendMessage(ts, sess.ID, "trigger panic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	// Wait for the safety net to fire and emit done.
+	timeout := time.After(3 * time.Second)
+	var gotDone bool
+	for !gotDone {
+		select {
+		case msg := <-ch:
+			var obj map[string]any
+			json.Unmarshal([]byte(msg), &obj)
+			if obj["type"] == "done" {
+				gotDone = true
+			}
+		case <-timeout:
+			t.Fatal("never received done event after panic — safety net did not fire")
+		}
+	}
+
+	// The safety net should have set state to "idle" (panic path).
+	got, err := store.GetSession(sess.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ActivityState != "idle" {
+		t.Fatalf("activity_state = %q, want %q after panic recovery", got.ActivityState, "idle")
+	}
+}
+
 func drainBroadcasts(ch <-chan string, timeout time.Duration) []string {
 	var msgs []string
 	timer := time.After(timeout)
