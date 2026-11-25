@@ -285,7 +285,23 @@ func (s *Server) handleSendMessageInteractive(w http.ResponseWriter, sess *db.Se
 		}
 	}
 
-	s.sendMessageInteractive(sess, message, imagePaths)
+	// Skill enforcement: if the message is a registered skill invocation,
+	// wrap it with a mandatory Skill() instruction prefix to prevent the
+	// model from rationalizing around the skill pipeline.
+	enforcedMessage := message
+	cwd := sess.EffectiveCWD()
+	if cwd == "" {
+		cwd = sess.CWD
+	}
+	if cwd != "" {
+		registry := skillNamesForCWD(cwd)
+		if skill, args, isSkill := ParseSkillInvocation(message, registry); isSkill {
+			enforcedMessage = EnforcementPrefix(skill, args)
+			log.Printf("session %s: skill enforcement applied for /%s", sessionID, skill)
+		}
+	}
+
+	s.sendMessageInteractive(sess, enforcedMessage, imagePaths)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "started"})
