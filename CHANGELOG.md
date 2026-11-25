@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-25
+
+- [c86dd85](https://github.com/lankeami/claude-control/commit/c86dd85724264cf1f14d2589626516459b8ee26b) fix: add safety net to prevent managed sessions stuck at working state
+  The interactive goroutine deferred function now checks if activity_state is still working on exit and resets it to waiting with a done event. This prevents sessions from becoming permanently unresponsive when the goroutine exits without the normal state transition (e.g. panic, deadlock, or unknown race condition). Also adds diagnostic logging for slash command flow to help identify root cause if the issue recurs.
+
 ## 2026-11-24
 
 - [42dfd74](https://github.com/lankeami/claude-control/commit/42dfd74010729ac8d6d9d8181a6b3efbc1cbbff7) feat: add DiscoverSkillNames skill registry source for enforcement parser (#352)
