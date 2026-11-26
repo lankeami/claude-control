@@ -1,6 +1,10 @@
 package api
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestClaudeProjectDir(t *testing.T) {
 	cases := []struct {
@@ -31,5 +35,19 @@ func TestClaudeProjectDir(t *testing.T) {
 				t.Errorf("claudeProjectDir(%q)\n  got  %q\n  want %q", tc.cwd, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestClaudeProjectDirResolvesSymlinks(t *testing.T) {
+	// Create a real directory and a symlink pointing to it.
+	real := t.TempDir()
+	symlink := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, symlink); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	got := claudeProjectDir(symlink)
+	want := claudeProjectDir(real)
+	if got != want {
+		t.Errorf("symlink and real dir produced different encodings:\n  symlink: %q\n  real:    %q", got, want)
 	}
 }

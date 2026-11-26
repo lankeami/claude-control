@@ -122,6 +122,9 @@ func TestSendPromptAutoAcceptsTrustDialog(t *testing.T) {
 		interactiveReadyQuiescence = oldQ
 		interactiveReadyTimeout = oldT
 	})
+	oldTxReady := transcriptReadyTimeout
+	transcriptReadyTimeout = 0
+	t.Cleanup(func() { transcriptReadyTimeout = oldTxReady })
 
 	// Fake trust dialog with ANSI styling interleaved mid-phrase, waiting for
 	// Enter before showing the input screen.
@@ -664,6 +667,9 @@ func TestSendPromptSucceedsAfterDelayedTrustDialog(t *testing.T) {
 		interactiveReadyQuiescence = oldQ
 		interactiveReadyTimeout = oldT
 	})
+	oldTxReady := transcriptReadyTimeout
+	transcriptReadyTimeout = 0
+	t.Cleanup(func() { transcriptReadyTimeout = oldTxReady })
 
 	script := writeScript(t, `echo "initializing..."
 sleep 0.5
@@ -692,6 +698,77 @@ exec cat`)
 	})
 }
 
+// TestAwaitDialogsClearedWaitsForTranscript verifies that when a trust dialog
+// is auto-accepted, awaitDialogsCleared blocks until transcript tailing has
+// started (tailStarted == true). This prevents the prompt from being injected
+// before the SessionStart hook fires, which would cause the response to be
+// written to the transcript before tailing begins — missing it entirely.
+func TestAwaitDialogsClearedWaitsForTranscript(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 50 * time.Millisecond
+	interactiveReadyTimeout = 200 * time.Millisecond
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ; interactiveReadyTimeout = oldT
+	})
+
+	oldGrace := dialogGracePeriod
+	dialogGracePeriod = 2 * time.Second
+	t.Cleanup(func() { dialogGracePeriod = oldGrace })
+
+	oldTxReady := transcriptReadyTimeout
+	transcriptReadyTimeout = 3 * time.Second
+	t.Cleanup(func() { transcriptReadyTimeout = oldTxReady })
+
+	script := writeScript(t, `echo "init"
+sleep 0.3
+printf '> Yes, I trust this folder\n  2. No\n'
+read -r _
+echo "TRUSTED"
+exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("tx-wait", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("tx-wait", time.Second)
+
+	// awaitDialogsCleared is called inside SendPrompt. Run it in a goroutine
+	// so we can observe whether it blocks waiting for tailStarted.
+	promptDone := make(chan struct{})
+	go func() {
+		_ = m.SendPrompt("tx-wait", "after-transcript-ready")
+		close(promptDone)
+	}()
+
+	// Wait long enough for trust dialog to be auto-accepted and quiescence
+	// to pass, but DON'T set tailStarted yet. The prompt should be blocked.
+	time.Sleep(800 * time.Millisecond)
+	select {
+	case <-promptDone:
+		t.Fatal("SendPrompt returned before tailStarted was set — transcript race not prevented")
+	default:
+		// Good: still blocked
+	}
+
+	// Simulate the SessionStart hook firing by setting tailStarted.
+	proc.mu.Lock()
+	proc.tailStarted = true
+	proc.mu.Unlock()
+
+	// Now SendPrompt should unblock.
+	select {
+	case <-promptDone:
+		// Good
+	case <-time.After(5 * time.Second):
+		t.Fatal("SendPrompt did not unblock after tailStarted was set")
+	}
+
+	// Verify the prompt was delivered after trust acceptance.
+	waitFor(t, 3*time.Second, func() bool {
+		return strings.Contains(proc.LastOutput(), "\x1b[200~after-transcript-ready\x1b[201~")
+	})
+}
+
 // TestSendPromptDuringDelayedTrustDialog verifies that when SendPrompt is
 // called immediately after EnsureInteractive (as the real code does in
 // runInteractiveTurns), and the trust dialog appears AFTER waitReady has
@@ -710,6 +787,10 @@ func TestSendPromptDuringDelayedTrustDialog(t *testing.T) {
 	oldGrace := dialogGracePeriod
 	dialogGracePeriod = 3 * time.Second
 	t.Cleanup(func() { dialogGracePeriod = oldGrace })
+
+	oldTxReady := transcriptReadyTimeout
+	transcriptReadyTimeout = 0
+	t.Cleanup(func() { transcriptReadyTimeout = oldTxReady })
 
 	// Script: initial output, pause longer than quiescence (so waitReady
 	// declares ready), then trust dialog appears. After trust acceptance,
