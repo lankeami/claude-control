@@ -15,7 +15,11 @@ import (
 
 // claudeProjectDir encodes a CWD to match Claude Code's project directory naming.
 // Replaces /, _, and . with -. Handles Windows paths (backslashes, drive letter colon).
+// Resolves symlinks first because the CLI does the same (e.g. /tmp → /private/tmp on macOS).
 func claudeProjectDir(cwd string) string {
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = resolved
+	}
 	cwd = filepath.ToSlash(cwd)
 	if len(cwd) >= 2 && cwd[1] == ':' {
 		cwd = cwd[:1] + cwd[2:]

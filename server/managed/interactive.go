@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -76,6 +77,13 @@ var (
 	// blocking TUI dialogs (trust-this-folder) before injecting the prompt.
 	// Variable so tests can tune it.
 	dialogGracePeriod = 5 * time.Second
+
+	// transcriptReadyTimeout is how long awaitDialogsCleared waits for
+	// transcript tailing to start after a trust dialog is auto-accepted.
+	// The SessionStart hook fires after trust acceptance and delivers the
+	// transcript path; without this wait the prompt races the hook and the
+	// response is written before tailing begins, so it's never relayed.
+	transcriptReadyTimeout = 10 * time.Second
 )
 
 // LastOutput returns the most recent raw PTY output (up to 8KB), useful for
@@ -117,6 +125,8 @@ func (p *InteractiveProc) autoHandleDialogs(sessionID string) {
 			p.trustAnsweredAt = time.Now()
 			p.mu.Unlock()
 			log.Printf("session %s: trust dialog detected (drain), auto-accepting", sessionID)
+			p.PTY.Write([]byte("\x1b[B")) // move to "Yes" (default is "No, exit")
+			time.Sleep(100 * time.Millisecond)
 			p.PTY.Write([]byte("\r"))
 		} else {
 			p.mu.Unlock()
@@ -201,6 +211,8 @@ func (p *InteractiveProc) waitReady(sessionID string) {
 
 		if !answered && containsTrustDialog(ring) {
 			log.Printf("session %s: trust dialog detected, auto-accepting", sessionID)
+			p.PTY.Write([]byte("\x1b[B")) // move to "Yes"
+			time.Sleep(100 * time.Millisecond)
 			p.PTY.Write([]byte("\r"))
 			p.mu.Lock()
 			p.trustAnswered = true
@@ -239,6 +251,60 @@ func (p *InteractiveProc) waitReady(sessionID string) {
 
 // EnsureInteractive returns the session's running interactive process, or
 // spawns a new one under a PTY.
+
+// preTrustDirectory writes hasTrustDialogAccepted for the given directory
+// so the trust dialog never appears. Uses EvalSymlinks because the CLI
+// resolves symlinks before looking up the project key. Best-effort.
+func preTrustDirectory(cwd string) {
+	resolved := cwd
+	if r, err := filepath.EvalSymlinks(cwd); err == nil {
+		resolved = r
+	}
+
+	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if configDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return
+		}
+		configDir = filepath.Join(home, ".claude")
+	}
+	configPath := filepath.Join(configDir, ".claude.json")
+
+	var config map[string]interface{}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		config = map[string]interface{}{}
+	} else if json.Unmarshal(data, &config) != nil {
+		return
+	}
+
+	projects, _ := config["projects"].(map[string]interface{})
+	if projects == nil {
+		projects = map[string]interface{}{}
+	}
+	proj, _ := projects[resolved].(map[string]interface{})
+	if proj == nil {
+		proj = map[string]interface{}{}
+	}
+	if proj["hasTrustDialogAccepted"] == true {
+		return
+	}
+	proj["hasTrustDialogAccepted"] = true
+	projects[resolved] = proj
+	config["projects"] = projects
+
+	out, err := json.Marshal(config)
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(configPath, out, 0600); err != nil {
+		log.Printf("preTrustDirectory: failed to write %s: %v", configPath, err)
+	} else {
+		log.Printf("preTrustDirectory: trusted %s in %s", resolved, configPath)
+	}
+}
+
 func (m *Manager) EnsureInteractive(sessionID string, opts InteractiveOpts) (*InteractiveProc, error) {
 	mu := m.sessionMutex(sessionID)
 	mu.Lock()
@@ -253,10 +319,12 @@ func (m *Manager) EnsureInteractive(sessionID string, opts InteractiveOpts) (*In
 	cfg := m.cfg
 	m.mu.Unlock()
 
+	preTrustDirectory(opts.CWD)
+
 	args := append(append([]string{}, cfg.ClaudeArgs...), opts.Args...)
 	cmd := exec.Command(cfg.ClaudeBin, args...)
 	cmd.Dir = opts.CWD
-	cmd.Env = append(os.Environ(), cfg.ClaudeEnv...)
+	cmd.Env = append(cleanEnvForChild(), cfg.ClaudeEnv...)
 	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1", "TERM=xterm-256color")
 
 	ptmx, err := startPTY(cmd)
@@ -303,10 +371,12 @@ func (m *Manager) EnsureInteractive(sessionID string, opts InteractiveOpts) (*In
 			proc.ExitCode = cmd.ProcessState.ExitCode()
 		}
 		proc.mu.Lock()
+		ring := string(proc.lastOutput)
 		if proc.tailCancel != nil {
 			proc.tailCancel()
 		}
 		proc.mu.Unlock()
+		log.Printf("session %s: process exited (code %d), last PTY output:\n%s", sessionID, proc.ExitCode, ring)
 		ptmx.Close()
 		m.mu.Lock()
 		if m.iprocs[sessionID] == proc {
@@ -337,6 +407,16 @@ func (m *Manager) getInteractive(sessionID string) *InteractiveProc {
 
 func (m *Manager) IsInteractiveRunning(sessionID string) bool {
 	return m.getInteractive(sessionID) != nil
+}
+
+// GetInteractiveOutput returns the last PTY output ring buffer (stripped of ANSI)
+// for the given session. Used for debugging.
+func (m *Manager) GetInteractiveOutput(sessionID string) string {
+	proc := m.getInteractive(sessionID)
+	if proc == nil {
+		return ""
+	}
+	return proc.LastOutput()
 }
 
 // awaitDialogsCleared gives the CLI a grace period after spawn for blocking
@@ -405,6 +485,27 @@ func (p *InteractiveProc) awaitDialogsCleared(sessionID string) {
 				lastNow := p.lastOutputAt
 				p.mu.Unlock()
 				if lastNow.After(answeredAt) && time.Since(lastNow) >= interactiveReadyQuiescence {
+					break
+				}
+				time.Sleep(interactiveReadyPoll)
+			}
+			// The trust dialog blocks before the SessionStart hook fires,
+			// so transcript tailing hasn't started yet. Wait for it before
+			// injecting the prompt — otherwise the response lands in the
+			// transcript before tailing begins and is never relayed to the UI.
+			log.Printf("session %s: waiting for transcript tailing to start", sessionID)
+			deadline := time.Now().Add(transcriptReadyTimeout)
+			for time.Now().Before(deadline) {
+				select {
+				case <-p.Done:
+					return
+				default:
+				}
+				p.mu.Lock()
+				ready := p.tailStarted
+				p.mu.Unlock()
+				if ready {
+					log.Printf("session %s: transcript tailing ready", sessionID)
 					break
 				}
 				time.Sleep(interactiveReadyPoll)
@@ -501,6 +602,7 @@ func (m *Manager) SendPrompt(sessionID, text string) error {
 		time.Sleep(sendPromptConfirmPoll)
 	}
 
+	log.Printf("session %s: prompt delivery not confirmed after %s", sessionID, sendPromptConfirmTimeout)
 	proc.mu.Lock()
 	proc.lastSendOutTotal = proc.outTotal
 	proc.mu.Unlock()

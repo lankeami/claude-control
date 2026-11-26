@@ -6,9 +6,28 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
+
+// cleanEnvForChild returns os.Environ() with parent Claude Code session
+// variables removed. These vars (e.g. CLAUDE_CODE_CHILD_SESSION) confuse
+// or cripple spawned managed processes — CHILD_SESSION disables transcript
+// saving, SESSION_ID/MESSAGING_* bind the child to the parent's IPC.
+func cleanEnvForChild() []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "CLAUDE_CODE_CHILD_SESSION=") ||
+			strings.HasPrefix(e, "CLAUDE_CODE_SESSION_ID=") ||
+			strings.HasPrefix(e, "CLAUDE_CODE_MESSAGING_SOCKET=") ||
+			strings.HasPrefix(e, "CLAUDE_CODE_MESSAGING_TOKEN=") {
+			continue
+		}
+		env = append(env, e)
+	}
+	return env
+}
 
 type Config struct {
 	ClaudeBin          string
@@ -120,7 +139,7 @@ func (m *Manager) Spawn(sessionID string, opts SpawnOpts) (*Process, error) {
 	args := append(cfg.ClaudeArgs, opts.Args...)
 	cmd := exec.Command(cfg.ClaudeBin, args...)
 	cmd.Dir = opts.CWD
-	cmd.Env = append(os.Environ(), cfg.ClaudeEnv...)
+	cmd.Env = append(cleanEnvForChild(), cfg.ClaudeEnv...)
 	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1")
 
 	stdin, err := cmd.StdinPipe()
@@ -472,7 +491,7 @@ func (m *Manager) RunCompact(sessionID string, resumeID string, cwd string, time
 
 	cmd := exec.Command(cfg.ClaudeBin, args...)
 	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), cfg.ClaudeEnv...)
+	cmd.Env = append(cleanEnvForChild(), cfg.ClaudeEnv...)
 	cmd.Env = append(cmd.Env, "CLAUDE_CONTROLLER_MANAGED=1")
 
 	stdout, err := cmd.StdoutPipe()

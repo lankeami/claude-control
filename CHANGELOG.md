@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-26
+
+- [33aaecf](https://github.com/lankeami/claude-control/commit/33aaecfcba90a92e3257405156ed6ec98a54dd25) fix: prevent managed session wedge from CLAUDE_CODE_CHILD_SESSION inheritance and trust dialog race
+  Root cause: when the server runs inside a Claude Code session, managed processes inherit CLAUDE_CODE_CHILD_SESSION=1, which silently disables transcript saving — the CLI processes prompts correctly but never creates a transcript file, so the server never sees responses.
+
 ## 2026-11-25
 
 - [c86dd85](https://github.com/lankeami/claude-control/commit/c86dd85724264cf1f14d2589626516459b8ee26b) fix: add safety net to prevent managed sessions stuck at working state

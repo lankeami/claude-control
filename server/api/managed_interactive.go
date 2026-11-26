@@ -26,8 +26,10 @@ var escStopFallback = 10 * time.Second
 var localCommandFallback = 5 * time.Second
 
 // transcriptDiscoveryFallback is how long we wait for the SessionStart hook
-// to report the transcript path before computing it locally.
-var transcriptDiscoveryFallback = 30 * time.Second
+// to report the transcript path before computing it locally. Kept short so
+// new-directory sessions (where the trust dialog delays the hook) still get
+// transcript tailing before the first turn completes.
+var transcriptDiscoveryFallback = 10 * time.Second
 
 // compactTimeout bounds how long we wait for /compact to finish.
 var compactTimeout = 5 * time.Minute
@@ -401,6 +403,7 @@ func (s *Server) retryAfterSessionIDConflict(sess *db.Session, prompt string, tu
 func (s *Server) runInteractiveTurns(sess *db.Session, prompt string, turn *interactiveTurnState, broadcaster *managed.Broadcaster, attempt int, supersedeCh <-chan struct{}) {
 	sessionID := sess.ID
 	maxTurns := sess.MaxTurns
+	log.Printf("session %s: runInteractiveTurns starting, prompt=%q", sessionID, prompt[:min(len(prompt), 60)])
 
 	// onTranscriptLine runs on the tailer goroutine for the process
 	// lifetime — across many turns. It forwards chat entries to SSE,
