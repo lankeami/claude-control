@@ -51,7 +51,9 @@ type InteractiveProc struct {
 	lastOutputAt  time.Time
 	readyDone        bool
 	trustAnswered    bool
+	trustAnsweredAt  time.Time
 	splashDismissed  bool
+	dialogsCleared   bool
 
 	sendMu           sync.Mutex
 	lastSendOutTotal int64
@@ -69,6 +71,11 @@ var (
 
 	sendPromptConfirmTimeout = 3 * time.Second
 	sendPromptConfirmPoll    = 25 * time.Millisecond
+
+	// dialogGracePeriod is how long after spawn SendPrompt will poll for
+	// blocking TUI dialogs (trust-this-folder) before injecting the prompt.
+	// Variable so tests can tune it.
+	dialogGracePeriod = 5 * time.Second
 )
 
 // LastOutput returns the most recent raw PTY output (up to 8KB), useful for
@@ -107,6 +114,7 @@ func (p *InteractiveProc) autoHandleDialogs(sessionID string) {
 		p.mu.Lock()
 		if !p.trustAnswered {
 			p.trustAnswered = true
+			p.trustAnsweredAt = time.Now()
 			p.mu.Unlock()
 			log.Printf("session %s: trust dialog detected (drain), auto-accepting", sessionID)
 			p.PTY.Write([]byte("\r"))
@@ -146,7 +154,17 @@ func compactTerminalText(s string) string {
 
 func containsTrustDialog(out string) bool {
 	c := compactTerminalText(out)
-	return strings.Contains(c, "trustthisfolder") || strings.Contains(c, "Doyoutrustthefiles")
+	// Match several known wordings of the trust prompt across Claude Code versions:
+	//   "Yes, I trust this folder"       → trustthisfolder
+	//   "Do you trust the files"          → Doyoutrustthefiles
+	//   "trust this project"              → trustthisproject
+	//   "Do you trust this workspace"     → trustthisworkspace
+	//   "Do you want to trust"            → Doyouwanttotrust
+	return strings.Contains(c, "trustthisfolder") ||
+		strings.Contains(c, "Doyoutrustthefiles") ||
+		strings.Contains(c, "trustthisproject") ||
+		strings.Contains(c, "trustthisworkspace") ||
+		strings.Contains(c, "Doyouwanttotrust")
 }
 
 func containsWelcomeSplash(out string) bool {
@@ -186,6 +204,7 @@ func (p *InteractiveProc) waitReady(sessionID string) {
 			p.PTY.Write([]byte("\r"))
 			p.mu.Lock()
 			p.trustAnswered = true
+			p.trustAnsweredAt = time.Now()
 			p.mu.Unlock()
 			time.Sleep(interactiveReadyPoll)
 			continue
@@ -320,6 +339,96 @@ func (m *Manager) IsInteractiveRunning(sessionID string) bool {
 	return m.getInteractive(sessionID) != nil
 }
 
+// awaitDialogsCleared gives the CLI a grace period after spawn for blocking
+// TUI dialogs (trust-this-folder, welcome splash) to appear and be auto-
+// dismissed before the first prompt is injected. Without this, a prompt
+// written during the gap between quiescence and dialog appearance gets
+// consumed by the dialog and never reaches the main input, wedging the
+// session. Sticky: only the first prompt after spawn pays this wait.
+//
+// Crucially, the wait only applies when the CLI is quiet — if the process is
+// actively producing output, the drain goroutine's autoHandleDialogs will
+// catch any dialog in real time, so we proceed immediately.
+func (p *InteractiveProc) awaitDialogsCleared(sessionID string) {
+	p.mu.Lock()
+	if p.dialogsCleared {
+		p.mu.Unlock()
+		return
+	}
+	p.mu.Unlock()
+
+	grace := p.SpawnedAt.Add(dialogGracePeriod)
+	if time.Now().After(grace) {
+		p.mu.Lock()
+		p.dialogsCleared = true
+		p.mu.Unlock()
+		return
+	}
+
+	for time.Now().Before(grace) {
+		select {
+		case <-p.Done:
+			return
+		default:
+		}
+
+		p.mu.Lock()
+		answered := p.trustAnswered
+		answeredAt := p.trustAnsweredAt
+		ring := string(p.lastOutput)
+		last := p.lastOutputAt
+		p.mu.Unlock()
+
+		// Trust dialog is visible but not yet auto-accepted — wait for
+		// the drain goroutine's autoHandleDialogs to send Enter.
+		if !answered && containsTrustDialog(ring) {
+			log.Printf("session %s: trust dialog visible, waiting for auto-accept before prompt", sessionID)
+			for time.Now().Before(grace) {
+				p.mu.Lock()
+				answered = p.trustAnswered
+				answeredAt = p.trustAnsweredAt
+				p.mu.Unlock()
+				if answered {
+					break
+				}
+				time.Sleep(interactiveReadyPoll)
+			}
+		}
+
+		// Trust dialog was just handled — wait for the CLI to produce
+		// post-acceptance output and go quiet so we don't inject the
+		// prompt into a transitional state.
+		if answered {
+			log.Printf("session %s: trust dialog accepted, waiting for post-acceptance quiescence", sessionID)
+			for time.Now().Before(grace) {
+				p.mu.Lock()
+				lastNow := p.lastOutputAt
+				p.mu.Unlock()
+				if lastNow.After(answeredAt) && time.Since(lastNow) >= interactiveReadyQuiescence {
+					break
+				}
+				time.Sleep(interactiveReadyPoll)
+			}
+			break
+		}
+
+		// No dialog visible. If the CLI is actively producing output, the
+		// drain goroutine will catch any dialog in real time — proceed
+		// immediately instead of blocking on the full grace period.
+		if !last.IsZero() && time.Since(last) < interactiveReadyQuiescence {
+			break
+		}
+
+		// CLI is quiet and within the grace period — keep polling for
+		// a dialog that might appear after a delayed config load.
+		time.Sleep(interactiveReadyPoll)
+	}
+
+	p.mu.Lock()
+	p.dialogsCleared = true
+	p.mu.Unlock()
+}
+
 // SendPrompt types a prompt into the interactive session using bracketed
 // paste (so multi-line text isn't interpreted as separate submissions),
 // followed by Enter. Serialized per-process to prevent PTY buffer
@@ -332,6 +441,7 @@ func (m *Manager) SendPrompt(sessionID, text string) error {
 	}
 	proc.LastActivity = time.Now()
 	proc.waitReady(sessionID)
+	proc.awaitDialogsCleared(sessionID)
 
 	proc.sendMu.Lock()
 	defer proc.sendMu.Unlock()
