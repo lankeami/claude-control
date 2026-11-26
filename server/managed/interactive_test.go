@@ -691,3 +691,61 @@ exec cat`)
 		return strings.Contains(proc.LastOutput(), "\x1b[200~hello after trust\x1b[201~")
 	})
 }
+
+// TestSendPromptDuringDelayedTrustDialog verifies that when SendPrompt is
+// called immediately after EnsureInteractive (as the real code does in
+// runInteractiveTurns), and the trust dialog appears AFTER waitReady has
+// declared quiescence, the prompt is still delivered successfully. This
+// reproduces the new-project-directory bug where the prompt data gets
+// consumed by the trust dialog, wedging the session.
+func TestSendPromptDuringDelayedTrustDialog(t *testing.T) {
+	oldQ, oldT := interactiveReadyQuiescence, interactiveReadyTimeout
+	interactiveReadyQuiescence = 100 * time.Millisecond
+	interactiveReadyTimeout = 300 * time.Millisecond
+	t.Cleanup(func() {
+		interactiveReadyQuiescence = oldQ
+		interactiveReadyTimeout = oldT
+	})
+
+	oldGrace := dialogGracePeriod
+	dialogGracePeriod = 3 * time.Second
+	t.Cleanup(func() { dialogGracePeriod = oldGrace })
+
+	// Script: initial output, pause longer than quiescence (so waitReady
+	// declares ready), then trust dialog appears. After trust acceptance,
+	// it enters cat mode to echo the prompt.
+	script := writeScript(t, `echo "initializing..."
+sleep 0.5
+printf '> Yes, I \x1b[32mtrust this folder\x1b[0m\n  2. No, exit\n'
+read -r _
+echo "TRUSTED"
+exec cat`)
+	m := newTestManager("/bin/bash", script)
+	proc, err := m.EnsureInteractive("trust-race", InteractiveOpts{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.ShutdownInteractive("trust-race", time.Second)
+
+	// Call SendPrompt IMMEDIATELY (like runInteractiveTurns does) — do NOT
+	// wait for trust acceptance first. This is the scenario that wedges.
+	if err := m.SendPrompt("trust-race", "hello during trust"); err != nil {
+		t.Fatalf("SendPrompt failed: %v", err)
+	}
+
+	// The trust dialog must have been auto-accepted and the prompt delivered.
+	waitFor(t, 5*time.Second, func() bool {
+		out := proc.LastOutput()
+		return strings.Contains(out, "TRUSTED") &&
+			strings.Contains(out, "\x1b[200~hello during trust\x1b[201~")
+	})
+
+	// Verify ordering: TRUSTED must appear before the prompt paste.
+	out := proc.LastOutput()
+	trustIdx := strings.Index(out, "TRUSTED")
+	promptIdx := strings.Index(out, "\x1b[200~hello during trust\x1b[201~")
+	if trustIdx < 0 || promptIdx < 0 || trustIdx > promptIdx {
+		t.Fatalf("expected TRUSTED before prompt; trust@%d prompt@%d output: %q",
+			trustIdx, promptIdx, out)
+	}
+}
