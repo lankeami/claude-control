@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-27
+
+- [f08a0e4](https://github.com/lankeami/claude-control/commit/f08a0e4ce4aac52070ab98499b45778079882ebf) feat: add IsInteractiveCommand detector for managed session stdin warnings
+  Add IsInteractiveCommand(cmd) function that identifies commands requiring interactive stdin input (aws configure, ssh, passwd, mysql -p, REPLs, editors, etc.) which cannot work in managed PTY sessions. Includes test coverage for both interactive and safe command patterns.
+
 ## 2026-11-26
 
 - [33aaecf](https://github.com/lankeami/claude-control/commit/33aaecfcba90a92e3257405156ed6ec98a54dd25) fix: prevent managed session wedge from CLAUDE_CODE_CHILD_SESSION inheritance and trust dialog race
