@@ -210,6 +210,68 @@ func isCliNoiseMessage(text string) bool {
 	return trimmed == "No response requested." || trimmed == "No response requested"
 }
 
+// interactiveStdinCommands lists shell programs that require interactive stdin
+// and do not work well over the managed session PTY relay.
+var interactiveStdinCommands = map[string]bool{
+	"aws":       true, // aws configure
+	"ssh":       true,
+	"vim":       true,
+	"vi":        true,
+	"nano":      true,
+	"emacs":     true,
+	"less":      true,
+	"more":      true,
+	"top":       true,
+	"htop":      true,
+	"mysql":     true,
+	"psql":      true,
+	"mongo":     true,
+	"mongosh":   true,
+	"redis-cli": true,
+	"python":    true,
+	"python3":   true,
+	"node":      true,
+	"irb":       true,
+	"ghci":      true,
+	"telnet":    true,
+	"ftp":       true,
+	"sftp":      true,
+	"nslookup":  true,
+	"bc":        true,
+	"gdb":       true,
+	"lldb":      true,
+}
+
+// interactiveStdinWarning checks whether message is a "!" shell command whose
+// program typically requires interactive stdin (aws configure, ssh, vim, etc.).
+// Returns a user-facing warning string, or "" if no warning is needed.
+func interactiveStdinWarning(message string) string {
+	trimmed := strings.TrimSpace(message)
+	if !strings.HasPrefix(trimmed, "!") {
+		return ""
+	}
+	// Strip the "!" prefix and any leading whitespace to get the command.
+	cmd := strings.TrimSpace(strings.TrimPrefix(trimmed, "!"))
+	if cmd == "" {
+		return ""
+	}
+	// Extract the base command name (first word).
+	parts := strings.Fields(cmd)
+	base := parts[0]
+	// Handle paths like /usr/bin/vim → vim
+	if idx := strings.LastIndex(base, "/"); idx >= 0 {
+		base = base[idx+1:]
+	}
+
+	if !interactiveStdinCommands[base] {
+		return ""
+	}
+
+	return fmt.Sprintf("Warning: '%s' is an interactive command that requires stdin input. "+
+		"Interactive prompts don't work well in managed sessions — the command may hang or behave unexpectedly. "+
+		"Consider using non-interactive alternatives instead.", base)
+}
+
 // hasOnlyTextContent reports whether a user entry's content is plain text
 // (the echo of a prompt we sent) rather than tool results.
 func hasOnlyTextContent(content json.RawMessage) bool {
@@ -273,6 +335,16 @@ func (s *Server) handleSendMessageInteractive(w http.ResponseWriter, sess *db.Se
 	_, _ = s.store.CreateMessage(sessionID, "user", displayMsg, 0)
 	_ = s.store.Heartbeat(sessionID)
 	_ = s.store.UpdateActivityState(sessionID, "working")
+
+	// Warn the user if the message looks like a "!" shell command that
+	// requires interactive stdin (aws configure, ssh, vim, etc.). The
+	// managed session's PTY relay cannot forward interactive prompts.
+	if warn := interactiveStdinWarning(message); warn != "" {
+		log.Printf("session %s: interactive stdin warning for %q", sessionID, message)
+		_, _ = s.store.CreateMessage(sessionID, "system", warn, 0)
+		warnEvt, _ := json.Marshal(map[string]interface{}{"type": "system", "message": warn})
+		s.manager.GetBroadcaster(sessionID).Send(string(warnEvt))
+	}
 
 	// Model is fixed at spawn time for the long-lived process; only apply
 	// overrides/heuristics when no process exists yet.
