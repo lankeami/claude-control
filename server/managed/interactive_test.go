@@ -830,3 +830,65 @@ exec cat`)
 			trustIdx, promptIdx, out)
 	}
 }
+
+func TestInteractiveStdinWarning(t *testing.T) {
+	// Commands that require interactive stdin input and should be flagged.
+	interactive := []string{
+		"aws configure",
+		"aws configure --profile prod",
+		"ssh user@host",
+		"ssh -i key.pem ec2-user@10.0.0.1",
+		"passwd",
+		"mysql -p",
+		"mysql -u root -p",
+		"psql -W",
+		"sudo -S apt install foo",
+		"python",
+		"python3",
+		"node",
+		"irb",
+		"ftp server.example.com",
+		"telnet host 23",
+		"sftp user@host",
+		"mongo",
+		"redis-cli",
+		"vim file.txt",
+		"nano file.txt",
+		"less file.txt",
+		"top",
+		"htop",
+	}
+	for _, cmd := range interactive {
+		if !IsInteractiveCommand(cmd) {
+			t.Errorf("expected IsInteractiveCommand(%q) = true", cmd)
+		}
+	}
+
+	// Commands that are safe and should NOT be flagged.
+	safe := []string{
+		"ls",
+		"ls -la",
+		"cat file.txt",
+		"aws s3 ls",
+		"aws s3 cp file s3://bucket/",
+		"aws ec2 describe-instances",
+		"echo hello",
+		"grep pattern file",
+		"curl https://example.com",
+		"git status",
+		"go test ./...",
+		"npm install",
+		"python script.py",
+		"python3 -c 'print(1)'",
+		"node -e 'console.log(1)'",
+		"node script.js",
+		"mysql -u root -p'' -e 'SELECT 1'",
+		"ssh-keygen -t rsa",
+		"sshpass -p pass ssh user@host",
+	}
+	for _, cmd := range safe {
+		if IsInteractiveCommand(cmd) {
+			t.Errorf("expected IsInteractiveCommand(%q) = false", cmd)
+		}
+	}
+}

@@ -19,6 +19,120 @@ import (
 var ErrInteractiveUnsupported = errors.New("interactive managed mode is not supported on this platform; set MANAGED_MODE=print")
 var ErrPromptNotConfirmed = errors.New("prompt delivery not confirmed")
 
+// interactiveCommands lists base commands that require interactive stdin input
+// and cannot work properly in a managed PTY session.
+var interactiveCommands = map[string]bool{
+	// Cloud CLI interactive setup
+	"aws configure": true,
+	// Remote shells
+	"ssh":    true,
+	"telnet": true,
+	"ftp":    true,
+	"sftp":   true,
+	// Password / credential prompts
+	"passwd": true,
+	// Interactive interpreters (bare invocation = REPL)
+	"python":  true,
+	"python3": true,
+	"node":    true,
+	"irb":     true,
+	"mongo":   true,
+	"redis-cli": true,
+	// Editors and pagers
+	"vim":  true,
+	"nano": true,
+	"less": true,
+	"vi":   true,
+	"emacs": true,
+	// System monitors
+	"top":  true,
+	"htop": true,
+}
+
+// interactiveFlagPatterns lists flags that make an otherwise safe command
+// interactive (e.g. mysql -p prompts for a password).
+var interactiveFlagPatterns = map[string][]string{
+	"mysql": {"-p"},
+	"psql":  {"-W"},
+	"sudo":  {"-S"},
+}
+
+// IsInteractiveCommand returns true when cmd looks like it will require
+// interactive stdin input (password prompts, REPLs, remote shells, editors)
+// that cannot work in a managed PTY session. Used to warn the user before
+// or instead of running the command.
+func IsInteractiveCommand(cmd string) bool {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return false
+	}
+
+	fields := strings.Fields(cmd)
+	base := fields[0]
+
+	// Check exact multi-word commands first (e.g. "aws configure").
+	if len(fields) >= 2 {
+		twoWord := fields[0] + " " + fields[1]
+		if interactiveCommands[twoWord] {
+			return true
+		}
+	}
+
+	// For interpreters (python, node, etc.), a bare invocation or one with
+	// only flags (no script/file argument or -c/-e inline code) is a REPL.
+	if interactiveCommands[base] {
+		switch base {
+		case "python", "python3", "node", "irb":
+			// If there's a -c, -e, or a script argument, it's not a REPL.
+			for _, arg := range fields[1:] {
+				if arg == "-c" || arg == "-e" {
+					return false
+				}
+				// A positional argument (not a flag) = script file.
+				if !strings.HasPrefix(arg, "-") {
+					return false
+				}
+			}
+			return true
+		default:
+			return true
+		}
+	}
+
+	// Check flag-based patterns (e.g. mysql -p).
+	if flags, ok := interactiveFlagPatterns[base]; ok {
+		for _, flag := range flags {
+			for _, arg := range fields[1:] {
+				// Match flag exactly, or flag as a prefix (e.g. "-p" in "-proot"
+				// means password is inline, but bare "-p" is interactive). For
+				// mysql -p specifically, bare "-p" is interactive but "-p''" or
+				// "-pPASSWORD" is not. However, we also need to handle -e which
+				// means the command has an inline query and may not be interactive
+				// if combined with inline password.
+				if arg == flag {
+					// Bare flag: check that there isn't an -e inline query
+					// that would make it non-interactive.
+					if base == "mysql" && flag == "-p" {
+						hasInlineQuery := false
+						for _, a := range fields[1:] {
+							if a == "-e" || strings.HasPrefix(a, "-e'") || strings.HasPrefix(a, "-e\"") {
+								hasInlineQuery = true
+								break
+							}
+						}
+						if hasInlineQuery {
+							continue
+						}
+					}
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
 // InteractiveOpts configures a long-lived interactive Claude Code process.
 type InteractiveOpts struct {
 	Args []string // claude CLI args (no -p)
